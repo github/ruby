@@ -1,0 +1,2 @@
+dir="$(dirname "$0")"
+"$dir/rb" -rirb -e IRB.start "$@"
