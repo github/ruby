@@ -4,9 +4,16 @@ if [ -z "$CORES" ]; then
   CORES=16
 fi
 
-git clean -f -x
-autoconf
-./configure --disable-install-doc --prefix=`pwd`/inst
-make -j $CORES
-make install
+function Q {
+  if ! "$@" &> /tmp/ruby_ci_log; then
+    cat /tmp/ruby_ci_log
+    exit 1
+  fi
+}
+
+Q git clean -f -x
+Q autoconf
+Q ./configure --disable-install-doc --prefix=`pwd`/inst
+Q make -j $CORES
+Q make install
 make TESTS="-j $CORES" test-all
