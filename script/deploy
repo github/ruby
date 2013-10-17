@@ -11,6 +11,11 @@ function try {
 
 cd "$(dirname "$0")/.."
 
+branch_name="$1"
+commit="$(git rev-parse --short HEAD)"
+
+perl -pi -e "s/development/$branch_name $commit/" version.h
+
 try autoconf
 try ./configure --prefix=/data/ruby --disable-install-doc
 try make -j 4

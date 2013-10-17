@@ -43,8 +43,7 @@
     "ruby "RUBY_VERSION		    \
     RUBY_PATCHLEVEL_STR             \
     "-tcs-github"             \
-    " ("RUBY_RELEASE_DATE	    \
-    RUBY_REVISION_STR") "	    \
+    " (development) "	    \
     "["RUBY_PLATFORM"]"
 # define RUBY_COPYRIGHT 	    \
     "ruby - Copyright (C) "	    \
