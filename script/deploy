@@ -1,0 +1,17 @@
+#!/bin/bash
+
+function try {
+  echo "$@"
+  if ! "$@" &> log; then
+    echo "*** '$@' FAILED" 1>&2
+    cat log 1>&2
+    exit 1
+  fi
+}
+
+cd "$(dirname "$0")/.."
+
+try autoconf
+try ./configure --prefix=/data/ruby --disable-install-doc
+try make -j 4
+try make install
