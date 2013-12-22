@@ -286,8 +286,8 @@ sa_free_table(sa_table *table)
     sa_table_dealloc(table);
 }
 
-int
-sa_delete(sa_table *table, sa_index_t key, st_data_t *value)
+static int
+sa_delete_internal(sa_table *table, sa_index_t key, st_data_t *value)
 {
     sa_index_t pos, prev_pos = ~0;
     sa_entry *entry;
@@ -314,9 +314,6 @@ sa_delete(sa_table *table, sa_index_t key, st_data_t *value)
                 }
             }
             table->num_entries--;
-            if (table->num_entries < table->num_bins / 4) {
-                resize(table);
-            }
             return 1;
         }
         if (entry->next == SA_LAST) break;
@@ -328,6 +325,16 @@ sa_delete(sa_table *table, sa_index_t key, st_data_t *value)
 not_found:
     if (value) *value = 0;
     return 0;
+}
+
+int
+sa_delete(sa_table *table, sa_index_t key, st_data_t *value)
+{
+    int res = sa_delete_internal(table, key, value);
+    if (res == 1 && table->num_entries < table->num_bins / 4) {
+	resize(table);
+    }
+    return res;
 }
 
 int
@@ -344,7 +351,17 @@ sa_foreach(register sa_table *table, int (*func)(), st_data_t arg)
 	    st_data_t val = table->entries[i].value;
 	    ret = (*func)(key, val, arg);
 	    if (ret == SA_STOP) break;
-	    /* else if (ret == SA_DELETE) TODO: implement */
+	    else if (ret == SA_DELETE) {
+		/* it is stable only in term of single iteration */
+		/* do not parallel iteration, please */
+		sa_index_t next = table->entries[i].next;
+		sa_delete_internal(table, key, NULL);
+		/* if item remains after deletion, then it is other item, */
+		/* moved from `next` position */
+		if (next > i + SA_OFFSET && table->entries[i].next != SA_EMPTY) {
+		    i--;
+		}
+	    }
 	}
     }
     return 0;
