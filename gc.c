@@ -497,6 +497,8 @@ enum gc_mode {
     gc_mode_sweeping
 };
 
+typedef void (*gc_writebarrier)(VALUE a, VALUE b, struct rb_objspace *objspace);
+
 typedef struct rb_objspace {
     struct {
 	size_t limit;
@@ -637,6 +639,8 @@ typedef struct rb_objspace {
 #if GC_DEBUG_STRESS_TO_CLASS
     VALUE stress_to_class;
 #endif
+
+    gc_writebarrier wb;
 } rb_objspace_t;
 
 
@@ -813,6 +817,8 @@ int ruby_gc_debug_indent = 0;
 VALUE rb_mGC;
 int ruby_disable_gc = 0;
 
+static void
+gc_set_incremental_marking(rb_objspace_t *objspace, int incremental);
 void rb_iseq_mark(const rb_iseq_t *iseq);
 void rb_iseq_free(const rb_iseq_t *iseq);
 
@@ -1309,6 +1315,7 @@ rb_objspace_alloc(void)
 #else
     rb_objspace_t *objspace = &rb_objspace;
 #endif
+    gc_set_incremental_marking(objspace, is_incremental_marking(objspace));
     malloc_limit = gc_params.malloc_limit_min;
 
     return objspace;
@@ -5408,7 +5415,7 @@ gc_marks_finish(rb_objspace_t *objspace)
 	}
 #endif
 
-	objspace->flags.during_incremental_marking = FALSE;
+	gc_set_incremental_marking(objspace, FALSE);
 	/* check children of all marked wb-unprotected objects */
 	gc_marks_wb_unprotected_objects(objspace);
     }
@@ -5887,6 +5894,30 @@ gc_writebarrier_incremental(VALUE a, VALUE b, rb_objspace_t *objspace)
 	}
     }
 }
+
+static void
+gc_non_incremental_wb(VALUE a, VALUE b, rb_objspace_t *objspace)
+{
+    if (!RVALUE_OLD_P(a) || RVALUE_OLD_P(b)) {
+	return;
+    }
+    else {
+	gc_writebarrier_generational(a, b, objspace);
+    }
+}
+
+static void
+gc_set_incremental_marking(rb_objspace_t *objspace, int incremental)
+{
+    if(incremental) {
+	objspace->wb = gc_writebarrier_incremental;
+    } else {
+	objspace->wb = gc_non_incremental_wb;
+    }
+
+    objspace->flags.during_incremental_marking = incremental;
+}
+
 #else
 #define gc_writebarrier_incremental(a, b, objspace)
 #endif
@@ -5899,17 +5930,7 @@ rb_gc_writebarrier(VALUE a, VALUE b)
     if (RGENGC_CHECK_MODE && SPECIAL_CONST_P(a)) rb_bug("rb_gc_writebarrier: a is special const");
     if (RGENGC_CHECK_MODE && SPECIAL_CONST_P(b)) rb_bug("rb_gc_writebarrier: b is special const");
 
-    if (!is_incremental_marking(objspace)) {
-	if (!RVALUE_OLD_P(a) || RVALUE_OLD_P(b)) {
-	    return;
-	}
-	else {
-	    gc_writebarrier_generational(a, b, objspace);
-	}
-    }
-    else { /* slow path */
-	gc_writebarrier_incremental(a, b, objspace);
-    }
+    (*objspace->wb)(a, b, objspace);
 }
 
 void
@@ -6359,10 +6380,10 @@ gc_start(rb_objspace_t *objspace, const int full_mark, const int immediate_mark,
 
 #if GC_ENABLE_INCREMENTAL_MARK
     if (!GC_ENABLE_INCREMENTAL_MARK || objspace->flags.dont_incremental || immediate_mark) {
-	objspace->flags.during_incremental_marking = FALSE;
+	gc_set_incremental_marking(objspace, FALSE);
     }
     else {
-	objspace->flags.during_incremental_marking = do_full_mark;
+	gc_set_incremental_marking(objspace, do_full_mark);
     }
 #endif
 
