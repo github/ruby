@@ -2238,7 +2238,7 @@ obj_free(rb_objspace_t *objspace, VALUE obj)
     VALUE id;
     if (st_lookup(obj_to_id_tbl, (st_data_t)obj, &id)) {
 #ifdef GC_COMPACT_DEBUG
-	printf("Collecting %p -> %p\n", obj, obj_id_to_ref(id));
+	fprintf(stderr, "Collecting %p -> %p\n", obj, obj_id_to_ref(id));
 #endif
 	st_delete(obj_to_id_tbl, (st_data_t)&obj, 0);
 	st_delete(id_to_obj_tbl, (st_data_t)&id, 0);
@@ -3262,7 +3262,7 @@ rb_obj_id(VALUE obj)
 
     if (st_lookup(obj_to_id_tbl, (st_data_t)obj, &id)) {
 #ifdef GC_COMPACT_DEBUG
-	printf("Second time object_id was called on this object: %p\n", obj);
+	fprintf(stderr, "Second time object_id was called on this object: %p\n", obj);
 #endif
 	return id;
     } else {
@@ -3273,13 +3273,13 @@ rb_obj_id(VALUE obj)
 	    /* id is the object id */
 	    if (st_lookup(id_to_obj_tbl, (st_data_t)id, 0)) {
 #ifdef GC_COMPACT_DEBUG
-		printf("object_id called on %p, but there was a collision at %d\n", obj, NUM2INT(id));
+		fprintf(stderr, "object_id called on %p, but there was a collision at %d\n", obj, NUM2INT(id));
 #endif
 		/* Fixnum LSB is always 1, so increment by 2 */
 		id += 2;
 	    } else {
 #ifdef GC_COMPACT_DEBUG
-		printf("Initial insert: %p id: %d\n", obj, NUM2INT(id));
+		fprintf(stderr, "Initial insert: %p id: %d\n", obj, NUM2INT(id));
 #endif
 		st_insert(obj_to_id_tbl, (st_data_t)obj, id);
 		st_insert(id_to_obj_tbl, (st_data_t)id, Qtrue);
@@ -6996,7 +6996,7 @@ gc_move(rb_objspace_t *objspace, VALUE scan, VALUE free)
     VALUE id;
     if(st_lookup(obj_to_id_tbl, (VALUE)src, &id)) {
 #ifdef GC_COMPACT_DEBUG
-	printf("Moving insert: %p -> %p\n", src, dest);
+	fprintf(stderr, "Moving insert: %p -> %p\n", src, dest);
 #endif
 	st_delete(obj_to_id_tbl, (VALUE)&src, 0);
 	st_insert(obj_to_id_tbl, (VALUE)dest, id);
