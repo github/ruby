@@ -2237,8 +2237,11 @@ obj_free(rb_objspace_t *objspace, VALUE obj)
     }
     VALUE id;
     if (st_lookup(obj_to_id_tbl, (st_data_t)obj, &id)) {
-	st_delete(obj_to_id_tbl, (st_data_t)obj, 0);
-	st_delete(id_to_obj_tbl, (st_data_t)id, 0);
+#ifdef GC_COMPACT_DEBUG
+	printf("Collecting %p -> %p\n", obj, obj_id_to_ref(id));
+#endif
+	st_delete(obj_to_id_tbl, (st_data_t)&obj, 0);
+	st_delete(id_to_obj_tbl, (st_data_t)&id, 0);
     }
 
 #if USE_RGENGC
@@ -3258,20 +3261,32 @@ rb_obj_id(VALUE obj)
     VALUE id;
 
     if (st_lookup(obj_to_id_tbl, (st_data_t)obj, &id)) {
+#ifdef GC_COMPACT_DEBUG
+	printf("Second time object_id was called on this object: %p\n", obj);
+#endif
 	return id;
     } else {
 	int tries;
 	id = nonspecial_obj_id(obj);
-	for(tries = 0; tries < 500; tries += 1) {
+
+	for(tries = 0; tries < 5; tries += 1) {
+	    /* id is the object id */
 	    if (st_lookup(id_to_obj_tbl, (st_data_t)id, 0)) {
+#ifdef GC_COMPACT_DEBUG
+		printf("object_id called on %p, but there was a collision at %d\n", obj, NUM2INT(id));
+#endif
+		/* Fixnum LSB is always 1, so increment by 2 */
 		id += 2;
 	    } else {
+#ifdef GC_COMPACT_DEBUG
+		printf("Initial insert: %p id: %d\n", obj, NUM2INT(id));
+#endif
 		st_insert(obj_to_id_tbl, (st_data_t)obj, id);
 		st_insert(id_to_obj_tbl, (st_data_t)id, Qtrue);
 		return id;
 	    }
-	    rb_bug("Couldn't find an object id after 500 tries");
 	}
+	rb_bug("Couldn't find an object id after 500 tries");
     }
     /*
     if (in obj id table) {
@@ -6979,11 +6994,12 @@ gc_move(rb_objspace_t *objspace, VALUE scan, VALUE free)
     }
 
     VALUE id;
-    if(st_lookup(obj_to_id_tbl, (st_data_t)src, &id)) {
-	st_delete(obj_to_id_tbl, (st_data_t)src, 0);
-	st_insert(obj_to_id_tbl, (st_data_t)dest, id);
-	st_delete(id_to_obj_tbl, (st_data_t)id, 0);
-	st_insert(id_to_obj_tbl, (st_data_t)id, Qtrue);
+    if(st_lookup(obj_to_id_tbl, (VALUE)src, &id)) {
+#ifdef GC_COMPACT_DEBUG
+	printf("Moving insert: %p -> %p\n", src, dest);
+#endif
+	st_delete(obj_to_id_tbl, (VALUE)&src, 0);
+	st_insert(obj_to_id_tbl, (VALUE)dest, id);
     }
 
     memcpy(dest, src, sizeof(RVALUE));
@@ -10698,6 +10714,15 @@ rb_gcdebug_remove_stress_to_class(int argc, VALUE *argv, VALUE self)
 }
 #endif
 
+#ifdef GC_COMPACT_DEBUG
+static VALUE
+rb_memory_location(VALUE self)
+{
+    return nonspecial_obj_id(self);
+}
+#endif
+
+
 /*
  * Document-module: ObjectSpace
  *
@@ -10771,7 +10796,7 @@ Init_GC(void)
     VALUE gc_constants;
 
     id_to_obj_tbl = st_init_numtable();
-    obj_to_id_tbl = st_init_numtable();
+    obj_to_id_tbl = rb_init_identtable();
 
     rb_mGC = rb_define_module("GC");
     rb_define_singleton_method(rb_mGC, "start", gc_start_internal, -1);
@@ -10817,6 +10842,9 @@ Init_GC(void)
 
     rb_define_method(rb_cBasicObject, "__id__", rb_obj_id, 0);
     rb_define_method(rb_mKernel, "object_id", rb_obj_id, 0);
+#ifdef GC_COMPACT_DEBUG
+    rb_define_method(rb_mKernel, "memory_location", rb_memory_location, 0);
+#endif
 
     rb_define_module_function(rb_mObjSpace, "count_objects", count_objects, -1);
 
