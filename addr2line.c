@@ -9,6 +9,7 @@
 **********************************************************************/
 
 #include "ruby/config.h"
+#include "ruby/defines.h"
 #include "ruby/missing.h"
 #include "addr2line.h"
 
@@ -100,11 +101,17 @@ void *alloca();
 #define PATH_MAX 4096
 #endif
 
-#ifndef SHF_COMPRESSED /* compatibility with glibc < 2.22 */
-#define SHF_COMPRESSED 0
+#ifdef SHF_COMPRESSED
+# if defined(ELFCOMPRESS_ZLIB) && defined(HAVE_LIBZ)
+   /* FreeBSD 11.0 lacks ELFCOMPRESS_ZLIB */
+#  include <zlib.h>
+#  define SUPPORT_COMPRESSED_DEBUG_LINE
+# endif
+#else /* compatibility with glibc < 2.22 */
+# define SHF_COMPRESSED 0
 #endif
 
-int kprintf(const char *fmt, ...);
+PRINTF_ARGS(static int kprintf(const char *fmt, ...), 1, 2);
 
 typedef struct {
     const char *dirname;
@@ -119,9 +126,9 @@ typedef struct {
 typedef struct obj_info obj_info_t;
 struct obj_info {
     const char *path; /* object path */
-    int fd;
     void *mapped;
     size_t mapped_size;
+    void *uncompressed_debug_line;
     uintptr_t base_addr;
     obj_info_t *next;
 };
@@ -478,6 +485,41 @@ follow_debuglink(const char *debuglink, int num_traces, void **traces,
     fill_lines(num_traces, traces, 0, objp, lines, offset);
 }
 
+#ifdef SUPPORT_COMPRESSED_DEBUG_LINE
+static int
+parse_compressed_debug_line(int num_traces, void **traces,
+		 char *debug_line, unsigned long size,
+		 obj_info_t *obj, line_info_t *lines, int offset)
+{
+    void *uncompressed_debug_line;
+    ElfW(Chdr) *chdr = (ElfW(Chdr) *)debug_line;
+    unsigned long destsize = chdr->ch_size;
+    int ret = 0;
+
+    if (chdr->ch_type != ELFCOMPRESS_ZLIB) {
+	/* unsupported compression type */
+	return -1;
+    }
+
+    uncompressed_debug_line = malloc(destsize);
+    if (!uncompressed_debug_line) return -1;
+    ret = uncompress(uncompressed_debug_line, &destsize,
+	    (const Bytef *)debug_line + sizeof(ElfW(Chdr)), size-sizeof(ElfW(Chdr)));
+    if (ret != Z_OK) goto fail;
+    ret = parse_debug_line(num_traces, traces,
+	    uncompressed_debug_line,
+	    destsize,
+	    obj, lines, offset);
+    if (ret) goto fail;
+    obj->uncompressed_debug_line = uncompressed_debug_line;
+    return 0;
+
+fail:
+    free(uncompressed_debug_line);
+    return -1;
+}
+#endif
+
 /* read file and fill lines */
 static uintptr_t
 fill_lines(int num_traces, void **traces, int check_debuglink,
@@ -490,8 +532,8 @@ fill_lines(int num_traces, void **traces, int check_debuglink,
     ElfW(Shdr) *shdr, *shstr_shdr;
     ElfW(Shdr) *debug_line_shdr = NULL, *gnu_debuglink_shdr = NULL;
     int fd;
-    off_t filesize;
-    char *file;
+    off_t filesize = 0;
+    char *file = NULL;
     ElfW(Shdr) *symtab_shdr = NULL, *strtab_shdr = NULL;
     ElfW(Shdr) *dynsym_shdr = NULL, *dynstr_shdr = NULL;
     obj_info_t *obj = *objp;
@@ -525,6 +567,7 @@ fill_lines(int num_traces, void **traces, int check_debuglink,
 	kprintf("mmap: %s\n", strerror(e));
 	goto fail;
     }
+    close(fd);
 
     ehdr = (ElfW(Ehdr) *)file;
     if (memcmp(ehdr->e_ident, "\177ELF", 4) != 0) {
@@ -532,11 +575,8 @@ fill_lines(int num_traces, void **traces, int check_debuglink,
 	 * Huh? Maybe filename was overridden by setproctitle() and
 	 * it match non-elf file.
 	 */
-	close(fd);
 	goto fail;
     }
-
-    obj->fd = fd;
     obj->mapped = file;
     obj->mapped_size = (size_t)filesize;
 
@@ -593,11 +633,12 @@ fill_lines(int num_traces, void **traces, int check_debuglink,
 		h = dlopen(NULL, RTLD_NOW|RTLD_LOCAL);
 		if (!h) continue;
 		s = dlsym(h, strtab + sym->st_name);
-		if (!s) continue;
-		if (dladdr(s, &info)) {
+		if (s && dladdr(s, &info)) {
 		    dladdr_fbase = (uintptr_t)info.dli_fbase;
+                    dlclose(h);
 		    break;
 		}
+                dlclose(h);
 	    }
 	    if (ehdr->e_type == ET_EXEC) {
 		obj->base_addr = 0;
@@ -646,15 +687,28 @@ fill_lines(int num_traces, void **traces, int check_debuglink,
 	goto finish;
     }
 
-    if (!compressed_p &&
-	    parse_debug_line(num_traces, traces,
-			 file + debug_line_shdr->sh_offset,
-			 debug_line_shdr->sh_size,
-			 obj, lines, offset))
-	goto fail;
+    if (compressed_p) {
+#ifdef SUPPORT_COMPRESSED_DEBUG_LINE
+	int r = parse_compressed_debug_line(num_traces, traces,
+		file + debug_line_shdr->sh_offset,
+		debug_line_shdr->sh_size,
+		obj, lines, offset);
+	if (r) goto fail;
+#endif
+    }
+    else {
+	int r = parse_debug_line(num_traces, traces,
+		file + debug_line_shdr->sh_offset,
+		debug_line_shdr->sh_size,
+		obj, lines, offset);
+	if (r) goto fail;
+    }
 finish:
     return dladdr_fbase;
 fail:
+    if (file != NULL) {
+        munmap(file, (size_t)filesize);
+    }
     return (uintptr_t)-1;
 }
 
@@ -790,10 +844,12 @@ next_line:
     while (obj) {
 	obj_info_t *o = obj;
 	obj = o->next;
-	if (o->fd) {
+	if (o->mapped_size) {
 	    munmap(o->mapped, o->mapped_size);
-	    close(o->fd);
 	}
+        if (o->uncompressed_debug_line) {
+            free(o->uncompressed_debug_line);
+        }
 	free(o);
     }
     free(lines);
@@ -855,7 +911,7 @@ static void putce(int c)
     (void)ret;
 }
 
-int
+static int
 kprintf(const char *fmt, ...)
 {
 	va_list ap;

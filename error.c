@@ -66,7 +66,7 @@ static const char REPORTBUG_MSG[] =
 	" or extension libraries.\n" \
 	"Bug reports are welcome.\n" \
 	""
-	"For details: http://www.ruby-lang.org/bugreport.html\n\n" \
+	"For details: https://www.ruby-lang.org/bugreport.html\n\n" \
     ;
 
 static const char *
@@ -1061,7 +1061,7 @@ exc_full_message(int argc, VALUE *argv, VALUE exc)
 	    if (id == id_bottom) args[kw_order] = Qtrue;
 	    else if (id == id_top) args[kw_order] = Qfalse;
 	    else {
-		rb_raise(rb_eArgError, "expected :top or :down as "
+		rb_raise(rb_eArgError, "expected :top or :bottom as "
 			 "order: %+"PRIsVALUE, args[kw_order]);
 	    }
 	}
@@ -1446,9 +1446,10 @@ name_err_init_attr(VALUE exc, VALUE recv, VALUE method)
 /*
  * call-seq:
  *   NameError.new(msg [, name])  -> name_error
+ *   NameError.new(msg [, name], receiver:)  -> name_error
  *
  * Construct a new NameError exception. If given the <i>name</i>
- * parameter may subsequently be examined using the <code>NameError.name</code>
+ * parameter may subsequently be examined using the <code>NameError#name</code>
  * method.
  */
 

@@ -54,6 +54,7 @@ INSTALLDOC = @INSTALLDOC@
 DOCTARGETS = @RDOCTARGET@ @CAPITARGET@
 
 EXTOUT = @EXTOUT@
+TIMESTAMPDIR  = $(EXTOUT)/.timestamp
 arch_hdrdir = $(EXTOUT)/include/$(arch)
 VPATH = $(arch_hdrdir)/ruby:$(hdrdir)/ruby:$(srcdir):$(srcdir)/missing
 
@@ -72,7 +73,9 @@ warnflags = @warnflags@ @strict_warnflags@
 cppflags = @cppflags@
 MATHN = @MATHN@
 XCFLAGS = @XCFLAGS@ $(MATHN:yes=-DCANONICALIZATION_FOR_MATHN)
-CPPFLAGS = @CPPFLAGS@ $(INCFLAGS)
+USE_RUBYGEMS = @USE_RUBYGEMS@
+USE_RUBYGEMS_ = $(USE_RUBYGEMS:yes=)
+CPPFLAGS = @CPPFLAGS@ $(INCFLAGS) $(USE_RUBYGEMS_:no=-DDISABLE_RUBYGEMS=1)
 MJIT_HEADER_FLAGS = @MJIT_HEADER_FLAGS@
 MJIT_HEADER_SUFFIX =
 MJIT_HEADER_ARCH =
@@ -82,6 +85,10 @@ MJIT_OPTFLAGS = @MJIT_OPTFLAGS@
 MJIT_DEBUGFLAGS = @MJIT_DEBUGFLAGS@
 MJIT_LDSHARED = @MJIT_LDSHARED@
 MJIT_DLDFLAGS = @DLDFLAGS@
+MJIT_HEADER   = rb_mjit_header.h
+MJIT_MIN_HEADER_NAME = rb_mjit_min_header-$(RUBY_PROGRAM_VERSION).h
+MJIT_MIN_HEADER = $(MJIT_HEADER_BUILD_DIR)/$(MJIT_MIN_HEADER_NAME)
+MJIT_HEADER_BUILD_DIR = $(EXTOUT)/include/$(arch)
 LDFLAGS = @STATIC@ $(CFLAGS) @LDFLAGS@
 EXTLDFLAGS = @EXTLDFLAGS@
 XLDFLAGS = @XLDFLAGS@ $(EXTLDFLAGS)
@@ -282,10 +289,10 @@ $(LIBRUBY_$(LIBRUBY_WITH_EXT)): $(LIBRUBY_SO_UPDATE)
 
 ruby_pc = @ruby_pc@
 ruby.pc: $(ruby_pc)
-$(ruby_pc):
+$(ruby_pc): config.status
 		@./config.status --file=$@:$(srcdir)/template/ruby.pc.in
 
-ruby-runner.h: template/ruby-runner.h.in
+ruby-runner.h: template/ruby-runner.h.in config.status
 		@./config.status --file=$@:$(srcdir)/template/$(@F).in
 
 $(RBCONFIG): $(PREP)
@@ -427,6 +434,15 @@ probes.$(OBJEXT): $(srcdir)/probes.d $(DTRACE_REBUILD:yes=probes.stamp)
 	$(Q) $(RM) $@
 	$(Q) $(DTRACE) -G -C $(INCFLAGS) -s $(srcdir)/probes.d -o $@ $(DTRACE_REBUILD_OBJS)
 
+main: $(MJIT_MIN_HEADER)
+mjit-headers: $(MJIT_MIN_HEADER)
+clean-local::
+	$(Q)$(RM) $(MJIT_HEADER) $(MJIT_HEADER:.h=)$(MJIT_HEADER_SUFFIX:%=*).h
+	$(Q)$(RM) $(MJIT_MIN_HEADER) $(MJIT_MIN_HEADER:.h=)$(MJIT_HEADER_SUFFIX:%=*).h
+	$(Q)$(RM) $(MJIT_HEADER_INSTALL_DIR)/rb_mjit_min_header-*.h
+	$(Q)$(RM) $(TIMESTAMPDIR)/$(MJIT_HEADER:.h=)$(MJIT_HEADER_SUFFIX).time mjit_config.h
+	-$(Q) $(RMDIRS) $(MJIT_HEADER_INSTALL_DIR) 2> $(NULL) || exit 0
+
 # DTrace static library hacks described here:
 # http://mail.opensolaris.org/pipermail/dtrace-discuss/2005-August/000207.html
 ruby-glommed.$(OBJEXT):
@@ -513,6 +529,11 @@ gcov:
 lcov:
 	$(Q) $(BASERUBY) $(srcdir)/tool/run-lcov.rb
 
+update-benchmark-driver:
+	$(Q) $(srcdir)/tool/git-refresh -C $(srcdir)/benchmark $(Q1:0=-q) \
+		--branch $(BENCHMARK_DRIVER_GIT_REF) \
+		$(BENCHMARK_DRIVER_GIT_URL) benchmark-driver $(GIT_OPTS)
+
 update-doclie:
 	$(Q) $(srcdir)/tool/git-refresh -C $(srcdir)/coverage $(Q1:0=-q) \
 		--branch $(DOCLIE_GIT_REF) \
@@ -558,27 +579,49 @@ mjit_config.h:
 	    $${1+printf} $${1+' "%s"'$$sep} $${1+"$$@"}; \
 	    echo; \
 	}; \
-	archs="$(UNIVERSAL_ARCHNAMES)"; \
-	archs="$${archs:-$(ARCH_FLAG:-arch=)}"; \
+	parse_arch_flag() { \
+	    while [ "$$#" -gt 0 ]; do \
+	        case "$$1" in \
+	        -arch) \
+	            shift; \
+	            archs="$${archs:+$$archs }$$1"; \
+	            shift; \
+	            ;; \
+	        *) \
+	            arch_flag="$${arch_flag:+$${arch_flag} }$$1"; \
+	            shift; \
+	            ;; \
+	        esac; \
+	    done; \
+	}; \
 	test "$(Q)" = @ || set -x; \
+	archs="$(UNIVERSAL_ARCHNAMES)"; \
+	arch_flag=""; \
+	parse_arch_flag $(ARCH_FLAG); \
+	need_mjit_archflag="$${archs}$${arch_flag}"; \
 	echo '#ifndef RUBY_MJIT_CONFIG_H'; \
 	echo '#define RUBY_MJIT_CONFIG_H 1'; \
 	echo; \
 	sep=; \
+	quote MJIT_BUILD_DIR "`$(CHDIR) . && pwd`"; \
 	quote MJIT_MIN_HEADER_NAME "/$(MJIT_HEADER_INSTALL_DIR)/$(MJIT_MIN_HEADER_NAME)"; \
 	sep=,; \
 	quote "MJIT_CC_COMMON  " $(MJIT_CC); \
-	quote "MJIT_CFLAGS     $${archs:+ MJIT_ARCHFLAG}" -w; \
+	quote "MJIT_CFLAGS     $${need_mjit_archflag:+ MJIT_ARCHFLAG}" -w; \
 	quote "MJIT_OPTFLAGS   " $(MJIT_OPTFLAGS); \
 	quote "MJIT_DEBUGFLAGS " $(MJIT_DEBUGFLAGS); \
 	quote "MJIT_LDSHARED   " $(MJIT_LDSHARED); \
-	quote "MJIT_DLDFLAGS   $${archs:+ MJIT_ARCHFLAG}" $(MJIT_DLDFLAGS); \
+	quote "MJIT_DLDFLAGS   $${need_mjit_archflag:+ MJIT_ARCHFLAG}" $(MJIT_DLDFLAGS); \
 	quote "MJIT_LIBS       " $(LIBRUBYARG_SHARED); \
 	$${archs:+echo} $${archs:+'#if 0'}; \
 	for arch in $$archs; do \
 	    echo "#elif defined __$${arch%=*}__"; \
 	    quote "  MJIT_ARCHFLAG " -arch $${arch%=*}; \
 	done; \
+	$${archs:+echo} $${archs:+'#else'}; \
+	if [ "$${arch_flag}" != "" ]; then \
+	    quote "  MJIT_ARCHFLAG " $${arch_flag}; \
+	fi; \
 	$${archs:+echo} $${archs:+'#endif'}; \
 	echo; \
 	echo '#endif /* RUBY_MJIT_CONFIG_H */'; \

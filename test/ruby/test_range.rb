@@ -93,14 +93,16 @@ class TestRange < Test::Unit::TestCase
     assert_equal([0,1,2], (0..10).min(3))
     assert_equal([0,1], (0..1).min(3))
     assert_equal([0,1,2], (0..).min(3))
+
+    assert_raise(RangeError) { (0..).min {|a, b| a <=> b } }
   end
 
   def test_max
     assert_equal(2, (1..2).max)
     assert_equal(nil, (2..1).max)
     assert_equal(1, (1...2).max)
-    assert_equal(nil, (1..).max)
-    assert_equal(nil, (1...).max)
+    assert_raise(RangeError) { (1..).max }
+    assert_raise(RangeError) { (1...).max }
 
     assert_equal(2.0, (1.0..2.0).max)
     assert_equal(nil, (2.0..1.0).max)
@@ -115,7 +117,8 @@ class TestRange < Test::Unit::TestCase
 
     assert_equal([10,9,8], (0..10).max(3))
     assert_equal([9,8,7], (0...10).max(3))
-    # XXX: How should (0...).max(3) behave?
+    assert_raise(RangeError) { (1..).max(3) }
+    assert_raise(RangeError) { (1...).max(3) }
   end
 
   def test_initialize_twice
@@ -219,7 +222,11 @@ class TestRange < Test::Unit::TestCase
     (0..).step(2) {|x| a << x; break if a.size == 10 }
     assert_equal([0, 2, 4, 6, 8, 10, 12, 14, 16, 18], a)
 
-    assert_raise(ArgumentError) { (0..10).step(-1) { } }
+    assert_kind_of(Enumerator::ArithmeticSequence, (0..10).step)
+    assert_kind_of(Enumerator::ArithmeticSequence, (0..10).step(2))
+    assert_kind_of(Enumerator::ArithmeticSequence, (0..10).step(0.5))
+    assert_kind_of(Enumerator::ArithmeticSequence, (10..0).step(-1))
+
     assert_raise(ArgumentError) { (0..10).step(0) { } }
     assert_raise(ArgumentError) { (0..).step(-1) { } }
     assert_raise(ArgumentError) { (0..).step(0) { } }
@@ -235,6 +242,18 @@ class TestRange < Test::Unit::TestCase
     a = []
     ("a" .. "z").step(2**32) {|x| a << x }
     assert_equal(["a"], a)
+
+    a = []
+    (:a .. :z).step(2) {|x| a << x }
+    assert_equal(%i(a c e g i k m o q s u w y), a)
+
+    a = []
+    (:a .. ).step(2) {|x| a << x; break if a.size == 13 }
+    assert_equal(%i(a c e g i k m o q s u w y), a)
+
+    a = []
+    (:a .. :z).step(2**32) {|x| a << x }
+    assert_equal([:a], a)
 
     a = []
     (2**32-1 .. 2**32+1).step(2) {|x| a << x }
@@ -301,6 +320,15 @@ class TestRange < Test::Unit::TestCase
     a = []
     (o..).step(1) {|x| a << x; break if a.size >= 3}
     assert_equal(["a", "b", "c"], a)
+  end
+
+  def test_percent_step
+    aseq = (1..10) % 2
+    assert_equal(Enumerator::ArithmeticSequence, aseq.class)
+    assert_equal(1, aseq.begin)
+    assert_equal(10, aseq.end)
+    assert_equal(2, aseq.step)
+    assert_equal([1, 3, 5, 7, 9], aseq.to_a)
   end
 
   def test_step_ruby_core_35753
@@ -405,7 +433,8 @@ class TestRange < Test::Unit::TestCase
     assert_equal([0, 1, 2], (0..nil).first(3))
     assert_equal(0, (0..nil).first)
     assert_equal("a", ("a"..nil).first)
-    # XXX: How should (0...).last(3) behave?
+    assert_raise(RangeError) { (0..nil).last }
+    assert_raise(RangeError) { (0..nil).last(3) }
   end
 
   def test_to_s
@@ -489,6 +518,8 @@ class TestRange < Test::Unit::TestCase
     assert_include("a"..."z", "y")
     assert_not_include("a"..."z", "z")
     assert_not_include("a".."z", "cc")
+    assert_include("a".., "c")
+    assert_not_include("a".., "5")
     assert_include(0...10, 5)
     assert_include(5..., 10)
     assert_not_include(5..., 0)
@@ -503,6 +534,52 @@ class TestRange < Test::Unit::TestCase
     assert_not_operator(5..., :cover?, 0)
     assert_not_operator(5..., :cover?, "a")
     assert_operator(5.., :cover?, 10)
+
+    assert_operator(2..5, :cover?, 2..5)
+    assert_operator(2...6, :cover?, 2...6)
+    assert_operator(2...6, :cover?, 2..5)
+    assert_operator(2..5, :cover?, 2...6)
+    assert_operator(2..5, :cover?, 2..4)
+    assert_operator(2..5, :cover?, 2...4)
+    assert_operator(2..5, :cover?, 2...5)
+    assert_operator(2..5, :cover?, 3..5)
+    assert_operator(2..5, :cover?, 3..4)
+    assert_operator(2..5, :cover?, 3...6)
+    assert_operator(2...6, :cover?, 2...5)
+    assert_operator(2...6, :cover?, 2..5)
+    assert_operator(2..6, :cover?, 2...6)
+    assert_operator(2.., :cover?, 2..)
+    assert_operator(2.., :cover?, 3..)
+    assert_operator(1.., :cover?, 1..10)
+    assert_operator(2.0..5.0, :cover?, 2..3)
+    assert_operator(2..5, :cover?, 2.0..3.0)
+    assert_operator(2..5, :cover?, 2.0...3.0)
+    assert_operator(2..5, :cover?, 2.0...5.0)
+    assert_operator(2.0..5.0, :cover?, 2.0...3.0)
+    assert_operator(2.0..5.0, :cover?, 2.0...5.0)
+    assert_operator('aa'..'zz', :cover?, 'aa'...'bb')
+
+    assert_not_operator(2..5, :cover?, 1..5)
+    assert_not_operator(2...6, :cover?, 1..5)
+    assert_not_operator(2..5, :cover?, 1...6)
+    assert_not_operator(1..3, :cover?, 1...6)
+    assert_not_operator(2..5, :cover?, 2..6)
+    assert_not_operator(2...6, :cover?, 2..6)
+    assert_not_operator(2...6, :cover?, 2...7)
+    assert_not_operator(2..3, :cover?, 1..4)
+    assert_not_operator(1..2, :cover?, 1.0..3.0)
+    assert_not_operator(1.0..2.9, :cover?, 1.0..3.0)
+    assert_not_operator(1..2, :cover?, 4..3)
+    assert_not_operator(2..1, :cover?, 1..2)
+    assert_not_operator(1...2, :cover?, 1...3)
+    assert_not_operator(2.., :cover?, 1..)
+    assert_not_operator(2.., :cover?, 1..10)
+    assert_not_operator(1..10, :cover?, 1..)
+    assert_not_operator(1..5, :cover?, 3..2)
+    assert_not_operator(1..10, :cover?, 3...2)
+    assert_not_operator(1..10, :cover?, 3...3)
+    assert_not_operator('aa'..'zz', :cover?, 'aa'...'zzz')
+    assert_not_operator(1..10, :cover?, 1...10.1)
   end
 
   def test_beg_len
@@ -582,8 +659,8 @@ class TestRange < Test::Unit::TestCase
     assert_equal 42, (1..42).each.size
     assert_nil ("a"..."z").size
 
-    assert_nil (1...).size
-    assert_nil (1.0...).size
+    assert_equal Float::INFINITY, (1...).size
+    assert_equal Float::INFINITY, (1.0...).size
     assert_nil ("a"...).size
   end
 
@@ -793,5 +870,11 @@ class TestRange < Test::Unit::TestCase
       super {|y| b.call(y) {|z| assert(false)}}
     end
     (a.."c").each {|x, &b| assert_nil(b)}
+  end
+
+  def test_to_a
+    assert_equal([1,2,3,4,5], (1..5).to_a)
+    assert_equal([1,2,3,4], (1...5).to_a)
+    assert_raise(RangeError) { (1..).to_a }
   end
 end

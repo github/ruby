@@ -896,6 +896,21 @@ class TestSetTraceFunc < Test::Unit::TestCase
     end
   end
 
+  def test_tracepoint_exception_at_c_return
+    assert_nothing_raised(Timeout::Error, 'infinite trace') do
+      assert_normal_exit %q{
+        begin
+          TracePoint.new(:c_return){|tp|
+            raise
+          }.enable{
+            tap{ itself }
+          }
+        rescue
+        end
+      }, '', timeout: 3
+    end
+  end
+
   def test_tracepoint_with_multithreads
     assert_nothing_raised do
       TracePoint.new{
@@ -1794,7 +1809,6 @@ class TestSetTraceFunc < Test::Unit::TestCase
       define_method(:m) {}
 
       tp = TracePoint.new(:call) do
-        next unless target_thread?
         raise ''
       end
 
@@ -1886,5 +1900,18 @@ class TestSetTraceFunc < Test::Unit::TestCase
     assert_equal ["c-return", base_line + 35], events[8] # Thread.current
     assert_equal ["c-call", base_line + 35],   events[9] # Thread#set_trace_func
     assert_equal nil,                          events[10]
+  end
+
+  def test_lineno_in_optimized_insn
+    actual, _, _ = EnvUtil.invoke_ruby [], <<-EOF.gsub(/^.*?: */, ""), true
+      1: class String
+      2:   def -@
+      3:     puts caller_locations(1, 1)[0].lineno
+      4:   end
+      5: end
+      6:
+      7: -""
+    EOF
+    assert_equal "7\n", actual, '[Bug #14809]'
   end
 end

@@ -266,7 +266,6 @@ struct parser_params {
     NODE *eval_tree;
     VALUE error_buffer;
     VALUE debug_lines;
-    VALUE coverage;
     const struct rb_block *base_block;
 #else
     /* Ripper only */
@@ -566,7 +565,7 @@ typedef struct rb_strterm_literal_struct {
 } rb_strterm_literal_t;
 
 struct rb_strterm_heredoc_struct {
-    SIGNED_VALUE sourceline;
+    SIGNED_VALUE sourceline; /* lineno of the line that contains `<<"END"` */
     VALUE term;		/* `"END"` of `<<"END"` */
     VALUE lastline;	/* the string of line that contains `<<"END"` */
     union {
@@ -4845,21 +4844,6 @@ debug_lines(VALUE fname)
     return 0;
 }
 
-static VALUE
-coverage(VALUE fname, int n)
-{
-    VALUE coverages = rb_get_coverages();
-    if (RTEST(coverages) && RBASIC(coverages)->klass == 0) {
-	VALUE coverage = rb_default_coverage(n);
-	VALUE lines = RARRAY_AREF(coverage, COVERAGE_INDEX_LINES);
-
-	rb_hash_aset(coverages, fname, coverage);
-
-	return lines == Qnil ? Qfalse : lines;
-    }
-    return 0;
-}
-
 static int
 e_option_supplied(struct parser_params *p)
 {
@@ -4885,7 +4869,6 @@ yycompile0(VALUE arg)
 	}
 
 	if (!e_option_supplied(p)) {
-	    p->coverage = coverage(p->ruby_sourcefile_string, p->ruby_sourceline);
 	    cov = Qtrue;
 	}
     }
@@ -4899,7 +4882,6 @@ yycompile0(VALUE arg)
     n = yyparse(p);
     RUBY_DTRACE_PARSE_HOOK(END);
     p->debug_lines = 0;
-    p->coverage = 0;
 
     p->lex.strterm = 0;
     p->lex.pcur = p->lex.pbeg = p->lex.pend = 0;
@@ -4928,6 +4910,7 @@ yycompile0(VALUE arg)
 	p->ast->body.compile_option = opt;
     }
     p->ast->body.root = tree;
+    p->ast->body.line_count = p->line_count;
     return TRUE;
 }
 
@@ -4989,10 +4972,8 @@ lex_getline(struct parser_params *p)
 	rb_enc_associate(line, p->enc);
 	rb_ary_push(p->debug_lines, line);
     }
-    if (p->coverage) {
-	rb_ary_push(p->coverage, Qnil);
-    }
 #endif
+    p->line_count++;
     return line;
 }
 
@@ -5173,7 +5154,6 @@ nextline(struct parser_params *p)
 	p->heredoc_end = 0;
     }
     p->ruby_sourceline++;
-    p->line_count++;
     p->lex.pbeg = p->lex.pcur = RSTRING_PTR(v);
     p->lex.pend = p->lex.pcur + RSTRING_LEN(v);
     token_flush(p);
@@ -5980,7 +5960,11 @@ parse_string(struct parser_params *p, rb_strterm_literal_t *quote)
 static enum yytokentype
 heredoc_identifier(struct parser_params *p)
 {
-    int c = nextc(p), term, func = 0, term_len = 2; /* length of "<<" */
+    /*
+     * term_len is length of `<<"END"` except `END`,
+     * in this case term_len is 4 (<, <, " and ").
+     */
+    int c = nextc(p), term, func = 0, term_len = 2;
     enum yytokentype token = tSTRING_BEG;
     long len;
     int newline = 0;
@@ -9317,6 +9301,11 @@ arg_append(struct parser_params *p, NODE *node1, NODE *node2, const YYLTYPE *loc
 	node1->nd_loc.end_pos = node1->nd_body->nd_loc.end_pos;
 	nd_set_type(node1, NODE_ARGSCAT);
 	return node1;
+      case NODE_ARGSCAT:
+        if (nd_type(node1->nd_body) != NODE_ARRAY) break;
+        node1->nd_body = list_append(p, node1->nd_body, node2);
+        node1->nd_loc.end_pos = node1->nd_body->nd_loc.end_pos;
+        return node1;
     }
     return NEW_ARGSPUSH(node1, node2, loc);
 }
@@ -9973,6 +9962,7 @@ static NODE *
 arg_blk_pass(NODE *node1, NODE *node2)
 {
     if (node2) {
+        if (!node1) return node2;
 	node2->nd_head = node1;
 	nd_set_first_lineno(node2, nd_first_lineno(node1));
 	nd_set_first_column(node2, nd_first_column(node1));

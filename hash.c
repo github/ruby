@@ -1731,11 +1731,15 @@ rb_hash_replace(VALUE hash, VALUE hash2)
  *     hsh.size      ->  integer
  *
  *  Returns the number of key-value pairs in the hash.
+ *  <code>Hash#length</code> and <code>Hash#size</code> are both equivalent to
+ *  each other.
  *
  *     h = { "d" => 100, "a" => 200, "v" => 300, "e" => 400 }
  *     h.length        #=> 4
+ *     h.size          #=> 4
  *     h.delete("a")   #=> 200
  *     h.length        #=> 3
+ *     h.size          #=> 3
  */
 
 VALUE
@@ -2118,17 +2122,58 @@ rb_hash_to_hash(VALUE hash)
     return hash;
 }
 
+VALUE
+rb_hash_set_pair(VALUE hash, VALUE arg)
+{
+    VALUE pair;
+
+    pair = rb_check_array_type(arg);
+    if (NIL_P(pair)) {
+        rb_raise(rb_eTypeError, "wrong element type %s (expected array)",
+                 rb_builtin_class_name(arg));
+    }
+    if (RARRAY_LEN(pair) != 2) {
+        rb_raise(rb_eArgError, "element has wrong array length (expected 2, was %ld)",
+                 RARRAY_LEN(pair));
+    }
+    rb_hash_aset(hash, RARRAY_AREF(pair, 0), RARRAY_AREF(pair, 1));
+    return hash;
+}
+
+static int
+to_h_i(VALUE key, VALUE value, VALUE hash)
+{
+    rb_hash_set_pair(hash, rb_yield_values(2, key, value));
+    return ST_CONTINUE;
+}
+
+static VALUE
+rb_hash_to_h_block(VALUE hash)
+{
+    VALUE h = rb_hash_new_with_size(RHASH_SIZE(hash));
+    rb_hash_foreach(hash, to_h_i, h);
+    OBJ_INFECT(h, hash);
+    return h;
+}
+
 /*
  *  call-seq:
- *     hsh.to_h     -> hsh or new_hash
+ *     hsh.to_h                         -> hsh or new_hash
+ *     hsh.to_h {|key, value| block }   -> new_hash
  *
  *  Returns +self+. If called on a subclass of Hash, converts
  *  the receiver to a Hash object.
+ *
+ *  If a block is given, the results of the block on each pair of
+ *  the receiver will be used as pairs.
  */
 
 static VALUE
 rb_hash_to_h(VALUE hash)
 {
+    if (rb_block_given_p()) {
+        return rb_hash_to_h_block(hash);
+    }
     if (rb_obj_class(hash) != rb_cHash) {
 	const VALUE flags = RBASIC(hash)->flags;
 	hash = hash_dup(hash, rb_cHash, flags & HASH_PROC_DEFAULT);
@@ -2544,16 +2589,22 @@ rb_hash_update_block_i(VALUE key, VALUE value, VALUE hash)
 
 /*
  *  call-seq:
- *     hsh.merge!(other_hash)                                 -> hsh
- *     hsh.update(other_hash)                                 -> hsh
- *     hsh.merge!(other_hash){|key, oldval, newval| block}    -> hsh
- *     hsh.update(other_hash){|key, oldval, newval| block}    -> hsh
+ *     hsh.merge!(other_hash1, other_hash2, ...)              -> hsh
+ *     hsh.update(other_hash1, other_hash2, ...)              -> hsh
+ *     hsh.merge!(other_hash1, other_hash2, ...){|key, oldval, newval| block}
+ *                                                            -> hsh
+ *     hsh.update(other_hash1, other_hash2, ...){|key, oldval, newval| block}
+ *                                                            -> hsh
  *
- *  Adds the contents of _other_hash_ to _hsh_.  If no block is specified,
- *  entries with duplicate keys are overwritten with the values from
- *  _other_hash_, otherwise the value of each duplicate key is determined by
+ *  Adds the contents of _other_hash_s to _hsh_ repeatedly. If no block is
+ *  specified, entries with duplicate keys are overwritten with the values from
+ *  each _other_hash_, otherwise the value of each duplicate key is determined by
  *  calling the block with the key, its value in _hsh_ and its value in
- *  _other_hash_.
+ *  each _other_hash_.
+ *
+ *     h1 = { "a" => 100, "b" => 200 }
+ *     h1.merge!()     #=> {"a"=>100, "b"=>200}
+ *     h1              #=> {"a"=>100, "b"=>200}
  *
  *     h1 = { "a" => 100, "b" => 200 }
  *     h2 = { "b" => 254, "c" => 300 }
@@ -2562,23 +2613,36 @@ rb_hash_update_block_i(VALUE key, VALUE value, VALUE hash)
  *
  *     h1 = { "a" => 100, "b" => 200 }
  *     h2 = { "b" => 254, "c" => 300 }
- *     h1.merge!(h2) { |key, v1, v2| v1 }
- *                     #=> {"a"=>100, "b"=>200, "c"=>300}
- *     h1              #=> {"a"=>100, "b"=>200, "c"=>300}
+ *     h3 = { "b" => 100, "d" => 400 }
+ *     h1.merge!(h2, h3)
+ *                     #=> {"a"=>100, "b"=>100, "c"=>300, "d"=>400}
+ *     h1              #=> {"a"=>100, "b"=>100, "c"=>300, "d"=>400}
+ *
+ *     h1 = { "a" => 100, "b" => 200 }
+ *     h2 = { "b" => 254, "c" => 300 }
+ *     h3 = { "b" => 100, "d" => 400 }
+ *     h1.merge!(h2, h3) { |key, v1, v2| v1 }
+ *                     #=> {"a"=>100, "b"=>200, "c"=>300, "d"=>400}
+ *     h1              #=> {"a"=>100, "b"=>200, "c"=>300, "d"=>400}
  */
 
 static VALUE
-rb_hash_update(VALUE hash1, VALUE hash2)
+rb_hash_update(int argc, VALUE *argv, VALUE self)
 {
-    rb_hash_modify(hash1);
-    hash2 = to_hash(hash2);
-    if (rb_block_given_p()) {
-	rb_hash_foreach(hash2, rb_hash_update_block_i, hash1);
+    int i;
+    bool block_given = rb_block_given_p();
+
+    rb_hash_modify(self);
+    for (i = 0; i < argc; i++){
+       VALUE hash = to_hash(argv[i]);
+       if (block_given) {
+           rb_hash_foreach(hash, rb_hash_update_block_i, self);
+       }
+       else {
+           rb_hash_foreach(hash, rb_hash_update_i, self);
+       }
     }
-    else {
-	rb_hash_foreach(hash2, rb_hash_update_i, hash1);
-    }
-    return hash1;
+    return self;
 }
 
 struct update_func_arg {
@@ -2637,28 +2701,38 @@ rb_hash_update_by(VALUE hash1, VALUE hash2, rb_hash_update_func *func)
 
 /*
  *  call-seq:
- *     hsh.merge(other_hash)                              -> new_hash
- *     hsh.merge(other_hash){|key, oldval, newval| block} -> new_hash
+ *     hsh.merge(other_hash1, other_hash2, ...)           -> new_hash
+ *     hsh.merge(other_hash1, other_hash2, ...){|key, oldval, newval| block}
+ *                                                        -> new_hash
  *
- *  Returns a new hash containing the contents of <i>other_hash</i> and
+ *  Returns a new hash containing the contents of <i>other_hash</i>s and
  *  the contents of <i>hsh</i>. If no block is specified, the value for
- *  entries with duplicate keys will be that of <i>other_hash</i>. Otherwise
- *  the value for each duplicate key is determined by calling the block
- *  with the key, its value in <i>hsh</i> and its value in <i>other_hash</i>.
+ *  entries with duplicate keys will be that of each <i>other_hash</i>.
+ *  Otherwise the value for each duplicate key is determined by calling
+ *  the block with the key, its value in <i>hsh</i> and its value
+ *  in each <i>other_hash</i>. The method also can be called with no argument,
+ *  then a new hash, whose content is same as that of the receiver,
+ *  will be returned;
  *
  *     h1 = { "a" => 100, "b" => 200 }
  *     h2 = { "b" => 254, "c" => 300 }
+ *     h3 = { "b" => 100, "d" => 400 }
+ *     h1.merge()     #=> {"a"=>100, "b"=>200}
  *     h1.merge(h2)   #=> {"a"=>100, "b"=>254, "c"=>300}
+ *     h1.merge(h2, h3)
+ *                    #=> {"a"=>100, "b"=>100, "c"=>300, "d"=>400}
  *     h1.merge(h2){|key, oldval, newval| newval - oldval}
  *                    #=> {"a"=>100, "b"=>54,  "c"=>300}
+ *     h1.merge(h2, h3){|key, oldval, newval| newval - oldval}
+ *                    #=> {"a"=>100, "b"=>46,  "c"=>300, "d"=>400}
  *     h1             #=> {"a"=>100, "b"=>200}
  *
  */
 
 static VALUE
-rb_hash_merge(VALUE hash1, VALUE hash2)
+rb_hash_merge(int argc, VALUE *argv, VALUE self)
 {
-    return rb_hash_update(rb_hash_dup(hash1), hash2);
+    return rb_hash_update(argc, argv, rb_hash_dup(self));
 }
 
 static int
@@ -3016,6 +3090,7 @@ any_p_i_pattern(VALUE key, VALUE value, VALUE arg)
 /*
  *  call-seq:
  *     hsh.any? [{ |(key, value)| block }]   -> true or false
+ *     hsh.any?(pattern)                     -> true or false
  *
  *  See also Enumerable#any?
  */
@@ -3029,6 +3104,9 @@ rb_hash_any_p(int argc, VALUE *argv, VALUE hash)
     rb_check_arity(argc, 0, 1);
     if (RHASH_EMPTY_P(hash)) return Qfalse;
     if (argc) {
+        if (rb_block_given_p()) {
+            rb_warn("given block not used");
+        }
 	args[1] = argv[0];
 
 	rb_hash_foreach(hash, any_p_i_pattern, (VALUE)args);
@@ -3282,7 +3360,7 @@ env_enc_str_new(const char *ptr, long len, rb_encoding *enc)
     rb_encoding *utf8 = rb_utf8_encoding();
     VALUE str = rb_enc_str_new(NULL, 0, (internal ? internal : enc));
     if (NIL_P(rb_str_cat_conv_enc_opts(str, 0, ptr, len, utf8, ecflags, Qnil))) {
-	rb_str_initialize(str, ptr, len, utf8);
+        rb_str_initialize(str, ptr, len, NULL);
     }
 #else
     VALUE str = rb_external_str_new_with_enc(ptr, len, enc);
@@ -3313,6 +3391,9 @@ env_str_new2(const char *ptr)
 }
 
 static int env_path_tainted(const char *);
+
+static const char TZ_ENV[] = "TZ";
+extern bool ruby_tz_uptodate_p;
 
 static rb_encoding *
 env_encoding_for(const char *name, const char *ptr)
@@ -3394,6 +3475,9 @@ env_delete(VALUE obj, VALUE name)
 	if (ENVMATCH(nam, PATH_ENV)) {
 	    RB_GC_GUARD(name);
 	    path_tainted = 0;
+	}
+	else if (ENVMATCH(nam, TZ_ENV)) {
+	    ruby_tz_uptodate_p = FALSE;
 	}
 	return value;
     }
@@ -3538,10 +3622,33 @@ getenvsize(const WCHAR* p)
     while (*p++) p += lstrlenW(p) + 1;
     return p - porg + 1;
 }
+
 static size_t
 getenvblocksize(void)
 {
+#ifdef _MAX_ENV
+    return _MAX_ENV;
+#else
     return 32767;
+#endif
+}
+
+static int
+check_envsize(size_t n)
+{
+    if (_WIN32_WINNT < 0x0600 && rb_w32_osver() < 6) {
+	/* https://msdn.microsoft.com/en-us/library/windows/desktop/ms682653(v=vs.85).aspx */
+	/* Windows Server 2003 and Windows XP: The maximum size of the
+	 * environment block for the process is 32,767 characters. */
+	WCHAR* p = GetEnvironmentStringsW();
+	if (!p) return -1; /* never happen */
+	n += getenvsize(p);
+	FreeEnvironmentStringsW(p);
+	if (n >= getenvblocksize()) {
+	    return -1;
+	}
+    }
+    return 0;
 }
 #endif
 
@@ -3581,16 +3688,11 @@ ruby_setenv(const char *name, const char *value)
     check_envname(name);
     len = MultiByteToWideChar(CP_UTF8, 0, name, -1, NULL, 0);
     if (value) {
-	WCHAR* p = GetEnvironmentStringsW();
-	size_t n;
 	int len2;
-	if (!p) goto fail; /* never happen */
-	n = lstrlen(name) + 2 + strlen(value) + getenvsize(p);
-	FreeEnvironmentStringsW(p);
-	if (n >= getenvblocksize()) {
+	len2 = MultiByteToWideChar(CP_UTF8, 0, value, -1, NULL, 0);
+	if (check_envsize((size_t)len + len2)) { /* len and len2 include '\0' */
 	    goto fail;  /* 2 for '=' & '\0' */
 	}
-	len2 = MultiByteToWideChar(CP_UTF8, 0, value, -1, NULL, 0);
 	wname = ALLOCV_N(WCHAR, buf, len + len2);
 	wvalue = wname + len;
 	MultiByteToWideChar(CP_UTF8, 0, name, -1, wname, len);
@@ -3753,6 +3855,9 @@ env_aset(VALUE obj, VALUE nm, VALUE val)
 	else {
 	    path_tainted_p(value);
 	}
+    }
+    else if (ENVMATCH(name, TZ_ENV)) {
+	ruby_tz_uptodate_p = FALSE;
     }
     return val;
 }
@@ -4396,7 +4501,6 @@ env_index(VALUE dmy, VALUE value)
 /*
  * call-seq:
  *   ENV.to_hash -> hash
- *   ENV.to_h    -> hash
  *
  * Creates a hash with a copy of the environment variables.
  *
@@ -4418,6 +4522,24 @@ env_to_hash(void)
 	env++;
     }
     FREE_ENVIRON(environ);
+    return hash;
+}
+
+/*
+ * call-seq:
+ *   ENV.to_h                        -> hash
+ *   ENV.to_h {|name, value| block } -> hash
+ *
+ * Creates a hash with a copy of the environment variables.
+ *
+ */
+static VALUE
+env_to_h(void)
+{
+    VALUE hash = env_to_hash();
+    if (rb_block_given_p()) {
+        hash = rb_hash_to_h_block(hash);
+    }
     return hash;
 }
 
@@ -4726,10 +4848,10 @@ Init_Hash(void)
     rb_define_method(rb_cHash, "slice", rb_hash_slice, -1);
     rb_define_method(rb_cHash, "clear", rb_hash_clear, 0);
     rb_define_method(rb_cHash, "invert", rb_hash_invert, 0);
-    rb_define_method(rb_cHash, "update", rb_hash_update, 1);
+    rb_define_method(rb_cHash, "update", rb_hash_update, -1);
     rb_define_method(rb_cHash, "replace", rb_hash_replace, 1);
-    rb_define_method(rb_cHash, "merge!", rb_hash_update, 1);
-    rb_define_method(rb_cHash, "merge", rb_hash_merge, 1);
+    rb_define_method(rb_cHash, "merge!", rb_hash_update, -1);
+    rb_define_method(rb_cHash, "merge", rb_hash_merge, -1);
     rb_define_method(rb_cHash, "assoc", rb_hash_assoc, 1);
     rb_define_method(rb_cHash, "rassoc", rb_hash_rassoc, 1);
     rb_define_method(rb_cHash, "flatten", rb_hash_flatten, -1);
@@ -4809,7 +4931,7 @@ Init_Hash(void)
     rb_define_singleton_method(envtbl, "key?", env_has_key, 1);
     rb_define_singleton_method(envtbl, "value?", env_has_value, 1);
     rb_define_singleton_method(envtbl, "to_hash", env_to_hash, 0);
-    rb_define_singleton_method(envtbl, "to_h", env_to_hash, 0);
+    rb_define_singleton_method(envtbl, "to_h", env_to_h, 0);
     rb_define_singleton_method(envtbl, "assoc", env_assoc, 1);
     rb_define_singleton_method(envtbl, "rassoc", env_rassoc, 1);
 

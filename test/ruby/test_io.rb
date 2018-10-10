@@ -550,6 +550,7 @@ class TestIO < Test::Unit::TestCase
     def test_copy_stream_no_busy_wait
       # JIT has busy wait on GC. It's hard to test this with JIT.
       skip "MJIT has busy wait on GC. We can't test this with JIT." if RubyVM::MJIT.enabled?
+      skip "multiple threads already active" if Thread.list.size > 1
 
       msg = 'r58534 [ruby-core:80969] [Backport #13533]'
       IO.pipe do |r,w|
@@ -1187,10 +1188,11 @@ class TestIO < Test::Unit::TestCase
 
   def test_copy_stream_to_duplex_io
     result = IO.pipe {|a,w|
-      Thread.start {w.puts "yes"; w.close}
+      th = Thread.start {w.puts "yes"; w.close}
       IO.popen([EnvUtil.rubybin, '-pe$_="#$.:#$_"'], "r+") {|b|
         IO.copy_stream(a, b)
         b.close_write
+        assert_join_threads([th])
         b.read
       }
     }
@@ -2685,7 +2687,7 @@ __END__
     end;
     10.times.map do
       Thread.start do
-        assert_in_out_err([], src) {|stdout, stderr|
+        assert_in_out_err([], src, timeout: 20) {|stdout, stderr|
           assert_no_match(/hi.*hi/, stderr.join, bug3585)
         }
       end
@@ -3553,8 +3555,17 @@ __END__
     end
   end if File::BINARY != 0
 
+  def test_exclusive_mode
+    make_tempfile do |t|
+      assert_raise(Errno::EEXIST){ open(t.path, 'wx'){} }
+      assert_raise(ArgumentError){ open(t.path, 'rx'){} }
+      assert_raise(ArgumentError){ open(t.path, 'ax'){} }
+    end
+  end
+
   def test_race_gets_and_close
-    assert_separately([], "#{<<-"begin;"}\n#{<<-"end;"}")
+    opt = { signal: :ABRT, timeout: 200 }
+    assert_separately([], "#{<<-"begin;"}\n#{<<-"end;"}", opt)
     bug13076 = '[ruby-core:78845] [Bug #13076]'
     begin;
       10.times do |i|
@@ -3576,9 +3587,9 @@ __END__
           w.close
           r.close
         end
-        assert_nothing_raised(IOError, bug13076) {
-          t.each(&:join)
-        }
+        t.each do |th|
+          assert_same(th, th.join(2), bug13076)
+        end
       end
     end;
   end
@@ -3701,6 +3712,7 @@ __END__
     end
 
     def test_write_no_garbage
+      skip "multiple threads already active" if Thread.list.size > 1
       res = {}
       ObjectSpace.count_objects(res) # creates strings on first call
       [ 'foo'.b, '*' * 24 ].each do |buf|
@@ -3767,8 +3779,17 @@ __END__
       noex = Thread.new do # everything right and never see exceptions :)
         until sig_rd.wait_readable(0)
           IO.pipe do |r, w|
-            th = Thread.new { r.sysread(1) }
+            th = Thread.new { r.read(1) }
             w.write(dot)
+
+            # XXX not sure why this is needed on Linux, otherwise
+            # the "good" reader thread doesn't always join properly
+            # because the reader never sees the first write
+            if RUBY_PLATFORM =~ /linux/
+              # assert_equal can fail if this is another char...
+              w.write(dot)
+            end
+
             assert_same th, th.join(15), '"good" reader timeout'
             assert_equal(dot, th.value)
           end
@@ -3786,7 +3807,10 @@ __END__
             end
           end
           Thread.pass until th.stop?
+
+          # XXX not sure why, this reduces Linux CI failures
           assert_nil th.join(0.001)
+
           r.close
           assert_same th, th.join(30), '"bad" reader timeout'
           assert_match(/stream closed/, th.value.message)
@@ -3796,5 +3820,46 @@ __END__
       assert_same noex, noex.join(20), '"good" writer timeout'
       assert_equal 'done', noex.value ,'r63216'
     end
+  end
+
+  def test_select_leak
+    skip 'MJIT uses too much memory' if RubyVM::MJIT.enabled?
+    # avoid malloc arena explosion from glibc and jemalloc:
+    env = {
+      'MALLOC_ARENA_MAX' => '1',
+      'MALLOC_ARENA_TEST' => '1',
+      'MALLOC_CONF' => 'narenas:1',
+    }
+    assert_no_memory_leak([env], <<-"end;", <<-"end;", rss: true, timeout: 60)
+      r, w = IO.pipe
+      rset = [r]
+      wset = [w]
+      exc = StandardError.new(-"select used to leak on exception")
+      exc.set_backtrace([])
+      Thread.new { IO.select(rset, wset, nil, 0) }.join
+    end;
+      th = Thread.new do
+        Thread.handle_interrupt(StandardError => :on_blocking) do
+          begin
+            IO.select(rset, wset)
+          rescue
+            retry
+          end while true
+        end
+      end
+      50_000.times do
+        Thread.pass until th.stop?
+        th.raise(exc)
+      end
+      th.kill
+      th.join
+    end;
+  end
+
+  def test_external_encoding_index
+    IO.pipe {|r, w|
+      assert_raise(TypeError) {Marshal.dump(r)}
+      assert_raise(TypeError) {Marshal.dump(w)}
+    }
   end
 end

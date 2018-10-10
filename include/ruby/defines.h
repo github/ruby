@@ -90,8 +90,13 @@ extern "C" {
 #endif /* __GNUC__ >= 3 */
 
 #ifdef __GNUC__
+#if defined __MINGW_PRINTF_FORMAT
+#define PRINTF_ARGS(decl, string_index, first_to_check) \
+  decl __attribute__((format(__MINGW_PRINTF_FORMAT, string_index, first_to_check)))
+#else
 #define PRINTF_ARGS(decl, string_index, first_to_check) \
   decl __attribute__((format(printf, string_index, first_to_check)))
+#endif
 #else
 #define PRINTF_ARGS(decl, string_index, first_to_check) decl
 #endif
@@ -355,6 +360,11 @@ ruby_xrealloc2_with_location(void *ptr, size_t s1, size_t s2, const char *file, 
 #define MJIT_FUNC_EXPORTED RUBY_FUNC_EXPORTED
 #define MJIT_SYMBOL_EXPORT_BEGIN RUBY_SYMBOL_EXPORT_BEGIN
 #define MJIT_SYMBOL_EXPORT_END RUBY_SYMBOL_EXPORT_END
+
+#if defined(MJIT_HEADER) && defined(_MSC_VER)
+# undef MJIT_FUNC_EXPORTED
+# define MJIT_FUNC_EXPORTED static
+#endif
 
 #ifndef RUBY_EXTERN
 #define RUBY_EXTERN extern

@@ -168,6 +168,8 @@ class TestThread < Test::Unit::TestCase
     t1.kill
     t2.kill
     assert_operator(c1, :>, c2, "[ruby-dev:33124]") # not guaranteed
+    t1.join
+    t2.join
   end
 
   def test_new
@@ -186,8 +188,8 @@ class TestThread < Test::Unit::TestCase
     end
 
   ensure
-    t1.kill if t1
-    t2.kill if t2
+    t1&.kill&.join
+    t2&.kill&.join
   end
 
   def test_new_symbol_proc
@@ -203,7 +205,7 @@ class TestThread < Test::Unit::TestCase
     assert_nil(t.join(0.05))
 
   ensure
-    t.kill if t
+    t&.kill&.join
   end
 
   def test_join2
@@ -309,9 +311,8 @@ class TestThread < Test::Unit::TestCase
     Thread.pass while t.alive?
     assert_equal(2, s)
     assert_raise(ThreadError) { t.wakeup }
-
   ensure
-    t.kill if t
+    t&.kill&.join
   end
 
   def test_stop
@@ -432,6 +433,7 @@ class TestThread < Test::Unit::TestCase
         }
         assert_equal(false, q1.pop)
         Thread.pass while th.alive?
+        assert_raise(RuntimeError) { th.join }
       }
 
       assert_warn(/report 2/, "exception should be reported when true") {
@@ -441,6 +443,7 @@ class TestThread < Test::Unit::TestCase
         }
         assert_equal(true, q1.pop)
         Thread.pass while th.alive?
+        assert_raise(RuntimeError) { th.join }
       }
 
       assert_warn("", "the global flag should not affect already started threads") {
@@ -453,6 +456,7 @@ class TestThread < Test::Unit::TestCase
         q2.push(Thread.report_on_exception = true)
         assert_equal(false, q1.pop)
         Thread.pass while th.alive?
+        assert_raise(RuntimeError) { th.join }
       }
 
       assert_warn(/report 4/, "should defaults to the global flag at the start") {
@@ -463,6 +467,7 @@ class TestThread < Test::Unit::TestCase
         }
         assert_equal(true, q1.pop)
         Thread.pass while th.alive?
+        assert_raise(RuntimeError) { th.join }
       }
 
       assert_warn(/report 5/, "should first report and then raise with report_on_exception + abort_on_exception") {
@@ -476,6 +481,7 @@ class TestThread < Test::Unit::TestCase
           q2.push(true)
           Thread.pass while th.alive?
         }
+        assert_raise(RuntimeError) { th.join }
       }
     end;
   end
@@ -503,11 +509,10 @@ class TestThread < Test::Unit::TestCase
     es1 = e.status
     es2 = e.stop?
     assert_equal(["run", false], [es1, es2])
-
+    assert_raise(RuntimeError) { a.join }
   ensure
-    a.kill if a
-    b.kill if b
-    c.kill if c
+    b&.kill&.join
+    c&.join
   end
 
   def test_switch_while_busy_loop
@@ -525,7 +530,7 @@ class TestThread < Test::Unit::TestCase
     end
     assert(!flag, bug1402)
   ensure
-    waiter.kill.join
+    waiter&.kill&.join
   end
 
   def test_safe_level
@@ -542,7 +547,7 @@ class TestThread < Test::Unit::TestCase
     assert_equal($SAFE, t.safe_level)
   ensure
     $SAFE = 0
-    t.kill if t
+    t&.kill&.join
   end
 
   def test_thread_local
@@ -562,7 +567,7 @@ class TestThread < Test::Unit::TestCase
     assert_equal([:foo, :bar, :baz].sort, t.keys.sort)
 
   ensure
-    t.kill if t
+    t&.kill&.join
   end
 
   def test_thread_local_fetch
@@ -594,7 +599,7 @@ class TestThread < Test::Unit::TestCase
     assert_equal(:qux, e.key)
     assert_equal(t, e.receiver)
   ensure
-    t.kill if t
+    t&.kill&.join
   end
 
   def test_thread_local_security
@@ -952,15 +957,16 @@ _eom
   def test_thread_timer_and_interrupt
     bug5757 = '[ruby-dev:44985]'
     pid = nil
-    cmd = 'Signal.trap(:INT, "DEFAULT"); r,=IO.pipe; Thread.start {Thread.pass until Thread.main.stop?; puts; STDOUT.flush}; r.read'
+    cmd = 'Signal.trap(:INT, "DEFAULT"); pipe=IO.pipe; Thread.start {Thread.pass until Thread.main.stop?; puts; STDOUT.flush}; pipe[0].read'
     opt = {}
     opt[:new_pgroup] = true if /mswin|mingw/ =~ RUBY_PLATFORM
     s, t, _err = EnvUtil.invoke_ruby(['-e', cmd], "", true, true, opt) do |in_p, out_p, err_p, cpid|
+      assert IO.select([out_p], nil, nil, 10), 'subprocess not ready'
       out_p.gets
       pid = cpid
       t0 = Time.now.to_f
       Process.kill(:SIGINT, pid)
-      Process.wait(pid)
+      Timeout.timeout(10) { Process.wait(pid) }
       t1 = Time.now.to_f
       [$?, t1 - t0, err_p.read]
     end
@@ -1286,12 +1292,18 @@ q.pop
   end
 
   def test_thread_interrupt_for_killed_thread
-    assert_normal_exit(<<-_end, '[Bug #8996]', timeout: 5, timeout_error: nil)
+    opts = { timeout: 5, timeout_error: nil }
+
+    # prevent SIGABRT from slow shutdown with MJIT
+    opts[:reprieve] = 3 if RubyVM::MJIT.enabled?
+
+    assert_normal_exit(<<-_end, '[Bug #8996]', opts)
       Thread.report_on_exception = false
       trap(:TERM){exit}
       while true
         t = Thread.new{sleep 0}
         t.raise Interrupt
+        Thread.pass # allow t to finish
       end
     _end
   end

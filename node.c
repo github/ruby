@@ -787,7 +787,7 @@ dump_node(VALUE buf, VALUE indent, int comment, const NODE * node)
 
       case NODE_ALIAS:
 	ANN("method alias statement");
-	ANN("format: alias [u1.node] [u2.node]");
+	ANN("format: alias [nd_1st] [nd_2nd]");
 	ANN("example: alias bar foo");
 	F_NODE(nd_1st, "new name");
 	LAST_NODE;
@@ -796,15 +796,15 @@ dump_node(VALUE buf, VALUE indent, int comment, const NODE * node)
 
       case NODE_VALIAS:
 	ANN("global variable alias statement");
-	ANN("format: alias [u1.id](gvar) [u2.id](gvar)");
+	ANN("format: alias [nd_alias](gvar) [nd_orig](gvar)");
 	ANN("example: alias $y $x");
 	F_ID(nd_alias, "new name");
 	F_ID(nd_orig, "old name");
 	return;
 
       case NODE_UNDEF:
-	ANN("method alias statement");
-	ANN("format: undef [u2.node]");
+	ANN("method undef statement");
+	ANN("format: undef [nd_undef]");
 	ANN("example: undef foo");
 	LAST_NODE;
 	F_NODE(nd_undef, "old name");
@@ -1058,6 +1058,7 @@ struct node_buffer_struct {
     long idx, len;
     node_buffer_elem_t *head;
     node_buffer_elem_t *last;
+    VALUE mark_ary;
 };
 
 static node_buffer_t *
@@ -1068,6 +1069,7 @@ rb_node_buffer_new(void)
     nb->len = 16;
     nb->head = nb->last = (node_buffer_elem_t*) &nb[1];
     nb->head->next = NULL;
+    nb->mark_ary = rb_ary_tmp_new(0);
     return nb;
 }
 
@@ -1111,13 +1113,17 @@ rb_ast_delete_node(rb_ast_t *ast, NODE *n)
 rb_ast_t *
 rb_ast_new(void)
 {
-    return (rb_ast_t *)rb_imemo_new(imemo_ast, rb_ary_tmp_new(0), 0, 0, (VALUE)rb_node_buffer_new());
+    node_buffer_t *nb = rb_node_buffer_new();
+    VALUE mark_ary = nb->mark_ary;
+    rb_ast_t *ast = (rb_ast_t *)rb_imemo_new(imemo_ast, 0, 0, 0, (VALUE)nb);
+    RB_GC_GUARD(mark_ary);
+    return ast;
 }
 
 void
 rb_ast_mark(rb_ast_t *ast)
 {
-    if (ast->node_buffer) rb_gc_mark(ast->mark_ary);
+    if (ast->node_buffer) rb_gc_mark(ast->node_buffer->mark_ary);
 }
 
 void
@@ -1133,11 +1139,11 @@ void
 rb_ast_dispose(rb_ast_t *ast)
 {
     rb_ast_free(ast);
-    RB_OBJ_WRITE(ast, &ast->mark_ary, Qnil);
+    if (ast->node_buffer) RB_OBJ_WRITE(ast, &ast->node_buffer->mark_ary, Qnil);
 }
 
 void
 rb_ast_add_mark_object(rb_ast_t *ast, VALUE obj)
 {
-    rb_ary_push(ast->mark_ary, obj);
+    rb_ary_push(ast->node_buffer->mark_ary, obj);
 }

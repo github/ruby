@@ -283,12 +283,30 @@ static ID id_hertz;
 #define ALWAYS_NEED_ENVP 0
 #endif
 
+static void
+assert_close_on_exec(int fd)
+{
+#if VM_CHECK_MODE > 0
+#if defined(HAVE_FCNTL) && defined(F_GETFD) && defined(FD_CLOEXEC)
+    int flags = fcntl(fd, F_GETFD);
+    if (flags == -1) {
+        static const char m[] = "reserved FD closed unexpectedly?\n";
+        (void)!write(2, m, sizeof(m) - 1);
+        return;
+    }
+    if (flags & FD_CLOEXEC) return;
+    rb_bug("reserved FD did not have close-on-exec set");
+#else
+    rb_bug("reserved FD without close-on-exec support");
+#endif /* FD_CLOEXEC */
+#endif /* VM_CHECK_MODE */
+}
+
 static inline int
 close_unless_reserved(int fd)
 {
-    /* We should not have reserved FDs at this point */
     if (rb_reserved_fd_p(fd)) { /* async-signal-safe */
-        rb_async_bug_errno("BUG timer thread still running", 0 /* EDOOFUS */);
+        assert_close_on_exec(fd);
         return 0;
     }
     return close(fd); /* async-signal-safe */
@@ -885,12 +903,6 @@ pst_wcoredump(VALUE st)
 #endif
 }
 
-struct waitpid_arg {
-    rb_pid_t pid;
-    int flags;
-    int *st;
-};
-
 static rb_pid_t
 do_waitpid(rb_pid_t pid, int *st, int flags)
 {
@@ -903,45 +915,304 @@ do_waitpid(rb_pid_t pid, int *st, int flags)
 #endif
 }
 
-static void *
-rb_waitpid_blocking(void *data)
+struct waitpid_state {
+    struct list_node wnode;
+    rb_execution_context_t *ec;
+    rb_nativethread_cond_t *cond;
+    rb_pid_t ret;
+    rb_pid_t pid;
+    int status;
+    int options;
+    int errnum;
+};
+
+void rb_native_mutex_lock(rb_nativethread_lock_t *);
+void rb_native_mutex_unlock(rb_nativethread_lock_t *);
+void rb_native_cond_signal(rb_nativethread_cond_t *);
+void rb_native_cond_wait(rb_nativethread_cond_t *, rb_nativethread_lock_t *);
+int rb_sigwait_fd_get(const rb_thread_t *);
+void rb_sigwait_sleep(const rb_thread_t *, int fd, const struct timespec *);
+void rb_sigwait_fd_put(const rb_thread_t *, int fd);
+void rb_thread_sleep_interruptible(void);
+
+static int
+waitpid_signal(struct waitpid_state *w)
 {
-    struct waitpid_arg *arg = data;
-    rb_pid_t result = do_waitpid(arg->pid, arg->st, arg->flags);
-    return (void *)(VALUE)result;
+    if (w->ec) { /* rb_waitpid */
+        rb_threadptr_interrupt(rb_ec_thread_ptr(w->ec));
+        return TRUE;
+    }
+    else { /* ruby_waitpid_locked */
+        if (w->cond) {
+            rb_native_cond_signal(w->cond);
+            return TRUE;
+        }
+    }
+    return FALSE;
 }
 
-static rb_pid_t
-do_waitpid_nonblocking(rb_pid_t pid, int *st, int flags)
+/*
+ * When a thread is done using sigwait_fd and there are other threads
+ * sleeping on waitpid, we must kick one of the threads out of
+ * rb_native_cond_wait so it can switch to rb_sigwait_sleep
+ */
+static void
+sigwait_fd_migrate_sleeper(rb_vm_t *vm)
 {
-    void *result;
-    struct waitpid_arg arg;
-    arg.pid = pid;
-    arg.st = st;
-    arg.flags = flags;
-    result = rb_thread_call_without_gvl(rb_waitpid_blocking, &arg,
-					RUBY_UBF_PROCESS, 0);
-    return (rb_pid_t)(VALUE)result;
+    struct waitpid_state *w = 0;
+
+    list_for_each(&vm->waiting_pids, w, wnode) {
+        if (waitpid_signal(w)) return;
+    }
+    list_for_each(&vm->waiting_grps, w, wnode) {
+        if (waitpid_signal(w)) return;
+    }
+}
+
+void
+rb_sigwait_fd_migrate(rb_vm_t *vm)
+{
+    rb_native_mutex_lock(&vm->waitpid_lock);
+    sigwait_fd_migrate_sleeper(vm);
+    rb_native_mutex_unlock(&vm->waitpid_lock);
+}
+
+#if RUBY_SIGCHLD
+extern volatile unsigned int ruby_nocldwait; /* signal.c */
+/* called by timer thread or thread which acquired sigwait_fd */
+static void
+waitpid_each(struct list_head *head)
+{
+    struct waitpid_state *w = 0, *next;
+
+    list_for_each_safe(head, w, next, wnode) {
+        rb_pid_t ret = do_waitpid(w->pid, &w->status, w->options | WNOHANG);
+
+        if (!ret) continue;
+        if (ret == -1) w->errnum = errno;
+
+        w->ret = ret;
+        list_del_init(&w->wnode);
+        waitpid_signal(w);
+    }
+}
+#else
+# define ruby_nocldwait 0
+#endif
+
+void
+ruby_waitpid_all(rb_vm_t *vm)
+{
+#if RUBY_SIGCHLD
+    rb_native_mutex_lock(&vm->waitpid_lock);
+    waitpid_each(&vm->waiting_pids);
+    if (list_empty(&vm->waiting_pids)) {
+        waitpid_each(&vm->waiting_grps);
+    }
+    /* emulate SA_NOCLDWAIT */
+    if (list_empty(&vm->waiting_pids) && list_empty(&vm->waiting_grps)) {
+        while (ruby_nocldwait && do_waitpid(-1, 0, WNOHANG) > 0)
+            ; /* keep looping */
+    }
+    rb_native_mutex_unlock(&vm->waitpid_lock);
+#endif
+}
+
+static void
+waitpid_state_init(struct waitpid_state *w, rb_pid_t pid, int options)
+{
+    w->ret = 0;
+    w->pid = pid;
+    w->options = options;
+}
+
+static const struct timespec *
+sigwait_sleep_time(void)
+{
+    if (SIGCHLD_LOSSY) {
+        static const struct timespec busy_wait = { 0, 100000000 };
+
+        return &busy_wait;
+    }
+    return 0;
+}
+
+/*
+ * must be called with vm->waitpid_lock held, this is not interruptible
+ */
+rb_pid_t
+ruby_waitpid_locked(rb_vm_t *vm, rb_pid_t pid, int *status, int options,
+                    rb_nativethread_cond_t *cond)
+{
+    struct waitpid_state w;
+
+    assert(!ruby_thread_has_gvl_p() && "must not have GVL");
+
+    waitpid_state_init(&w, pid, options);
+    if (w.pid > 0 || list_empty(&vm->waiting_pids))
+        w.ret = do_waitpid(w.pid, &w.status, w.options | WNOHANG);
+    if (w.ret) {
+        if (w.ret == -1) w.errnum = errno;
+    }
+    else {
+        int sigwait_fd = -1;
+
+        w.ec = 0;
+        list_add(w.pid > 0 ? &vm->waiting_pids : &vm->waiting_grps, &w.wnode);
+        do {
+            if (sigwait_fd < 0)
+                sigwait_fd = rb_sigwait_fd_get(0);
+
+            if (sigwait_fd >= 0) {
+                w.cond = 0;
+                rb_native_mutex_unlock(&vm->waitpid_lock);
+                rb_sigwait_sleep(0, sigwait_fd, sigwait_sleep_time());
+                rb_native_mutex_lock(&vm->waitpid_lock);
+            }
+            else {
+                w.cond = cond;
+                rb_native_cond_wait(w.cond, &vm->waitpid_lock);
+            }
+        } while (!w.ret);
+        list_del(&w.wnode);
+
+        /* we're done, maybe other waitpid callers are not: */
+        if (sigwait_fd >= 0) {
+            rb_sigwait_fd_put(0, sigwait_fd);
+            sigwait_fd_migrate_sleeper(vm);
+        }
+    }
+    if (status) {
+        *status = w.status;
+    }
+    if (w.ret == -1) errno = w.errnum;
+    return w.ret;
+}
+
+static VALUE
+waitpid_sleep(VALUE x)
+{
+    struct waitpid_state *w = (struct waitpid_state *)x;
+
+    while (!w->ret) {
+        rb_thread_sleep_interruptible();
+    }
+
+    return Qfalse;
+}
+
+static VALUE
+waitpid_cleanup(VALUE x)
+{
+    struct waitpid_state *w = (struct waitpid_state *)x;
+
+    /*
+     * XXX w->ret is sometimes set but list_del is still needed, here,
+     * Not sure why, so we unconditionally do list_del here:
+     */
+    if (TRUE || w->ret == 0) {
+        rb_vm_t *vm = rb_ec_vm_ptr(w->ec);
+
+        rb_native_mutex_lock(&vm->waitpid_lock);
+        list_del(&w->wnode);
+        rb_native_mutex_unlock(&vm->waitpid_lock);
+    }
+
+    return Qfalse;
+}
+
+static void
+waitpid_wait(struct waitpid_state *w)
+{
+    rb_vm_t *vm = rb_ec_vm_ptr(w->ec);
+    int need_sleep = FALSE;
+
+    /*
+     * Lock here to prevent do_waitpid from stealing work from the
+     * ruby_waitpid_locked done by mjit workers since mjit works
+     * outside of GVL
+     */
+    rb_native_mutex_lock(&vm->waitpid_lock);
+
+    if (w->pid > 0 || list_empty(&vm->waiting_pids))
+        w->ret = do_waitpid(w->pid, &w->status, w->options | WNOHANG);
+    if (w->ret) {
+        if (w->ret == -1) w->errnum = errno;
+    }
+    else if (w->options & WNOHANG) {
+    }
+    else {
+        need_sleep = TRUE;
+    }
+
+    if (need_sleep) {
+        w->cond = 0;
+        /* order matters, favor specified PIDs rather than -1 or 0 */
+        list_add(w->pid > 0 ? &vm->waiting_pids : &vm->waiting_grps, &w->wnode);
+    }
+
+    rb_native_mutex_unlock(&vm->waitpid_lock);
+
+    if (need_sleep) {
+        rb_ensure(waitpid_sleep, (VALUE)w, waitpid_cleanup, (VALUE)w);
+    }
+}
+
+static void *
+waitpid_blocking_no_SIGCHLD(void *x)
+{
+    struct waitpid_state *w = x;
+
+    w->ret = do_waitpid(w->pid, &w->status, w->options);
+
+    return 0;
+}
+
+static void
+waitpid_no_SIGCHLD(struct waitpid_state *w)
+{
+    if (w->options & WNOHANG) {
+        w->ret = do_waitpid(w->pid, &w->status, w->options);
+    }
+    else {
+        do {
+            rb_thread_call_without_gvl(waitpid_blocking_no_SIGCHLD, w,
+                                       RUBY_UBF_PROCESS, 0);
+        } while (w->ret < 0 && errno == EINTR && (RUBY_VM_CHECK_INTS(w->ec),1));
+    }
+    if (w->ret == -1)
+        w->errnum = errno;
 }
 
 rb_pid_t
 rb_waitpid(rb_pid_t pid, int *st, int flags)
 {
-    rb_pid_t result;
+    struct waitpid_state w;
 
-    if (flags & WNOHANG) {
-	result = do_waitpid(pid, st, flags);
+    waitpid_state_init(&w, pid, flags);
+    w.ec = GET_EC();
+
+    if (WAITPID_USE_SIGCHLD) {
+        waitpid_wait(&w);
     }
     else {
-	while ((result = do_waitpid_nonblocking(pid, st, flags)) < 0 &&
-	       (errno == EINTR)) {
-	    RUBY_VM_CHECK_INTS(GET_EC());
-	}
+        waitpid_no_SIGCHLD(&w);
     }
-    if (result > 0) {
-	rb_last_status_set(*st, result);
+
+    if (st) *st = w.status;
+    if (w.ret == -1) {
+        errno = w.errnum;
     }
-    return result;
+    else if (w.ret > 0) {
+        if (ruby_nocldwait) {
+            w.ret = -1;
+            errno = ECHILD;
+        }
+        else {
+            rb_last_status_set(w.status, w.ret);
+        }
+    }
+    return w.ret;
 }
 
 
@@ -1229,8 +1500,15 @@ after_exec(void)
     after_exec_non_async_signal_safe();
 }
 
+#if defined HAVE_WORKING_FORK || defined HAVE_DAEMON
 #define before_fork_ruby() before_exec()
-#define after_fork_ruby() (rb_threadptr_pending_interrupt_clear(GET_THREAD()), after_exec())
+static void
+after_fork_ruby(void)
+{
+    rb_threadptr_pending_interrupt_clear(GET_THREAD());
+    after_exec();
+}
+#endif
 
 #include "dln.h"
 
@@ -1621,7 +1899,7 @@ check_exec_redirect(VALUE key, VALUE val, struct rb_execarg *eargp)
         else if (RB_TYPE_P(key, T_ARRAY)) {
 	    int i;
 	    for (i = 0; i < RARRAY_LEN(key); i++) {
-		VALUE v = RARRAY_PTR(key)[i];
+                VALUE v = RARRAY_AREF(key, i);
 		VALUE fd = check_exec_redirect_fd(v, 1);
 		if (FIX2INT(fd) != 1 && FIX2INT(fd) != 2) break;
 	    }
@@ -2632,6 +2910,7 @@ rb_f_exec(int argc, const VALUE *argv)
 
     execarg_obj = rb_execarg_new(argc, argv, TRUE, FALSE);
     eargp = rb_execarg_get(execarg_obj);
+    if (mjit_enabled) mjit_pause(FALSE); /* do not leak children */
     before_exec(); /* stop timer thread before redirects */
     rb_execarg_parent_start(execarg_obj);
     fail_str = eargp->use_shell ? eargp->invoke.sh.shell_script : eargp->invoke.cmd.command_name;
@@ -2642,7 +2921,7 @@ rb_f_exec(int argc, const VALUE *argv)
     rb_exec_fail(eargp, err, errmsg);
     RB_GC_GUARD(execarg_obj);
     rb_syserr_fail_str(err, fail_str);
-    UNREACHABLE;
+    UNREACHABLE_RETURN(Qnil);
 }
 
 #define ERRMSG(str) do { if (errmsg && 0 < errmsg_buflen) strlcpy(errmsg, (str), errmsg_buflen); } while (0)
@@ -3118,7 +3397,7 @@ rb_execarg_run_options(const struct rb_execarg *eargp, struct rb_execarg *sargp,
     }
 
 #ifdef HAVE_WORKING_FORK
-    if (!eargp->close_others_given || eargp->close_others_do) {
+    if (eargp->close_others_do) {
         rb_close_before_exec(3, eargp->close_others_maxhint, eargp->redirect_fds); /* async-signal-safe */
     }
 #endif
@@ -3510,7 +3789,6 @@ has_privilege(void)
 struct child_handler_disabler_state
 {
     sigset_t sigmask;
-    int cancelstate;
 };
 
 static void
@@ -3531,26 +3809,12 @@ disable_child_handler_before_fork(struct child_handler_disabler_state *old)
 #else
 # pragma GCC warning "pthread_sigmask on fork is not available. potentially dangerous"
 #endif
-
-#ifdef PTHREAD_CANCEL_DISABLE
-    ret = pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &old->cancelstate);
-    if (ret != 0) {
-	rb_syserr_fail(ret, "pthread_setcancelstate");
-    }
-#endif
 }
 
 static void
 disable_child_handler_fork_parent(struct child_handler_disabler_state *old)
 {
     int ret;
-
-#ifdef PTHREAD_CANCEL_DISABLE
-    ret = pthread_setcancelstate(old->cancelstate, NULL);
-    if (ret != 0) {
-	rb_syserr_fail(ret, "pthread_setcancelstate");
-    }
-#endif
 
 #ifdef HAVE_PTHREAD_SIGMASK
     ret = pthread_sigmask(SIG_SETMASK, &old->sigmask, NULL); /* not async-signal-safe */
@@ -3590,6 +3854,8 @@ disable_child_handler_fork_child(struct child_handler_disabler_state *old, char 
 	}
     }
 
+    /* non-Ruby child process, ensure cmake can see SIGCHLD */
+    sigemptyset(&old->sigmask);
     ret = sigprocmask(SIG_SETMASK, &old->sigmask, NULL); /* async-signal-safe */
     if (ret != 0) {
         ERRMSG("sigprocmask");
@@ -3598,6 +3864,10 @@ disable_child_handler_fork_child(struct child_handler_disabler_state *old, char 
     return 0;
 }
 
+COMPILER_WARNING_PUSH
+#ifdef __GNUC__
+COMPILER_WARNING_IGNORED(-Wdeprecated-declarations)
+#endif
 static rb_pid_t
 retry_fork_async_signal_safe(int *status, int *ep,
         int (*chfunc)(void*, char *, size_t), void *charg,
@@ -3643,6 +3913,7 @@ retry_fork_async_signal_safe(int *status, int *ep,
             return -1;
     }
 }
+COMPILER_WARNING_POP
 
 rb_pid_t
 rb_fork_async_signal_safe(int *status, int (*chfunc)(void*, char *, size_t), void *charg, VALUE fds,
@@ -3674,6 +3945,10 @@ rb_fork_async_signal_safe(int *status, int (*chfunc)(void*, char *, size_t), voi
     return pid;
 }
 
+COMPILER_WARNING_PUSH
+#ifdef __GNUC__
+COMPILER_WARNING_IGNORED(-Wdeprecated-declarations)
+#endif
 rb_pid_t
 rb_fork_ruby(int *status)
 {
@@ -3685,8 +3960,8 @@ rb_fork_ruby(int *status)
 
     while (1) {
 	prefork();
-	before_fork_ruby();
 	disable_child_handler_before_fork(&old);
+	before_fork_ruby();
 	pid = fork();
 	err = errno;
 	after_fork_ruby();
@@ -3698,6 +3973,7 @@ rb_fork_ruby(int *status)
 	    return -1;
     }
 }
+COMPILER_WARNING_POP
 
 #endif
 
@@ -3802,7 +4078,7 @@ rb_f_exit_bang(int argc, VALUE *argv, VALUE obj)
     }
     _exit(istatus);
 
-    UNREACHABLE;
+    UNREACHABLE_RETURN(Qnil);
 }
 
 void
@@ -3873,7 +4149,7 @@ rb_f_exit(int argc, const VALUE *argv)
     }
     rb_exit(istatus);
 
-    UNREACHABLE;
+    UNREACHABLE_RETURN(Qnil);
 }
 
 
@@ -3910,7 +4186,7 @@ rb_f_abort(int argc, const VALUE *argv)
 	rb_exc_raise(rb_class_new_instance(2, args, rb_eSystemExit));
     }
 
-    UNREACHABLE;
+    UNREACHABLE_RETURN(Qnil);
 }
 
 void
@@ -4081,30 +4357,29 @@ rb_f_system(int argc, VALUE *argv)
     VALUE execarg_obj;
     struct rb_execarg *eargp;
 
-#if defined(SIGCLD) && !defined(SIGCHLD)
-# define SIGCHLD SIGCLD
-#endif
-
-#ifdef SIGCHLD
-    RETSIGTYPE (*chfunc)(int);
-
-    rb_last_status_clear();
-    chfunc = signal(SIGCHLD, SIG_DFL);
-#endif
     execarg_obj = rb_execarg_new(argc, argv, TRUE, TRUE);
+    TypedData_Get_Struct(execarg_obj, struct rb_execarg, &exec_arg_data_type, eargp);
+#if RUBY_SIGCHLD
+    eargp->nocldwait_prev = ruby_nocldwait;
+    ruby_nocldwait = 0;
+#endif
     pid = rb_execarg_spawn(execarg_obj, NULL, 0);
 #if defined(HAVE_WORKING_FORK) || defined(HAVE_SPAWNV)
     if (pid > 0) {
         int ret, status;
         ret = rb_waitpid(pid, &status, 0);
-        if (ret == (rb_pid_t)-1)
+        if (ret == (rb_pid_t)-1) {
+# if RUBY_SIGCHLD
+            ruby_nocldwait = eargp->nocldwait_prev;
+# endif
+            RB_GC_GUARD(execarg_obj);
             rb_sys_fail("Another thread waited the process started by system().");
+        }
     }
 #endif
-#ifdef SIGCHLD
-    signal(SIGCHLD, chfunc);
+#if RUBY_SIGCHLD
+    ruby_nocldwait = eargp->nocldwait_prev;
 #endif
-    TypedData_Get_Struct(execarg_obj, struct rb_execarg, &exec_arg_data_type, eargp);
     if (pid < 0) {
         if (eargp->exception) {
             int err = errno;
@@ -4200,7 +4475,7 @@ rb_f_system(int argc, VALUE *argv)
  *          integer : the file descriptor of specified the integer
  *          io      : the file descriptor specified as io.fileno
  *      file descriptor inheritance: close non-redirected non-standard fds (3, 4, 5, ...) or not
- *        :close_others => true  : don't inherit
+ *        :close_others => false  : inherit
  *      current directory:
  *        :chdir => str
  *
@@ -4359,7 +4634,7 @@ rb_f_system(int argc, VALUE *argv)
  *    pid = spawn(command, :close_others=>true)  # close 3,4,5,... (default)
  *    pid = spawn(command, :close_others=>false) # don't close 3,4,5,...
  *
- *  :close_others is true by default for spawn and IO.popen.
+ *  :close_others is false by default for spawn and IO.popen.
  *
  *  Note that fds which close-on-exec flag is already set are closed
  *  regardless of :close_others option.
@@ -4905,7 +5180,7 @@ rlimit_resource_type(VALUE rtype)
 
     rb_raise(rb_eArgError, "invalid resource name: % "PRIsVALUE, rtype);
 
-    UNREACHABLE;
+    UNREACHABLE_RETURN(-1);
 }
 
 static rlim_t
@@ -4946,7 +5221,7 @@ rlimit_resource_value(VALUE rval)
 #endif
     rb_raise(rb_eArgError, "invalid resource value: %"PRIsVALUE, rval);
 
-    UNREACHABLE;
+    UNREACHABLE_RETURN((rlim_t)-1);
 }
 #endif
 
@@ -5894,6 +6169,19 @@ maxgroups(void)
  *
  *     Process.groups   #=> [27, 6, 10, 11]
  *
+ *  Note that this method is just a wrapper of getgroups(2).
+ *  This means that the following characteristics of
+ *  the results are completely depends on your system:
+ *
+ *  - the result is sorted
+ *  - the result includes effective GIDs
+ *  - the result does not include duplicated GIDs
+ *
+ *  You can certainly get a sorted unique GID list of
+ *  the current process by this expression:
+ *
+ *     Process.groups.uniq.sort
+ *
  */
 
 static VALUE
@@ -6785,7 +7073,7 @@ p_uid_switch(VALUE obj)
 	rb_syserr_fail(EPERM, 0);
     }
 
-    UNREACHABLE;
+    UNREACHABLE_RETURN(Qnil);
 }
 #else
 static VALUE
@@ -6898,7 +7186,7 @@ p_gid_switch(VALUE obj)
 	rb_syserr_fail(EPERM, 0);
     }
 
-    UNREACHABLE;
+    UNREACHABLE_RETURN(Qnil);
 }
 #else
 static VALUE

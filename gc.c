@@ -50,7 +50,9 @@
 # endif
 #endif
 #ifdef HAVE_MALLOC_USABLE_SIZE
-# ifdef HAVE_MALLOC_H
+# ifdef RUBY_ALTERNATIVE_MALLOC_HEADER
+#  include RUBY_ALTERNATIVE_MALLOC_HEADER
+# elif HAVE_MALLOC_H
 #  include <malloc.h>
 # elif defined(HAVE_MALLOC_NP_H)
 #  include <malloc_np.h>
@@ -1241,6 +1243,7 @@ RVALUE_PAGE_OLD_UNCOLLECTIBLE_SET(rb_objspace_t *objspace, struct heap_page *pag
 static inline void
 RVALUE_OLD_UNCOLLECTIBLE_SET(rb_objspace_t *objspace, VALUE obj)
 {
+    RB_DEBUG_COUNTER_INC(obj_promote);
     RVALUE_PAGE_OLD_UNCOLLECTIBLE_SET(objspace, GET_HEAP_PAGE(obj), obj);
 }
 
@@ -1849,9 +1852,9 @@ static void
 gc_event_hook_body(rb_execution_context_t *ec, rb_objspace_t *objspace, const rb_event_flag_t event, VALUE data)
 {
     /* increment PC because source line is calculated with PC-1 */
-    ec->cfp->pc++;
+    const VALUE *pc = ec->cfp->pc++;
     EXEC_EVENT_HOOK(ec, event, ec->cfp->self, 0, 0, 0, data);
-    ec->cfp->pc--;
+    ec->cfp->pc = pc;
 }
 
 #define gc_event_hook_available_p(objspace) ((objspace)->flags.has_hook)
@@ -1989,6 +1992,9 @@ newobj_of(VALUE klass, VALUE flags, VALUE v1, VALUE v2, VALUE v3, int wb_protect
     rb_objspace_t *objspace = &rb_objspace;
     VALUE obj;
 
+    RB_DEBUG_COUNTER_INC(obj_newobj);
+    (void)RB_DEBUG_COUNTER_INC_IF(obj_newobj_wb_unprotected, !wb_protected);
+
 #if GC_DEBUG_STRESS_TO_CLASS
     if (UNLIKELY(stress_to_class)) {
 	long i, cnt = RARRAY_LEN(stress_to_class);
@@ -2005,6 +2011,8 @@ newobj_of(VALUE klass, VALUE flags, VALUE v1, VALUE v2, VALUE v3, int wb_protect
 	return newobj_init(klass, flags, v1, v2, v3, wb_protected, objspace, obj);
     }
     else {
+        RB_DEBUG_COUNTER_INC(obj_newobj_slowpath);
+
 	return wb_protected ?
 	  newobj_slowpath_wb_protected(klass, flags, v1, v2, v3, objspace) :
 	  newobj_slowpath_wb_unprotected(klass, flags, v1, v2, v3, objspace);
@@ -2265,7 +2273,7 @@ obj_free(rb_objspace_t *objspace, VALUE obj)
 	    RB_DEBUG_COUNTER_INC(obj_obj_ptr);
 	}
 	else {
-	    RB_DEBUG_COUNTER_INC(obj_obj_embed);
+            RB_DEBUG_COUNTER_INC(obj_obj_embed);
 	}
 	break;
       case T_MODULE:
@@ -2295,6 +2303,9 @@ obj_free(rb_objspace_t *objspace, VALUE obj)
 	if (RANY(obj)->as.klass.ptr)
 	    xfree(RANY(obj)->as.klass.ptr);
 	RANY(obj)->as.klass.ptr = NULL;
+
+        (void)RB_DEBUG_COUNTER_INC_IF(obj_module_ptr, BUILTIN_TYPE(obj) == T_MODULE);
+        (void)RB_DEBUG_COUNTER_INC_IF(obj_class_ptr, BUILTIN_TYPE(obj) == T_CLASS);
 	break;
       case T_STRING:
 	rb_str_free(obj);
@@ -2304,12 +2315,27 @@ obj_free(rb_objspace_t *objspace, VALUE obj)
 	break;
       case T_HASH:
 	if (RANY(obj)->as.hash.ntbl) {
-	    st_free_table(RANY(obj)->as.hash.ntbl);
+#if USE_DEBUG_COUNTER
+            if (RHASH_SIZE(obj) >= 8) {
+                RB_DEBUG_COUNTER_INC(obj_hash_ge8);
+            }
+            if (RHASH_SIZE(obj) >= 4) {
+                RB_DEBUG_COUNTER_INC(obj_hash_ge4);
+            }
+            else {
+                RB_DEBUG_COUNTER_INC(obj_hash_under4);
+            }
+#endif
+            st_free_table(RANY(obj)->as.hash.ntbl);
 	}
+        else {
+            RB_DEBUG_COUNTER_INC(obj_hash_empty);
+        }
 	break;
       case T_REGEXP:
 	if (RANY(obj)->as.regexp.ptr) {
 	    onig_free(RANY(obj)->as.regexp.ptr);
+            RB_DEBUG_COUNTER_INC(obj_regexp_ptr);
 	}
 	break;
       case T_DATA:
@@ -2333,15 +2359,21 @@ obj_free(rb_objspace_t *objspace, VALUE obj)
 	    if (dfree) {
 		if (dfree == RUBY_DEFAULT_FREE) {
 		    xfree(data);
+                    RB_DEBUG_COUNTER_INC(obj_data_xfree);
 		}
 		else if (free_immediately) {
 		    (*dfree)(data);
+                    RB_DEBUG_COUNTER_INC(obj_data_imm_free);
 		}
 		else {
 		    make_zombie(objspace, obj, dfree, data);
+                    RB_DEBUG_COUNTER_INC(obj_data_zombie);
 		    return 1;
 		}
 	    }
+            else {
+                RB_DEBUG_COUNTER_INC(obj_data_empty);
+            }
 	}
 	break;
       case T_MATCH:
@@ -2351,11 +2383,14 @@ obj_free(rb_objspace_t *objspace, VALUE obj)
             if (rm->char_offset)
 		xfree(rm->char_offset);
 	    xfree(rm);
+
+            RB_DEBUG_COUNTER_INC(obj_match_ptr);
 	}
 	break;
       case T_FILE:
 	if (RANY(obj)->as.file.fptr) {
 	    make_io_zombie(objspace, obj);
+            RB_DEBUG_COUNTER_INC(obj_file_ptr);
 	    return 1;
 	}
 	break;
@@ -2379,6 +2414,8 @@ obj_free(rb_objspace_t *objspace, VALUE obj)
 	rb_class_remove_from_super_subclasses(obj);
 	xfree(RANY(obj)->as.klass.ptr);
 	RANY(obj)->as.klass.ptr = NULL;
+
+        RB_DEBUG_COUNTER_INC(obj_iclass_ptr);
 	break;
 
       case T_FLOAT:
@@ -2387,6 +2424,7 @@ obj_free(rb_objspace_t *objspace, VALUE obj)
       case T_BIGNUM:
 	if (!(RBASIC(obj)->flags & BIGNUM_EMBED_FLAG) && BIGNUM_DIGITS(obj)) {
 	    xfree(BIGNUM_DIGITS(obj));
+            RB_DEBUG_COUNTER_INC(obj_bignum_ptr);
 	}
 	break;
 
@@ -2398,12 +2436,17 @@ obj_free(rb_objspace_t *objspace, VALUE obj)
 	if ((RBASIC(obj)->flags & RSTRUCT_EMBED_LEN_MASK) == 0 &&
 	    RANY(obj)->as.rstruct.as.heap.ptr) {
 	    xfree((void *)RANY(obj)->as.rstruct.as.heap.ptr);
+            RB_DEBUG_COUNTER_INC(obj_struct_ptr);
 	}
+        else {
+            RB_DEBUG_COUNTER_INC(obj_struct_embed);
+        }
 	break;
 
       case T_SYMBOL:
 	{
             rb_gc_free_dsymbol(obj);
+            RB_DEBUG_COUNTER_INC(obj_symbol);
 	}
 	break;
 
@@ -2411,21 +2454,45 @@ obj_free(rb_objspace_t *objspace, VALUE obj)
 	switch (imemo_type(obj)) {
 	  case imemo_ment:
 	    rb_free_method_entry(&RANY(obj)->as.imemo.ment);
+            RB_DEBUG_COUNTER_INC(obj_imemo_ment);
 	    break;
 	  case imemo_iseq:
 	    rb_iseq_free(&RANY(obj)->as.imemo.iseq);
+            RB_DEBUG_COUNTER_INC(obj_imemo_iseq);
 	    break;
 	  case imemo_env:
 	    GC_ASSERT(VM_ENV_ESCAPED_P(RANY(obj)->as.imemo.env.ep));
 	    xfree((VALUE *)RANY(obj)->as.imemo.env.env);
+            RB_DEBUG_COUNTER_INC(obj_imemo_env);
 	    break;
 	  case imemo_tmpbuf:
 	    xfree(RANY(obj)->as.imemo.alloc.ptr);
+            RB_DEBUG_COUNTER_INC(obj_imemo_tmpbuf);
 	    break;
 	  case imemo_ast:
 	    rb_ast_free(&RANY(obj)->as.imemo.ast);
+            RB_DEBUG_COUNTER_INC(obj_imemo_ast);
 	    break;
+          case imemo_cref:
+            RB_DEBUG_COUNTER_INC(obj_imemo_cref);
+            break;
+          case imemo_svar:
+            RB_DEBUG_COUNTER_INC(obj_imemo_svar);
+            break;
+          case imemo_throw_data:
+            RB_DEBUG_COUNTER_INC(obj_imemo_throw_data);
+            break;
+          case imemo_ifunc:
+            RB_DEBUG_COUNTER_INC(obj_imemo_ifunc);
+            break;
+          case imemo_memo:
+            RB_DEBUG_COUNTER_INC(obj_imemo_memo);
+            break;
+          case imemo_parser_strterm:
+            RB_DEBUG_COUNTER_INC(obj_imemo_parser_strterm);
+            break;
 	  default:
+            /* unreachable */
 	    break;
 	}
 	return 0;
@@ -6230,6 +6297,7 @@ rb_gc_writebarrier_unprotect(VALUE obj)
 	    RVALUE_AGE_RESET(obj);
 	}
 
+        RB_DEBUG_COUNTER_INC(obj_wb_unprotect);
 	MARK_IN_BITMAP(GET_HEAP_WB_UNPROTECTED_BITS(obj), obj);
     }
 }
@@ -8901,6 +8969,7 @@ objspace_xmalloc0(rb_objspace_t *objspace, size_t size)
 
     size = objspace_malloc_prepare(objspace, size);
     TRY_WITH_GC(mem = malloc(size));
+    RB_DEBUG_COUNTER_INC(heap_xmalloc);
     return objspace_malloc_fixup(objspace, mem, size);
 }
 
@@ -8954,11 +9023,11 @@ objspace_xrealloc(rb_objspace_t *objspace, void *ptr, size_t new_size, size_t ol
 
     objspace_malloc_increase(objspace, mem, new_size, old_size, MEMOP_TYPE_REALLOC);
 
+    RB_DEBUG_COUNTER_INC(heap_xrealloc);
     return mem;
 }
 
-#if CALC_EXACT_MALLOC_SIZE
-#if USE_GC_MALLOC_OBJ_INFO_DETAILS
+#if CALC_EXACT_MALLOC_SIZE && USE_GC_MALLOC_OBJ_INFO_DETAILS
 
 #define MALLOC_INFO_GEN_SIZE 100
 #define MALLOC_INFO_SIZE_SIZE 10
@@ -8979,8 +9048,8 @@ mmalloc_info_file_i(st_data_t key, st_data_t val, st_data_t dmy)
 }
 
 __attribute__((destructor))
-static void
-malloc_info_show_results(void)
+void
+rb_malloc_info_show_results(void)
 {
     int i;
 
@@ -9006,7 +9075,11 @@ malloc_info_show_results(void)
         st_foreach(malloc_info_file_table, mmalloc_info_file_i, 0);
     }
 }
-#endif
+#else
+void
+rb_malloc_info_show_results(void)
+{
+}
 #endif
 
 static void
@@ -9071,6 +9144,7 @@ objspace_xfree(rb_objspace_t *objspace, void *ptr, size_t old_size)
     old_size = objspace_malloc_size(objspace, ptr, old_size);
 
     free(ptr);
+    RB_DEBUG_COUNTER_INC(heap_xfree);
 
     objspace_malloc_increase(objspace, ptr, 0, old_size, MEMOP_TYPE_FREE);
 }
@@ -9191,6 +9265,13 @@ ruby_mimmalloc(size_t size)
     {
         struct malloc_obj_info *info = mem;
         info->size = 0;
+#if USE_GC_MALLOC_OBJ_INFO_DETAILS
+        info->gen = 0;
+        info->file = NULL;
+        info->line = 0;
+#else
+        info->file = NULL;
+#endif
         mem = info + 1;
     }
 #endif
@@ -10968,4 +11049,3 @@ ruby_xrealloc2(void *ptr, size_t n, size_t new_size)
 #endif
     return ruby_xrealloc2_body(ptr, n, new_size);
 }
-

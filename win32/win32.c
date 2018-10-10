@@ -2443,6 +2443,7 @@ EXTERN_C _CRTIMP ioinfo * __pioinfo[];
 #endif
 static inline ioinfo* _pioinfo(int);
 
+
 #define IOINFO_ARRAY_ELTS	(1 << IOINFO_L2E)
 #define _osfhnd(i)  (_pioinfo(i)->osfhnd)
 #define _osfile(i)  (_pioinfo(i)->osfile)
@@ -2517,7 +2518,7 @@ set_pioinfo_extra(void)
 #else
     __pioinfo = *(ioinfo***)(p);
 #endif
-#else
+#endif
     int fd;
 
     fd = _open("NUL", O_RDONLY);
@@ -2532,7 +2533,6 @@ set_pioinfo_extra(void)
 	/* not found, maybe something wrong... */
 	pioinfo_extra = 0;
     }
-#endif
 }
 #else
 #define pioinfo_extra 0
@@ -6686,7 +6686,8 @@ constat_apply(HANDLE handle, struct constat *s, WCHAR w)
     COORD pos;
 
     if (!GetConsoleScreenBufferInfo(handle, &csbi)) return;
-    if (arg0 = (count > 0 && seq[0] > 0)) arg1 = seq[0];
+    arg0 = (count > 0 && seq[0] > 0);
+    if (arg0) arg1 = seq[0];
     switch (w) {
       case L'm':
 	SetConsoleTextAttribute(handle, constat_attr(count, seq, csbi.wAttributes, s->vt100.attr, &s->vt100.reverse));
@@ -6822,6 +6823,10 @@ constat_apply(HANDLE handle, struct constat *s, WCHAR w)
     }
 }
 
+/* get rid of console writing bug; assume WriteConsole and WriteFile
+ * on a console share the same limit. */
+static const long MAXSIZE_CONSOLE_WRITING = 31366;
+
 /* License: Ruby's */
 static long
 constat_parse(HANDLE h, struct constat *s, const WCHAR **ptrp, long *lenp)
@@ -6876,7 +6881,7 @@ constat_parse(HANDLE h, struct constat *s, const WCHAR **ptrp, long *lenp)
 	    }
 	    rest = 0;
 	}
-	else {
+	else if ((rest = *lenp - len) < MAXSIZE_CONSOLE_WRITING) {
 	    continue;
 	}
 	*ptrp = ptr;
@@ -7138,8 +7143,7 @@ rb_w32_write(int fd, const void *buf, size_t size)
 
     ret = 0;
   retry:
-    /* get rid of console writing bug */
-    len = (_osfile(fd) & FDEV) ? min(32 * 1024, size) : size;
+    len = (_osfile(fd) & FDEV) ? min(MAXSIZE_CONSOLE_WRITING, size) : size;
     size -= len;
   retry2:
 

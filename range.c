@@ -74,7 +74,7 @@ range_modify(VALUE range)
  *     Range.new(begin, end, exclude_end=false)    -> rng
  *
  *  Constructs a range using the given +begin+ and +end+. If the +exclude_end+
- *  parameter is omitted or is <code>false</code>, the +rng+ will include
+ *  parameter is omitted or is <code>false</code>, the range will include
  *  the end object; otherwise, it will be excluded.
  */
 
@@ -251,7 +251,7 @@ range_each_func(VALUE range, int (*func)(VALUE, VALUE), VALUE arg)
     }
     else {
 	while ((c = r_less(v, e)) <= 0) {
-	    if ((*func)(v, arg)) break;;
+	    if ((*func)(v, arg)) break;
 	    if (!c) break;
 	    v = rb_funcallv(v, id_succ, 0, 0);
 	}
@@ -350,9 +350,14 @@ range_step_size(VALUE range, VALUE args, VALUE eobj)
 }
 
 /*
+ *  Document-method: Range#step
+ *  Document-method: Range#%
  *  call-seq:
  *     rng.step(n=1) {| obj | block }    -> rng
  *     rng.step(n=1)                     -> an_enumerator
+ *     rng.step(n=1)                     -> an_arithmetic_sequence
+ *     rng % n                           -> an_enumerator
+ *     rng % n                           -> an_arithmetic_sequence
  *
  *  Iterates over the range, passing each <code>n</code>th element to the block.
  *  If begin and end are numeric, +n+ is added for each iteration.
@@ -360,6 +365,8 @@ range_step_size(VALUE range, VALUE args, VALUE eobj)
  *  range elements.
  *
  *  If no block is given, an enumerator is returned instead.
+ *  Especially, the enumerator is an Enumerator::ArithmeticSequence
+ *  if begin and end of the range are numeric.
  *
  *    range = Xs.new(1)..Xs.new(10)
  *    range.step(2) {|x| puts x}
@@ -388,17 +395,25 @@ range_step(int argc, VALUE *argv, VALUE range)
 {
     VALUE b, e, step, tmp;
 
-    RETURN_SIZED_ENUMERATOR(range, argc, argv, range_step_size);
-
     b = RANGE_BEG(range);
     e = RANGE_END(range);
     if (argc == 0) {
-	step = INT2FIX(1);
+        step = INT2FIX(1);
     }
     else {
-	rb_scan_args(argc, argv, "01", &step);
-	step = check_step_domain(step);
+        rb_scan_args(argc, argv, "01", &step);
     }
+
+    if (!rb_block_given_p()) {
+        if (rb_obj_is_kind_of(b, rb_cNumeric) && (NIL_P(e) || rb_obj_is_kind_of(e, rb_cNumeric))) {
+            return rb_arith_seq_new(range, ID2SYM(rb_frame_this_func()), argc, argv,
+                    range_step_size, b, e, step, EXCL(range));
+        }
+
+        RETURN_SIZED_ENUMERATOR(range, argc, argv, range_step_size);
+    }
+
+    step = check_step_domain(step);
 
     if (FIXNUM_P(b) && NIL_P(e) && FIXNUM_P(step)) {
 	long i = FIX2LONG(b), unit = FIX2LONG(step);
@@ -484,6 +499,12 @@ range_step(int argc, VALUE *argv, VALUE range)
 	}
     }
     return range;
+}
+
+static VALUE
+range_percent_step(VALUE range, VALUE step)
+{
+    return range_step(1, &step, range);
 }
 
 #if SIZEOF_DOUBLE == 8 && defined(HAVE_INT64_T)
@@ -749,10 +770,36 @@ static VALUE
 range_size(VALUE range)
 {
     VALUE b = RANGE_BEG(range), e = RANGE_END(range);
-    if (rb_obj_is_kind_of(b, rb_cNumeric) && rb_obj_is_kind_of(e, rb_cNumeric)) {
-	return ruby_num_interval_step_size(b, e, INT2FIX(1), EXCL(range));
+    if (rb_obj_is_kind_of(b, rb_cNumeric)) {
+        if (rb_obj_is_kind_of(e, rb_cNumeric)) {
+	    return ruby_num_interval_step_size(b, e, INT2FIX(1), EXCL(range));
+        }
+        if (NIL_P(e)) {
+            return DBL2NUM(HUGE_VAL);
+        }
     }
+
     return Qnil;
+}
+
+/*
+ *  call-seq:
+ *     rng.to_a                   -> array
+ *     rng.entries                -> array
+ *
+ *  Returns an array containing the items in the range.
+ *
+ *    (1..7).to_a  #=> [1, 2, 3, 4, 5, 6, 7]
+ *    (1..).to_a   #=> RangeError: cannot convert endless range to an array
+ */
+
+static VALUE
+range_to_a(VALUE range)
+{
+    if (NIL_P(RANGE_END(range))) {
+	rb_raise(rb_eRangeError, "cannot convert endless range to an array");
+    }
+    return rb_call_super(0, 0);
 }
 
 static VALUE
@@ -987,6 +1034,9 @@ range_first(int argc, VALUE *argv, VALUE range)
 static VALUE
 range_last(int argc, VALUE *argv, VALUE range)
 {
+    if (NIL_P(RANGE_END(range))) {
+        rb_raise(rb_eRangeError, "cannot get the last element of endless range");
+    }
     if (argc == 0) return RANGE_END(range);
     return rb_ary_last(argc, argv, rb_Array(range));
 }
@@ -1014,6 +1064,9 @@ static VALUE
 range_min(int argc, VALUE *argv, VALUE range)
 {
     if (rb_block_given_p()) {
+        if (NIL_P(RANGE_END(range))) {
+            rb_raise(rb_eRangeError, "cannot get the minimum of endless range with custom comparison method");
+        }
 	return rb_call_super(argc, argv);
     }
     else if (argc != 0) {
@@ -1054,7 +1107,9 @@ range_max(int argc, VALUE *argv, VALUE range)
     VALUE e = RANGE_END(range);
     int nm = FIXNUM_P(e) || rb_obj_is_kind_of(e, rb_cNumeric);
 
-    if (NIL_P(e)) return Qnil;
+    if (NIL_P(RANGE_END(range))) {
+	rb_raise(rb_eRangeError, "cannot get the maximum of endless range");
+    }
 
     if (rb_block_given_p() || (EXCL(range) && !nm) || argc) {
         return rb_call_super(argc, argv);
@@ -1292,10 +1347,12 @@ range_include_internal(VALUE range, VALUE val)
     return Qundef;
 }
 
+static int r_cover_range_p(VALUE range, VALUE beg, VALUE end, VALUE val);
 
 /*
  *  call-seq:
- *     rng.cover?(obj)  ->  true or false
+ *     rng.cover?(obj)   ->  true or false
+ *     rng.cover?(range) ->  true or false
  *
  *  Returns <code>true</code> if +obj+ is between the begin and end of
  *  the range.
@@ -1303,9 +1360,21 @@ range_include_internal(VALUE range, VALUE val)
  *  This tests <code>begin <= obj <= end</code> when #exclude_end? is +false+
  *  and <code>begin <= obj < end</code> when #exclude_end? is +true+.
  *
- *     ("a".."z").cover?("c")    #=> true
- *     ("a".."z").cover?("5")    #=> false
- *     ("a".."z").cover?("cc")   #=> true
+ *  Returns <code>true</code> for a Range when it is covered by the reciver,
+ *  by comparing the begin and end values. If the argument can be treated as
+ *  a sequence, this method treats it that way. In the specific case of
+ *  <code>(a..b).cover?(c...d)</code> with <code>a <= c && b < d</code>,
+ *  end of sequence must be calculated, which may exhibit poor performance if
+ *  c is non-numeric. Returns <code>false</code> if the begin value of the
+ *  Range is larger than the end value.
+ *
+ *  Return
+ *     ("a".."z").cover?("c")  #=> true
+ *     ("a".."z").cover?("5")  #=> false
+ *     ("a".."z").cover?("cc") #=> true
+ *     (1..5).cover?(2..3)     #=> true
+ *     (1..5).cover?(0..6)     #=> false
+ *     (1..5).cover?(1...6)    #=> true
  */
 
 static VALUE
@@ -1315,7 +1384,46 @@ range_cover(VALUE range, VALUE val)
 
     beg = RANGE_BEG(range);
     end = RANGE_END(range);
+
+    if (rb_obj_is_kind_of(val, rb_cRange)) {
+        return RBOOL(r_cover_range_p(range, beg, end, val));
+    }
     return r_cover_p(range, beg, end, val);
+}
+
+static VALUE
+r_call_max(VALUE r)
+{
+    return rb_funcallv(r, rb_intern("max"), 0, 0);
+}
+
+static int
+r_cover_range_p(VALUE range, VALUE beg, VALUE end, VALUE val)
+{
+    VALUE val_beg, val_end, val_max;
+    int cmp_end;
+
+    val_beg = RANGE_BEG(val);
+    val_end = RANGE_END(val);
+
+    if (!NIL_P(end) && NIL_P(val_end)) return FALSE;
+    if (!NIL_P(val_end) && r_less(val_beg, val_end) > -EXCL(val)) return FALSE;
+    if (!r_cover_p(range, beg, end, val_beg)) return FALSE;
+
+    cmp_end = r_less(end, val_end);
+
+    if (EXCL(range) == EXCL(val)) {
+        return cmp_end >= 0;
+    } else if (EXCL(range)) {
+        return cmp_end > 0;
+    } else if (cmp_end >= 0) {
+        return TRUE;
+    }
+
+    val_max = rb_rescue2(r_call_max, val, NULL, Qnil, rb_eTypeError, (VALUE)0);
+    if (val_max == Qnil) return FALSE;
+
+    return r_less(end, val_max) >= 0;
 }
 
 static VALUE
@@ -1451,6 +1559,7 @@ Init_Range(void)
     rb_define_method(rb_cRange, "hash", range_hash, 0);
     rb_define_method(rb_cRange, "each", range_each, 0);
     rb_define_method(rb_cRange, "step", range_step, -1);
+    rb_define_method(rb_cRange, "%", range_percent_step, 1);
     rb_define_method(rb_cRange, "bsearch", range_bsearch, 0);
     rb_define_method(rb_cRange, "begin", range_begin, 0);
     rb_define_method(rb_cRange, "end", range_end, 0);
@@ -1459,6 +1568,8 @@ Init_Range(void)
     rb_define_method(rb_cRange, "min", range_min, -1);
     rb_define_method(rb_cRange, "max", range_max, -1);
     rb_define_method(rb_cRange, "size", range_size, 0);
+    rb_define_method(rb_cRange, "to_a", range_to_a, 0);
+    rb_define_method(rb_cRange, "entries", range_to_a, 0);
     rb_define_method(rb_cRange, "to_s", range_to_s, 0);
     rb_define_method(rb_cRange, "inspect", range_inspect, 0);
 

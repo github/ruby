@@ -867,6 +867,24 @@ rb_gvar_defined(struct rb_global_entry *entry)
     return Qtrue;
 }
 
+rb_gvar_getter_t *
+rb_gvar_getter_function_of(const struct rb_global_entry *entry)
+{
+    return entry->var->getter;
+}
+
+rb_gvar_setter_t *
+rb_gvar_setter_function_of(const struct rb_global_entry *entry)
+{
+    return entry->var->setter;
+}
+
+bool
+rb_gvar_is_traced(const struct rb_global_entry *entry)
+{
+    return !!entry->var->trace;
+}
+
 static enum rb_id_table_iterator_result
 gvar_i(ID key, VALUE val, void *a)
 {
@@ -1678,9 +1696,11 @@ check_id_type(VALUE obj, VALUE *pname,
 /*
  *  call-seq:
  *     obj.remove_instance_variable(symbol)    -> obj
+ *     obj.remove_instance_variable(string)    -> obj
  *
  *  Removes the named instance variable from <i>obj</i>, returning that
  *  variable's value.
+ *  String arguments are converted to symbols.
  *
  *     class Dummy
  *       attr_reader :var
@@ -1742,7 +1762,7 @@ rb_obj_remove_instance_variable(VALUE obj, VALUE name)
   not_defined:
     rb_name_err_raise("instance variable %1$s not defined",
 		      obj, name);
-    UNREACHABLE;
+    UNREACHABLE_RETURN(Qnil);
 }
 
 NORETURN(static void uninitialized_constant(VALUE, VALUE));
@@ -1805,10 +1825,15 @@ rb_const_missing(VALUE klass, VALUE name)
 VALUE
 rb_mod_const_missing(VALUE klass, VALUE name)
 {
+    VALUE ref = GET_EC()->private_const_reference;
     rb_vm_pop_cfunc_frame();
+    if (ref) {
+	rb_name_err_raise("private constant %2$s::%1$s referenced",
+			  ref, name);
+    }
     uninitialized_constant(klass, name);
 
-    UNREACHABLE;
+    UNREACHABLE_RETURN(Qnil);
 }
 
 static void
@@ -2386,8 +2411,8 @@ rb_const_search(VALUE klass, ID id, int exclude, int recurse, int visibility)
 	while ((ce = rb_const_lookup(tmp, id))) {
 	    if (visibility && RB_CONST_PRIVATE_P(ce)) {
 		if (BUILTIN_TYPE(tmp) == T_ICLASS) tmp = RBASIC(tmp)->klass;
-		rb_name_err_raise("private constant %2$s::%1$s referenced",
-				  tmp, ID2SYM(id));
+		GET_EC()->private_const_reference = tmp;
+		return Qundef;
 	    }
 	    rb_const_warn_if_deprecated(ce, tmp, id);
 	    value = ce->value;
@@ -2399,7 +2424,7 @@ rb_const_search(VALUE klass, ID id, int exclude, int recurse, int visibility)
 		continue;
 	    }
 	    if (exclude && tmp == rb_cObject && klass != rb_cObject) {
-		return Qundef;
+		goto not_found;
 	    }
 	    return value;
 	}
@@ -2412,6 +2437,8 @@ rb_const_search(VALUE klass, ID id, int exclude, int recurse, int visibility)
 	goto retry;
     }
 
+  not_found:
+    GET_EC()->private_const_reference = 0;
     return Qundef;
 }
 
@@ -2863,7 +2890,7 @@ set_const_visibility(VALUE mod, int argc, const VALUE *argv,
     rb_const_entry_t *ce;
     ID id;
 
-    rb_frozen_class_p(mod);
+    rb_class_modify_check(mod);
     if (argc == 0) {
 	rb_warning("%"PRIsVALUE" with no argument is just ignored",
 		   QUOTE_ID(rb_frame_callee()));
@@ -2913,7 +2940,7 @@ rb_deprecate_constant(VALUE mod, const char *name)
     ID id;
     long len = strlen(name);
 
-    rb_frozen_class_p(mod);
+    rb_class_modify_check(mod);
     if (!(id = rb_check_id_cstr(name, len, NULL)) ||
 	!(ce = rb_const_lookup(mod, id))) {
 	rb_name_err_raise("constant %2$s::%1$s not defined",

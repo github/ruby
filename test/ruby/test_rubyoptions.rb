@@ -1,6 +1,7 @@
 # -*- coding: us-ascii -*-
 require 'test/unit'
 
+require 'timeout'
 require 'tmpdir'
 require 'tempfile'
 require_relative '../lib/jit_support'
@@ -116,7 +117,11 @@ class TestRubyOptions < Test::Unit::TestCase
   def test_verbose
     assert_in_out_err(["-vve", ""]) do |r, e|
       assert_match(VERSION_PATTERN, r[0])
-      assert_equal(RUBY_DESCRIPTION, r[0])
+      if RubyVM::MJIT.enabled? && !mjit_force_enabled?
+        assert_equal(NO_JIT_DESCRIPTION, r[0])
+      else
+        assert_equal(RUBY_DESCRIPTION, r[0])
+      end
       assert_equal([], e)
     end
 
@@ -133,9 +138,11 @@ class TestRubyOptions < Test::Unit::TestCase
   end
 
   def test_enable
-    assert_in_out_err(%w(--enable all -e) + [""], "", [], [])
-    assert_in_out_err(%w(--enable-all -e) + [""], "", [], [])
-    assert_in_out_err(%w(--enable=all -e) + [""], "", [], [])
+    if JITSupport.supported?
+      assert_in_out_err(%w(--enable all -e) + [""], "", [], [])
+      assert_in_out_err(%w(--enable-all -e) + [""], "", [], [])
+      assert_in_out_err(%w(--enable=all -e) + [""], "", [], [])
+    end
     assert_in_out_err(%w(--enable foobarbazqux -e) + [""], "", [],
                       /unknown argument for --enable: `foobarbazqux'/)
     assert_in_out_err(%w(--enable), "", [], /missing argument for --enable/)
@@ -150,6 +157,7 @@ class TestRubyOptions < Test::Unit::TestCase
     assert_in_out_err(%w(--disable), "", [], /missing argument for --disable/)
     assert_in_out_err(%w(--disable-gems -e) + ['p defined? Gem'], "", ["nil"], [])
     assert_in_out_err(%w(--disable-did_you_mean -e) + ['p defined? DidYouMean'], "", ["nil"], [])
+    assert_in_out_err(%w(--disable-gems -e) + ['p defined? DidYouMean'], "", ["nil"], [])
   end
 
   def test_kanji
@@ -179,15 +187,34 @@ class TestRubyOptions < Test::Unit::TestCase
       end
       assert_equal([], e)
     end
-    if JITSupport.supported?
-      assert_in_out_err(%w(--version --jit)) do |r, e|
-        assert_match(VERSION_PATTERN_WITH_JIT, r[0])
-        if RubyVM::MJIT.enabled?
-          assert_equal(RUBY_DESCRIPTION, r[0])
-        else
-          assert_equal(EnvUtil.invoke_ruby(['--jit', '-e', 'print RUBY_DESCRIPTION'], '', true).first, r[0])
-        end
+
+    [
+      %w(--version --jit --disable=jit),
+      %w(--version --enable=jit --disable=jit),
+      %w(--version --enable-jit --disable-jit),
+    ].each do |args|
+      assert_in_out_err(args) do |r, e|
+        assert_match(VERSION_PATTERN, r[0])
+        assert_match(NO_JIT_DESCRIPTION, r[0])
         assert_equal([], e)
+      end
+    end
+
+    if JITSupport.supported?
+      [
+        %w(--version --jit),
+        %w(--version --enable=jit),
+        %w(--version --enable-jit),
+      ].each do |args|
+        assert_in_out_err(args) do |r, e|
+          assert_match(VERSION_PATTERN_WITH_JIT, r[0])
+          if RubyVM::MJIT.enabled?
+            assert_equal(RUBY_DESCRIPTION, r[0])
+          else
+            assert_equal(EnvUtil.invoke_ruby(['--jit', '-e', 'print RUBY_DESCRIPTION'], '', true).first, r[0])
+          end
+          assert_equal([], e)
+        end
       end
     end
   end
@@ -376,6 +403,9 @@ class TestRubyOptions < Test::Unit::TestCase
                       %w[4], [], bug4118)
 
     assert_ruby_status(%w[], "#! ruby -- /", '[ruby-core:82267] [Bug #13786]')
+
+    assert_ruby_status(%w[], "#!")
+    assert_in_out_err(%w[-c], "#!", ["Syntax OK"])
   end
 
   def test_flag_in_shebang
@@ -590,14 +620,18 @@ class TestRubyOptions < Test::Unit::TestCase
 
       pid = spawn(EnvUtil.rubybin, "test-script")
       ps = nil
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      stop = now + 30
       begin
         sleep 0.1
         ps = `#{PSCMD.join(' ')} #{pid}`
         break if /hello world/ =~ ps
-      end until Process.wait(pid, Process::WNOHANG)
+        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      end until Process.wait(pid, Process::WNOHANG) || now > stop
       assert_match(/hello world/, ps)
+      assert_operator now, :<, stop
       Process.kill :KILL, pid
-      Process.wait(pid)
+      Timeout.timeout(5) { Process.wait(pid) }
     end
   end
 
@@ -616,14 +650,18 @@ class TestRubyOptions < Test::Unit::TestCase
 
       pid = spawn(EnvUtil.rubybin, "test-script")
       ps = nil
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      stop = now + 30
       begin
         sleep 0.1
         ps = `#{PSCMD.join(' ')} #{pid}`
         break if /hello world/ =~ ps
-      end until Process.wait(pid, Process::WNOHANG)
+        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      end until Process.wait(pid, Process::WNOHANG) || now > stop
       assert_match(/hello world/, ps)
+      assert_operator now, :<, stop
       Process.kill :KILL, pid
-      Process.wait(pid)
+      Timeout.timeout(5) { Process.wait(pid) }
     end
   end
 
@@ -668,7 +706,7 @@ class TestRubyOptions < Test::Unit::TestCase
         You\smay\shave\sencountered\sa\sbug\sin\sthe\sRuby\sinterpreter\sor\sextension\slibraries.\n
         Bug\sreports\sare\swelcome.\n
         (?:.*\n)?
-        For\sdetails:\shttp:\/\/.*\.ruby-lang\.org/.*\n
+        For\sdetails:\shttps:\/\/.*\.ruby-lang\.org/.*\n
         \n
         (?:
           \[IMPORTANT\]\n
@@ -1031,5 +1069,18 @@ class TestRubyOptions < Test::Unit::TestCase
   def test_null_script
     skip "#{IO::NULL} is not a character device" unless File.chardev?(IO::NULL)
     assert_in_out_err([IO::NULL], success: true)
+  end
+
+  def test_argv_tainted
+    assert_separately(%w[- arg], "#{<<~"begin;"}\n#{<<~'end;'}")
+    begin;
+      assert_predicate(ARGV[0], :tainted?, '[ruby-dev:50596] [Bug #14941]')
+    end;
+  end
+
+  private
+
+  def mjit_force_enabled?
+    "#{RbConfig::CONFIG['CFLAGS']} #{RbConfig::CONFIG['CPPFLAGS']}".match?(/(\A|\s)-D ?MJIT_FORCE_ENABLE\b/)
   end
 end

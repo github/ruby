@@ -1304,6 +1304,10 @@ $stderr = $stdout; raise "\x82\xa0"') do |outs, errs, status|
     assert_operator(message, :start_with?, remark)
     assert_operator(message, :end_with?, bottom)
 
+    assert_raise_with_message(ArgumentError, /:top or :bottom/) {
+      e.full_message(highlight: false, order: :middle)
+    }
+
     message = e.full_message(highlight: true)
     assert_match(/\e/, message)
 
@@ -1328,7 +1332,7 @@ $stderr = $stdout; raise "\x82\xa0"') do |outs, errs, status|
       end
       raise Bug14566
     end;
-    assert_in_out_err([], code, [], /Bug14566/, success: false, timeout: 1)
+    assert_in_out_err([], code, [], /Bug14566/, success: false, timeout: 2)
   end
 
   def test_super_in_method_missing

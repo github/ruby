@@ -51,6 +51,18 @@ ast_new_internal(rb_ast_t *ast, NODE *node)
     return obj;
 }
 
+/*
+ *  call-seq:
+ *     RubyVM::AST.parse(string) -> RubyVM::AST::Node
+ *
+ *  Parses the given string into an abstract syntax tree,
+ *  returning the root node of that tree.
+ *
+ *  Returns <code>nil</code> if the given string is invalid syntax.
+ *
+ *    RubyVM::AST.parse("x = 1 + 2")
+ *    # => #<RubyVM::AST::Node(NODE_SCOPE(0) 1:0, 1:9): >
+ */
 static VALUE
 rb_ast_s_parse(VALUE module, VALUE str)
 {
@@ -73,6 +85,19 @@ rb_ast_s_parse(VALUE module, VALUE str)
     return obj;
 }
 
+/*
+ *  call-seq:
+ *     RubyVM::AST.parse_file(pathname) -> RubyVM::AST::Node
+ *
+ *   Reads the file from <code>pathname</code>, then parses it like ::parse,
+ *   returning the root node of the abstract syntax tree.
+ *
+ *   Returns <code>nil</code> if <code>pathname</code>'s contents are not
+ *   valid Ruby syntax.
+ *
+ *     RubyVM::AST.parse_file("my-app/app.rb")
+ *     # => #<RubyVM::AST::Node(NODE_SCOPE(0) 1:0, 31:3): >
+ */
 static VALUE
 rb_ast_s_parse_file(VALUE module, VALUE path)
 {
@@ -115,13 +140,24 @@ node_type_to_str(NODE *node)
     return ruby_node_name(nd_type(node));
 }
 
+/*
+ *  call-seq:
+ *     node.type -> string
+ *
+ *  Returns the type of this node as a string.
+ *
+ *    root = RubyVM::AST.parse("x = 1 + 2")
+ *    root.type # => "NODE_SCOPE"
+ *    call = root.children[2]
+ *    call.type # => "NODE_OPCALL"
+ */
 static VALUE
 rb_ast_node_type(VALUE self)
 {
     struct ASTNodeData *data;
     TypedData_Get_Struct(self, struct ASTNodeData, &rb_node_type, data);
 
-    return rb_str_new_cstr(node_type_to_str(data->node));
+    return rb_fstring_cstr(node_type_to_str(data->node));
 }
 
 #define NEW_CHILD(ast, node) node ? ast_new_internal(ast, node) : Qnil
@@ -374,9 +410,9 @@ node_children(rb_ast_t *ast, NODE *node)
       case NODE_BLOCK_PASS:
         return rb_ary_new_from_node_args(ast, 2, node->nd_head, node->nd_body);
       case NODE_DEFN:
-        return rb_ary_new_from_node_args(ast, 1, node->nd_defn);
+        return rb_ary_new_from_args(2, ID2SYM(node->nd_mid), NEW_CHILD(ast, node->nd_defn));
       case NODE_DEFS:
-        return rb_ary_new_from_node_args(ast, 2, node->nd_recv, node->nd_defn);
+        return rb_ary_new_from_args(3, NEW_CHILD(ast, node->nd_recv), ID2SYM(node->nd_mid), NEW_CHILD(ast, node->nd_defn));
       case NODE_ALIAS:
         return rb_ary_new_from_node_args(ast, 2, node->nd_1st, node->nd_2nd);
       case NODE_VALIAS:
@@ -462,6 +498,15 @@ node_children(rb_ast_t *ast, NODE *node)
     rb_bug("node_children: unknown node: %s", ruby_node_name(type));
 }
 
+/*
+ *  call-seq:
+ *     node.children -> array
+ *
+ *  Returns AST nodes under this one.  Each kind of node
+ *  has different children, depending on what kind of node it is.
+ *
+ *  The returned array may contain other nodes or <code>nil</code>.
+ */
 static VALUE
 rb_ast_node_children(VALUE self)
 {
@@ -471,6 +516,12 @@ rb_ast_node_children(VALUE self)
     return node_children(data->ast, data->node);
 }
 
+/*
+ *  call-seq:
+ *     node.first_lineno -> integer
+ *
+ *  The line number in the source code where this AST's text began.
+ */
 static VALUE
 rb_ast_node_first_lineno(VALUE self)
 {
@@ -480,6 +531,12 @@ rb_ast_node_first_lineno(VALUE self)
     return INT2NUM(nd_first_lineno(data->node));
 }
 
+/*
+ *  call-seq:
+ *     node.first_column -> integer
+ *
+ *  The column number in the source code where this AST's text began.
+ */
 static VALUE
 rb_ast_node_first_column(VALUE self)
 {
@@ -489,6 +546,12 @@ rb_ast_node_first_column(VALUE self)
     return INT2NUM(nd_first_column(data->node));
 }
 
+/*
+ *  call-seq:
+ *     node.last_lineno -> integer
+ *
+ *  The line number in the source code where this AST's text ended.
+ */
 static VALUE
 rb_ast_node_last_lineno(VALUE self)
 {
@@ -498,6 +561,12 @@ rb_ast_node_last_lineno(VALUE self)
     return INT2NUM(nd_last_lineno(data->node));
 }
 
+/*
+ *  call-seq:
+ *     node.last_column -> integer
+ *
+ *  The column number in the source code where this AST's text ended.
+ */
 static VALUE
 rb_ast_node_last_column(VALUE self)
 {
@@ -507,6 +576,12 @@ rb_ast_node_last_column(VALUE self)
     return INT2NUM(nd_last_column(data->node));
 }
 
+/*
+ *  call-seq:
+ *     node.inspect -> string
+ *
+ *  Returns debugging information about this node as a string.
+ */
 static VALUE
 rb_ast_node_inspect(VALUE self)
 {
@@ -529,11 +604,19 @@ rb_ast_node_inspect(VALUE self)
 void
 Init_ast(void)
 {
+    /*
+     * AST provides methods to parse Ruby code into
+     * abstract syntax trees. The nodes in the tree
+     * are instances of RubyVM::AST::Node.
+     */
     rb_mAST = rb_define_module_under(rb_cRubyVM, "AST");
+    /*
+     * RubyVM::AST::Node instances are created by parse methods in
+     * RubyVM::AST.
+     */
     rb_cNode = rb_define_class_under(rb_mAST, "Node", rb_cObject);
 
-    rb_define_alloc_func(rb_cNode, rb_ast_node_alloc);
-    rb_undef_method(CLASS_OF(rb_cNode), "new");
+    rb_undef_alloc_func(rb_cNode);
     rb_define_singleton_method(rb_mAST, "parse", rb_ast_s_parse, 1);
     rb_define_singleton_method(rb_mAST, "parse_file", rb_ast_s_parse_file, 1);
     rb_define_method(rb_cNode, "type", rb_ast_node_type, 0);

@@ -7,6 +7,10 @@ require_relative '../lib/jit_support'
 class TestJIT < Test::Unit::TestCase
   include JITSupport
 
+  IGNORABLE_PATTERNS = [
+    /\ASuccessful MJIT finish\n\z/,
+  ]
+
   # trace_* insns are not compiled for now...
   TEST_PENDING_INSNS = RubyVM::INSTRUCTION_NAMES.select { |n| n.start_with?('trace_') }.map(&:to_sym) + [
     # not supported yet
@@ -159,14 +163,14 @@ class TestJIT < Test::Unit::TestCase
   end
 
   def test_compile_insn_putspecialobject_putiseq
-    assert_eval_with_jit("#{<<~"begin;"}\n#{<<~"end;"}", stdout: 'hello', success_count: 2, insns: %i[putspecialobject putiseq])
+    assert_eval_with_jit("#{<<~"begin;"}\n#{<<~"end;"}", stdout: 'hellohello', success_count: 2, insns: %i[putspecialobject putiseq])
     begin;
-      print proc {
+      print 2.times.map {
         def method_definition
           'hello'
         end
         method_definition
-      }.call
+      }.join
     end;
   end
 
@@ -449,6 +453,14 @@ class TestJIT < Test::Unit::TestCase
     assert_compile_once('[1] << 2', result_inspect: '[1, 2]', insns: %i[opt_ltlt])
   end
 
+  def test_compile_insn_opt_and
+    assert_compile_once('1 & 3', result_inspect: '1', insns: %i[opt_and])
+  end
+
+  def test_compile_insn_opt_or
+    assert_compile_once('1 | 3', result_inspect: '3', insns: %i[opt_or])
+  end
+
   def test_compile_insn_opt_aref
     # optimized call (optimized JIT) -> send call
     assert_eval_with_jit("#{<<~"begin;"}\n#{<<~"end;"}", stdout: '21', success_count: 2, min_calls: 1, insns: %i[opt_aref])
@@ -527,6 +539,50 @@ class TestJIT < Test::Unit::TestCase
     assert_equal("MJIT\n" * 5, out)
     assert_match(/^#{JIT_SUCCESS_PREFIX}: block in <main>@-e:1 -> .+_ruby_mjit_p\d+u\d+\.c$/, err)
     assert_match(/^Successful MJIT finish$/, err)
+  end
+
+  def test_unload_units
+    Dir.mktmpdir("jit_test_unload_units_") do |dir|
+      # MIN_CACHE_SIZE is 10
+      out, err = eval_with_jit({"TMPDIR"=>dir}, "#{<<~"begin;"}\n#{<<~'end;'}", verbose: 1, min_calls: 1, max_cache: 10)
+      begin;
+        i = 0
+        while i < 11
+          eval(<<-EOS)
+            def mjit#{i}
+              print #{i}
+            end
+            mjit#{i}
+          EOS
+          i += 1
+        end
+      end;
+
+      debug_info = "stdout:\n```\n#{out}\n```\n\nstderr:\n```\n#{err}```\n"
+      assert_equal('012345678910', out, debug_info)
+      compactions, errs = err.lines.partition do |l|
+        l.match?(/\AJIT compaction \(\d+\.\dms\): Compacted \d+ methods ->/)
+      end
+      10.times do |i|
+        assert_match(/\A#{JIT_SUCCESS_PREFIX}: mjit#{i}@\(eval\):/, errs[i], debug_info)
+      end
+      assert_equal("Too many JIT code -- 1 units unloaded\n", errs[10], debug_info)
+      assert_match(/\A#{JIT_SUCCESS_PREFIX}: mjit10@\(eval\):/, errs[11], debug_info)
+
+      # On --jit-wait, when the number of JIT-ed code reaches --jit-max-cache,
+      # it should trigger compaction.
+      unless RUBY_PLATFORM.match?(/mswin|mingw/) # compaction is not supported on Windows yet
+        assert_equal(2, compactions.size, debug_info)
+      end
+
+      if appveyor_mswin?
+        # "Permission Denied" error is preventing to remove so file on AppVeyor.
+        warn 'skipped to test directory emptiness in TestJIT#test_unload_units on AppVeyor mswin'
+      else
+        # verify .o files are deleted on unload_units
+        assert_send([Dir, :empty?, dir], debug_info)
+      end
+    end
   end
 
   def test_local_stack_on_exception
@@ -655,6 +711,9 @@ class TestJIT < Test::Unit::TestCase
   end
 
   def test_clean_so
+    if appveyor_mswin?
+      skip 'Removing so file is failing on AppVeyor mswin due to Permission Denied.'
+    end
     Dir.mktmpdir("jit_test_clean_so_") do |dir|
       code = "x = 0; 10.times {|i|x+=i}"
       eval_with_jit({"TMPDIR"=>dir}, code)
@@ -675,7 +734,68 @@ class TestJIT < Test::Unit::TestCase
     end;
   end
 
+  def test_stack_pointer_with_assignment
+    assert_eval_with_jit("#{<<~"begin;"}\n#{<<~"end;"}", stdout: "nil\nnil\n", success_count: 1)
+    begin;
+      2.times do
+        a, _ = nil
+        p a
+      end
+    end;
+  end
+
+  def test_program_pointer_with_regexpmatch
+    assert_eval_with_jit("#{<<~"begin;"}\n#{<<~"end;"}", stdout: "aa", success_count: 1)
+    begin;
+      2.times do
+        break if /a/ =~ "ab" && !$~[0]
+        print $~[0]
+      end
+    end;
+  end
+
+  def test_pushed_values_with_opt_aset_with
+    assert_eval_with_jit("#{<<~"begin;"}\n#{<<~"end;"}", stdout: "{}{}", success_count: 1)
+    begin;
+      2.times do
+        print(Thread.current["a"] = {})
+      end
+    end;
+  end
+
+  def test_pushed_values_with_opt_aref_with
+    assert_eval_with_jit("#{<<~"begin;"}\n#{<<~"end;"}", stdout: "nil\nnil\n", success_count: 1)
+    begin;
+      2.times do
+        p(Thread.current["a"])
+      end
+    end;
+  end
+
+  def test_caller_locations_without_catch_table
+    out, _ = eval_with_jit("#{<<~"begin;"}\n#{<<~"end;"}", min_calls: 1)
+    begin;
+      def b                             # 2
+        caller_locations.first          # 3
+      end                               # 4
+                                        # 5
+      def a                             # 6
+        print # <-- don't leave PC here # 7
+        b                               # 8
+      end
+      puts a
+      puts a
+    end;
+    lines = out.lines
+    assert_equal("-e:8:in `a'\n", lines[0])
+    assert_equal("-e:8:in `a'\n", lines[1])
+  end
+
   private
+
+  def appveyor_mswin?
+    ENV['APPVEYOR'] == 'True' && RUBY_PLATFORM.match?(/mswin/)
+  end
 
   # The shortest way to test one proc
   def assert_compile_once(script, result_inspect:, insns: [])
@@ -691,19 +811,6 @@ class TestJIT < Test::Unit::TestCase
   def assert_eval_with_jit(script, stdout: nil, success_count:, min_calls: 1, insns: [], uplevel: 3)
     out, err = eval_with_jit(script, verbose: 1, min_calls: min_calls)
     actual = err.scan(/^#{JIT_SUCCESS_PREFIX}:/).size
-
-    # Debugging on CI
-    if err.include?("error trying to exec 'cc1': execvp: No such file or directory") && RbConfig::CONFIG['CC'].start_with?('gcc')
-      $stderr.puts "\ntest/ruby/test_jit.rb: DEBUG OUTPUT:"
-      cc1 = %x`gcc -print-prog-name=cc1`.rstrip
-      if $?.success?
-        $stderr.puts "cc1 path: #{cc1}"
-        $stderr.puts "executable?: #{File.executable?(cc1)}"
-        $stderr.puts "ls:\n#{IO.popen(['ls', '-la', File.dirname(cc1)], &:read)}"
-      else
-        $stderr.puts 'Failed to fetch cc1 path'
-      end
-    end
 
     # Make sure that the script has insns expected to be tested
     used_insns = method_insns(script)
@@ -723,7 +830,9 @@ class TestJIT < Test::Unit::TestCase
     if stdout
       assert_equal(stdout, out, "Expected stdout #{out.inspect} to match #{stdout.inspect} with script:\n#{code_block(script)}")
     end
-    err_lines = err.lines.reject! { |l| l.chomp.empty? || l.match?(/\A#{JIT_SUCCESS_PREFIX}/) || l == "Successful MJIT finish\n" }
+    err_lines = err.lines.reject! do |l|
+      l.chomp.empty? || l.match?(/\A#{JIT_SUCCESS_PREFIX}/) || IGNORABLE_PATTERNS.any? { |pat| pat.match?(l) }
+    end
     unless err_lines.empty?
       warn err_lines.join(''), uplevel: uplevel
     end
@@ -756,17 +865,5 @@ class TestJIT < Test::Unit::TestCase
       end
     end
     insns
-  end
-
-  # Run Ruby script with --jit-wait (Synchronous JIT compilation).
-  # Returns [stdout, stderr]
-  def eval_with_jit(env = nil, script, **opts)
-    stdout, stderr, status = super
-    assert_equal(true, status.success?, "Failed to run script with JIT:\n#{code_block(script)}\nstdout:\n#{code_block(stdout)}\nstderr:\n#{code_block(stderr)}")
-    [stdout, stderr]
-  end
-
-  def code_block(code)
-    "```\n#{code}\n```\n\n"
   end
 end

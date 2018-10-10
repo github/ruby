@@ -66,7 +66,7 @@ ruby_setup(void)
 #endif
     Init_BareVM();
     Init_heap();
-    rb_addr2insn_init();
+    rb_vm_encoded_insn_data_table_init();
     Init_vm_objects();
 
     EC_PUSH_TAG(GET_EC());
@@ -416,7 +416,7 @@ rb_mod_s_constants(int argc, VALUE *argv, VALUE mod)
  * \ingroup class
  */
 void
-rb_frozen_class_p(VALUE klass)
+rb_class_modify_check(VALUE klass)
 {
     if (SPECIAL_CONST_P(klass)) {
       noclass:
@@ -728,7 +728,7 @@ rb_f_raise(int argc, VALUE *argv)
     }
     rb_raise_jump(rb_make_exception(argc, argv), *cause);
 
-    UNREACHABLE;
+    UNREACHABLE_RETURN(Qnil);
 }
 
 static VALUE

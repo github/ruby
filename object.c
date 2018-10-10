@@ -448,8 +448,6 @@ mutable_obj_clone(VALUE obj, int kwfreeze)
     VALUE clone, singleton;
 
     clone = rb_obj_alloc(rb_obj_class(obj));
-    RBASIC(clone)->flags &= (FL_TAINT|FL_PROMOTED0|FL_PROMOTED1);
-    RBASIC(clone)->flags |= RBASIC(obj)->flags & ~(FL_PROMOTED0|FL_PROMOTED1|FL_FREEZE|FL_FINALIZE);
 
     singleton = rb_singleton_class_clone_and_attach(obj, clone);
     RBASIC_SET_CLASS(clone, singleton);
@@ -3216,15 +3214,23 @@ rb_f_integer(int argc, VALUE *argv, VALUE obj)
     VALUE arg = Qnil, opts = Qnil;
     int base = 0;
 
-    switch (rb_scan_args(argc, argv, "11:", NULL, NULL, &opts)) {
-      case 2:
-        base = NUM2INT(argv[1]);
-      case 1:
-        arg = argv[0];
-        break;
-      default:
-        UNREACHABLE;
+    if (argc > 1) {
+        int narg = 1;
+        VALUE vbase = rb_check_to_int(argv[1]);
+        if (!NIL_P(vbase)) {
+            base = NUM2INT(vbase);
+            narg = 2;
+        }
+        if (argc > narg) {
+            VALUE hash = rb_check_hash_type(argv[argc-1]);
+            if (!NIL_P(hash)) {
+                opts = rb_extract_keywords(&hash);
+                if (!hash) --argc;
+            }
+        }
     }
+    rb_check_arity(argc, 1, 2);
+    arg = argv[0];
 
     return rb_convert_to_integer(arg, base, opts_exception_p(opts));
 }
@@ -3415,9 +3421,17 @@ rb_str_to_dbl(VALUE str, int badcheck)
 #define big2dbl_without_to_f(x) rb_big2dbl(x)
 #define int2dbl_without_to_f(x) \
     (FIXNUM_P(x) ? fix2dbl_without_to_f(x) : big2dbl_without_to_f(x))
-#define rat2dbl_without_to_f(x) \
-    (int2dbl_without_to_f(rb_rational_num(x)) / \
-     int2dbl_without_to_f(rb_rational_den(x)))
+#define num2dbl_without_to_f(x) \
+    (FIXNUM_P(x) ? fix2dbl_without_to_f(x) : \
+     RB_TYPE_P(x, T_BIGNUM) ? big2dbl_without_to_f(x) : \
+     (Check_Type(x, T_FLOAT), RFLOAT_VALUE(x)))
+static inline double
+rat2dbl_without_to_f(VALUE x)
+{
+    VALUE num = rb_rational_num(x);
+    VALUE den = rb_rational_den(x);
+    return num2dbl_without_to_f(num) / num2dbl_without_to_f(den);
+}
 
 #define special_const_to_float(val, pre, post) \
     switch (val) { \

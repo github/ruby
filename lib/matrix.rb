@@ -814,6 +814,15 @@ class Matrix
   end
 
   #
+  # Returns +true+ if this is a reflexive matrix.
+  # Raises an error if matrix is not square.
+  #
+  def reflexive?
+    Matrix.Raise ErrDimensionMismatch unless square?
+    each(:diagonal).all? { |e| e == 1 }
+  end
+
+  #
   # Returns +true+ if this is a unitary matrix
   # Raises an error if matrix is not square.
   #
@@ -2080,7 +2089,7 @@ class Vector
   end
 
   #
-  # Returns an angle with another vector. Result is within the [0...Math::PI].
+  # Returns an angle with another vector. Result is within the [0..Math::PI].
   #   Vector[1,0].angle_with(Vector[0,1])
   #   # => Math::PI / 2
   #
@@ -2089,8 +2098,12 @@ class Vector
     Vector.Raise ErrDimensionMismatch if size != v.size
     prod = magnitude * v.magnitude
     raise ZeroVectorError, "Can't get angle of zero vector" if prod == 0
-
-    Math.acos( inner_product(v) / prod )
+    dot = inner_product(v)
+    if dot.abs >= prod
+      dot.positive? ? 0 : Math::PI
+    else
+      Math.acos(dot / prod)
+    end
   end
 
   #--

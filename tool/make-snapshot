@@ -69,8 +69,8 @@ if mflags = ENV["GNUMAKEFLAGS"] and /\A-(\S*)j\d*/ =~ mflags
   ENV["GNUMAKEFLAGS"] = (mflags unless mflags.empty?)
 end
 ENV["LC_ALL"] = ENV["LANG"] = "C"
-SVNURL = URI.parse("http://svn.ruby-lang.org/repos/ruby/")
-GITURL = URI.parse("git://github.com/ruby/ruby.git")
+SVNURL = URI.parse("https://svn.ruby-lang.org/repos/ruby/")
+GITURL = URI.parse("https://git.ruby-lang.org/ruby.git")
 RUBY_VERSION_PATTERN = /^\#define\s+RUBY_VERSION\s+"([\d.]+)"/
 
 ENV["VPATH"] ||= "include/ruby"

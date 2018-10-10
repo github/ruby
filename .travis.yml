@@ -21,11 +21,26 @@ dist: trusty
 
 sudo: false
 
-compiler:
-  - gcc
-
-os:
-  - linux
+matrix:
+  include:
+    - os: linux
+      compiler: gcc
+    - os: linux
+      compiler: gcc-8
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - gcc-8
+    - os: linux
+      language: ruby
+      rvm: 2.3
+      name: Running ruby/spec on 2.3 to ensure version guards are correctly added
+      before_install:
+      install:
+      before_script: chmod -R u+w spec/ruby
+      script: ruby -C spec/ruby ../mspec/bin/mspec -j .
 
 before_install:
   - "CONFIG_FLAG="
@@ -68,12 +83,12 @@ script:
 branches:
   only:
     - trunk
-    - ruby_2_2
     - ruby_2_3
     - ruby_2_4
     - ruby_2_5
     - /^feature\//
     - /^bug\//
+    - /^travis-/
 
 # We want to be notified when something happens.
 notifications:

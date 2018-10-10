@@ -6,6 +6,10 @@
 
 **********************************************************************/
 
+/* NOTE: All functions in this file are executed on MJIT worker. So don't
+   call Ruby methods (C functions that may call rb_funcall) or trigger
+   GC (using ZALLOC, xmalloc, xfree, etc.) in this file. */
+
 #include "internal.h"
 #include "vm_core.h"
 #include "vm_exec.h"
@@ -47,19 +51,20 @@ struct case_dispatch_var {
 static int
 has_valid_method_type(CALL_CACHE cc)
 {
+    extern int mjit_valid_class_serial_p(rb_serial_t class_serial);
     return GET_GLOBAL_METHOD_STATE() == cc->method_state
         && mjit_valid_class_serial_p(cc->class_serial) && cc->me;
 }
 
 /* Returns TRUE if iseq is inlinable, otherwise NULL. This becomes TRUE in the same condition
-   as CI_SET_FASTPATH (in vm_callee_setup_arg) is called from vm_call_iseq_setup. */
+   as CC_SET_FASTPATH (in vm_callee_setup_arg) is called from vm_call_iseq_setup. */
 static int
 inlinable_iseq_p(CALL_INFO ci, CALL_CACHE cc, const rb_iseq_t *iseq)
 {
     extern int rb_simple_iseq_p(const rb_iseq_t *iseq);
     return iseq != NULL
-        && rb_simple_iseq_p(iseq) && !(ci->flag & VM_CALL_KW_SPLAT) /* top of vm_callee_setup_arg */
-        && (!IS_ARGS_SPLAT(ci) && !IS_ARGS_KEYWORD(ci) && !(METHOD_ENTRY_VISI(cc->me) == METHOD_VISI_PROTECTED)); /* CI_SET_FASTPATH */
+        && rb_simple_iseq_p(iseq) && !(ci->flag & VM_CALL_KW_SPLAT) /* Top of vm_callee_setup_arg. In this case, opt_pc is 0. */
+        && (!IS_ARGS_SPLAT(ci) && !IS_ARGS_KEYWORD(ci) && !(METHOD_ENTRY_VISI(cc->me) == METHOD_VISI_PROTECTED)); /* CC_SET_FASTPATH */
 }
 
 static int
@@ -92,12 +97,12 @@ comment_id(FILE *f, ID id)
     e = RSTRING_END(name);
     fputs("/* :\"", f);
     for (; p < e; ++p) {
-	switch (c = *p) {
-	  case '*': case '/': if (prev != (c ^ ('/' ^ '*'))) break;
-	  case '\\': case '"': fputc('\\', f);
-	}
-	fputc(c, f);
-	prev = c;
+        switch (c = *p) {
+          case '*': case '/': if (prev != (c ^ ('/' ^ '*'))) break;
+          case '\\': case '"': fputc('\\', f);
+        }
+        fputc(c, f);
+        prev = c;
     }
     fputs("\" */", f);
 #endif
@@ -163,7 +168,7 @@ compile_insns(FILE *f, const struct rb_iseq_constant_body *body, unsigned int st
         pos = compile_insn(f, body, insn, body->iseq_encoded + (pos+1), pos, status, &branch);
         if (status->success && branch.stack_size > body->stack_max) {
             if (mjit_opts.warnings || mjit_opts.verbose)
-                fprintf(stderr, "MJIT warning: JIT stack exceeded its max\n");
+                fprintf(stderr, "MJIT warning: JIT stack size (%d) exceeded its max size (%d)\n", branch.stack_size, body->stack_max);
             status->success = FALSE;
         }
         if (!status->success)
@@ -192,7 +197,9 @@ mjit_compile(FILE *f, const struct rb_iseq_constant_body *body, const char *func
     struct compile_status status;
     status.success = TRUE;
     status.local_stack_p = !body->catch_except_p;
-    status.stack_size_for_pos = ALLOC_N(int, body->iseq_size);
+    status.stack_size_for_pos = (int *)malloc(sizeof(int) * body->iseq_size);
+    if (status.stack_size_for_pos == NULL)
+        return FALSE;
     memset(status.stack_size_for_pos, NOT_COMPILED_STACK_SIZE, sizeof(int) * body->iseq_size);
 
     /* For performance, we verify stack size only on compilation time (mjit_compile.inc.erb) without --jit-debug */
@@ -232,6 +239,6 @@ mjit_compile(FILE *f, const struct rb_iseq_constant_body *body, const char *func
     compile_cancel_handler(f, body, &status);
     fprintf(f, "\n} /* end of %s */\n", funcname);
 
-    xfree(status.stack_size_for_pos);
+    free(status.stack_size_for_pos);
     return status.success;
 }

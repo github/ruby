@@ -1432,8 +1432,6 @@ str_shared_replace(VALUE str, VALUE str2)
     }
 }
 
-VALUE rb_obj_as_string_result(VALUE str, VALUE obj);
-
 VALUE
 rb_obj_as_string(VALUE obj)
 {
@@ -9017,6 +9015,7 @@ rb_str_strip_bang(VALUE str)
  *
  *     "    hello    ".strip   #=> "hello"
  *     "\tgoodbye\r\n".strip   #=> "goodbye"
+ *     "hello".strip           #=> "hello"
  *     "\x00\t\n\v\f\r ".strip #=> ""
  */
 

@@ -34,6 +34,15 @@ extern "C" {
 
 #include "ruby/st.h"
 
+/* On mswin, MJIT header transformation can't be used since cl.exe can't output
+   preprocessed output preserving macros. So this `MJIT_STATIC` is needed
+   to force non-static function to static on MJIT header to avoid symbol conflict. */
+#ifdef MJIT_HEADER
+# define MJIT_STATIC static
+#else
+# define MJIT_STATIC
+#endif
+
 RUBY_SYMBOL_EXPORT_BEGIN
 
 /*
@@ -203,7 +212,6 @@ VALUE rb_class_protected_instance_methods(int, const VALUE*, VALUE);
 VALUE rb_class_private_instance_methods(int, const VALUE*, VALUE);
 VALUE rb_obj_singleton_methods(int, const VALUE*, VALUE);
 void rb_define_method_id(VALUE, ID, VALUE (*)(ANYARGS), int);
-void rb_frozen_class_p(VALUE);
 void rb_undef(VALUE, ID);
 void rb_define_protected_method(VALUE, const char*, VALUE (*)(ANYARGS), int);
 void rb_define_private_method(VALUE, const char*, VALUE (*)(ANYARGS), int);
@@ -254,7 +262,7 @@ void rb_check_frozen(VALUE);
 void rb_check_trusted(VALUE);
 #define rb_check_frozen_internal(obj) do { \
 	VALUE frozen_obj = (obj); \
-	if (OBJ_FROZEN(frozen_obj)) { \
+	if (RB_UNLIKELY(RB_OBJ_FROZEN(frozen_obj))) { \
 	    rb_error_frozen_object(frozen_obj); \
 	} \
     } while (0)
@@ -287,7 +295,7 @@ int rb_sourceline(void);
 const char *rb_sourcefile(void);
 VALUE rb_check_funcall(VALUE, ID, int, const VALUE*);
 
-NORETURN(void rb_error_arity(int, int, int));
+NORETURN(MJIT_STATIC void rb_error_arity(int, int, int));
 static inline int
 rb_check_arity(int argc, int min, int max)
 {
