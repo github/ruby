@@ -7171,8 +7171,6 @@ init_cursors(rb_objspace_t *objspace, struct heap_cursor *free, struct heap_curs
     scan->objspace = objspace;
 }
 
-void print_pages(int i, RVALUE *free, RVALUE *scan);
-
 int count_pinned(struct heap_page *page)
 {
     RVALUE *pstart = page->start;
