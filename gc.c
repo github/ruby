@@ -7003,6 +7003,9 @@ gc_is_moveable_obj(rb_objspace_t *objspace, VALUE obj)
 	case T_NIL:
 	    return FALSE;
 	    break;
+	case T_STRING:
+	    return !STR_EMBED_P(obj);
+	    break;
 	case T_OBJECT:
 	case T_FLOAT:
 	case T_IMEMO:
@@ -7012,7 +7015,6 @@ gc_is_moveable_obj(rb_objspace_t *objspace, VALUE obj)
 	case T_MODULE:
 	case T_REGEXP:
 	case T_DATA:
-	case T_STRING:
 	case T_SYMBOL:
 	case T_MATCH:
 	case T_STRUCT:
@@ -7020,7 +7022,6 @@ gc_is_moveable_obj(rb_objspace_t *objspace, VALUE obj)
 	case T_FILE:
 	case T_COMPLEX:
 	case T_RATIONAL:
-	    // FIXME: return false for embedded strings
 	case T_NODE:
 	case T_CLASS:
 	    break;
