@@ -7715,7 +7715,9 @@ rb_gc_compact(VALUE mod)
 {
     rb_objspace_t *objspace = &rb_objspace;
 
+    /* Ensure objects are pinned */
     rb_gc();
+
     gc_compact_heap(objspace);
 
     gc_update_references(objspace);
@@ -7723,12 +7725,52 @@ rb_gc_compact(VALUE mod)
     rb_clear_method_cache_by_class(rb_cObject);
     rb_clear_constant_cache();
 
-    // rgengc_mark_and_rememberset_clear(objspace, heap_eden);
-
     /* GC after compaction to eliminate T_MOVED */
     rb_gc();
 
     return rb_gc_compact_stats(mod);
+}
+
+/*
+ *  call-seq:
+ *     GC.verify_compaction_references                  -> nil
+ *
+ *  Verify compaction reference consistency.
+ *
+ *  This method is implementation specific.  During compaction, objects that
+ *  were moved are replaced with T_MOVED objects.  No object should have a
+ *  reference to a T_MOVED object after compaction.
+ *
+ *  This function doubles the heap to ensure room to move all objects,
+ *  compacts the heap to make sure everything moves, updates all references,
+ *  then performs a full GC.  If any object contains a reference to a T_MOVED
+ *  object, that object should be pushed on the mark stack, and will
+ *  make a SEGV.
+ */
+static VALUE
+gc_verify_compaction_references(VALUE dummy)
+{
+    rb_objspace_t *objspace = &rb_objspace;
+
+    /* Ensure objects are pinned */
+    rb_gc();
+
+    /* Double heap size */
+    heap_add_pages(objspace, heap_eden, heap_allocated_pages);
+
+    /* Compact heap */
+    gc_compact_heap(objspace);
+
+    gc_update_references(objspace);
+
+    rb_clear_method_cache_by_class(rb_cObject);
+    rb_clear_constant_cache();
+
+    /* GC after compaction to eliminate T_MOVED */
+    rb_gc();
+    gc_verify_internal_consistency(Qnil);
+
+    return rb_gc_compact_stats(dummy);
 }
 
 VALUE
@@ -10951,6 +10993,7 @@ Init_GC(void)
 
     /* internal methods */
     rb_define_singleton_method(rb_mGC, "verify_internal_consistency", gc_verify_internal_consistency, 0);
+    rb_define_singleton_method(rb_mGC, "verify_compaction_references", gc_verify_compaction_references, 0);
 #if MALLOC_ALLOCATED_SIZE
     rb_define_singleton_method(rb_mGC, "malloc_allocated_size", gc_malloc_allocated_size, 0);
     rb_define_singleton_method(rb_mGC, "malloc_allocations", gc_malloc_allocations, 0);
