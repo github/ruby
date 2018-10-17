@@ -3233,6 +3233,11 @@ id2ref(VALUE obj, VALUE objid)
     if (ptr == Qtrue) return Qtrue;
     if (ptr == Qfalse) return Qfalse;
     if (ptr == Qnil) return Qnil;
+
+    if (st_lookup(id_to_obj_tbl, objid, &ptr)) {
+	return ptr;
+    }
+
     if (FIXNUM_P(ptr)) return (VALUE)ptr;
     if (FLONUM_P(ptr)) return (VALUE)ptr;
     ptr = obj_id_to_ref(objid);
@@ -3349,7 +3354,7 @@ rb_obj_id(VALUE obj)
 		fprintf(stderr, "Initial insert: %p id: %d\n", obj, NUM2INT(id));
 #endif
 		st_insert(obj_to_id_tbl, (st_data_t)obj, id);
-		st_insert(id_to_obj_tbl, (st_data_t)id, Qtrue);
+		st_insert(id_to_obj_tbl, (st_data_t)id, obj);
 		return id;
 	    }
 	}
@@ -7033,6 +7038,17 @@ gc_is_moveable_obj(rb_objspace_t *objspace, VALUE obj)
     return TRUE;
 }
 
+static int
+update_id_to_obj(st_data_t *key, st_data_t *value, st_data_t arg, int exists)
+{
+    if (exists) {
+	*value = arg;
+	return ST_CONTINUE;
+    } else {
+	return ST_STOP;
+    }
+}
+
 static void
 gc_move(rb_objspace_t *objspace, VALUE scan, VALUE free)
 {
@@ -7069,6 +7085,7 @@ gc_move(rb_objspace_t *objspace, VALUE scan, VALUE free)
 #endif
 	st_delete(obj_to_id_tbl, (VALUE)&src, 0);
 	st_insert(obj_to_id_tbl, (VALUE)dest, id);
+	st_update(id_to_obj_tbl, (st_data_t)id, update_id_to_obj, dest);
     }
 
     memcpy(dest, src, sizeof(RVALUE));
