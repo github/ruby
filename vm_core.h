@@ -221,8 +221,15 @@ struct iseq_inline_cache_entry {
     rb_serial_t ic_serial;
     const rb_cref_t *ic_cref;
     union {
-	size_t index;
 	VALUE value;
+    } ic_value;
+};
+
+struct iseq_inline_iv_cache_entry {
+    rb_serial_t ic_serial;
+    const rb_cref_t *ic_cref;
+    union {
+	size_t index;
     } ic_value;
 };
 
@@ -1122,6 +1129,7 @@ enum vm_svar_index {
 
 /* inline cache */
 typedef struct iseq_inline_cache_entry *IC;
+typedef struct iseq_inline_iv_cache_entry *IVC;
 typedef union iseq_inline_storage_entry *ISE;
 typedef struct rb_call_info *CALL_INFO;
 typedef struct rb_call_cache *CALL_CACHE;
