@@ -239,6 +239,7 @@ union iseq_inline_storage_entry {
 	VALUE value;
     } once;
     struct iseq_inline_cache_entry cache;
+    struct iseq_inline_iv_cache_entry iv_cache;
 };
 
 struct rb_call_info_kw_arg {

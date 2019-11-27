@@ -14,7 +14,7 @@
     MAYBE_UNUSED(<%= ope.fetch(:decl) %>) = (<%= ope.fetch(:type) %>)operands[<%= i %>];
 % end
 % # compiler: Use copied IVC to avoid race condition
-    IVC ic_copy = &(status->is_entries + ((union iseq_inline_storage_entry *)ic - body->is_entries))->cache;
+    IVC ic_copy = &(status->is_entries + ((union iseq_inline_storage_entry *)ic - body->is_entries))->iv_cache;
 %
 % # compiler: Consider cfp->self as T_OBJECT if ic_copy->ic_serial is set
     if (!status->compile_info->disable_ivar_cache && ic_copy->ic_serial) {
