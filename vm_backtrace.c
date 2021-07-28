@@ -165,12 +165,13 @@ location_lineno(rb_backtrace_location_t *loc)
 	return loc->body.iseq.lineno.lineno;
       case LOCATION_TYPE_CFUNC:
 	if (loc->body.cfunc.prev_loc) {
-	    return location_lineno(loc->body.cfunc.prev_loc);
-	}
-	return 0;
+        RUBY_ASSERT_ALWAYS(loc->body.cfunc.prev_loc != loc);
+        return location_lineno(loc->body.cfunc.prev_loc);
+    }
+    return 0;
       default:
-	rb_bug("location_lineno: unreachable");
-	UNREACHABLE;
+    rb_bug("location_lineno: unreachable");
+    UNREACHABLE;
     }
 }
 
@@ -182,24 +183,24 @@ location_lineno(rb_backtrace_location_t *loc)
  *	loc = c(0..1).first
  *	loc.lineno #=> 2
  */
-static VALUE
+    static VALUE
 location_lineno_m(VALUE self)
 {
     return INT2FIX(location_lineno(location_ptr(self)));
 }
 
-static VALUE
+    static VALUE
 location_label(rb_backtrace_location_t *loc)
 {
     switch (loc->type) {
-      case LOCATION_TYPE_ISEQ:
-      case LOCATION_TYPE_ISEQ_CALCED:
-	return loc->body.iseq.iseq->body->location.label;
-      case LOCATION_TYPE_CFUNC:
-	return rb_id2str(loc->body.cfunc.mid);
-      default:
-	rb_bug("location_label: unreachable");
-	UNREACHABLE;
+        case LOCATION_TYPE_ISEQ:
+        case LOCATION_TYPE_ISEQ_CALCED:
+            return loc->body.iseq.iseq->body->location.label;
+        case LOCATION_TYPE_CFUNC:
+            return rb_id2str(loc->body.cfunc.mid);
+        default:
+            rb_bug("location_label: unreachable");
+            UNREACHABLE;
     }
 }
 
@@ -230,24 +231,24 @@ location_label(rb_backtrace_location_t *loc)
  *	label: block (2 levels) in foo
  *
  */
-static VALUE
+    static VALUE
 location_label_m(VALUE self)
 {
     return location_label(location_ptr(self));
 }
 
-static VALUE
+    static VALUE
 location_base_label(rb_backtrace_location_t *loc)
 {
     switch (loc->type) {
-      case LOCATION_TYPE_ISEQ:
-      case LOCATION_TYPE_ISEQ_CALCED:
-	return loc->body.iseq.iseq->body->location.base_label;
-      case LOCATION_TYPE_CFUNC:
-	return rb_id2str(loc->body.cfunc.mid);
-      default:
-	rb_bug("location_base_label: unreachable");
-	UNREACHABLE;
+        case LOCATION_TYPE_ISEQ:
+        case LOCATION_TYPE_ISEQ_CALCED:
+            return loc->body.iseq.iseq->body->location.base_label;
+        case LOCATION_TYPE_CFUNC:
+            return rb_id2str(loc->body.cfunc.mid);
+        default:
+            rb_bug("location_base_label: unreachable");
+            UNREACHABLE;
     }
 }
 
@@ -256,27 +257,28 @@ location_base_label(rb_backtrace_location_t *loc)
  *
  * Usually same as #label, without decoration.
  */
-static VALUE
+    static VALUE
 location_base_label_m(VALUE self)
 {
     return location_base_label(location_ptr(self));
 }
 
-static VALUE
+    static VALUE
 location_path(rb_backtrace_location_t *loc)
 {
     switch (loc->type) {
-      case LOCATION_TYPE_ISEQ:
-      case LOCATION_TYPE_ISEQ_CALCED:
-	return rb_iseq_path(loc->body.iseq.iseq);
-      case LOCATION_TYPE_CFUNC:
-	if (loc->body.cfunc.prev_loc) {
-	    return location_path(loc->body.cfunc.prev_loc);
-	}
-	return Qnil;
-      default:
-	rb_bug("location_path: unreachable");
-	UNREACHABLE;
+        case LOCATION_TYPE_ISEQ:
+        case LOCATION_TYPE_ISEQ_CALCED:
+            return rb_iseq_path(loc->body.iseq.iseq);
+        case LOCATION_TYPE_CFUNC:
+            if (loc->body.cfunc.prev_loc) {
+                RUBY_ASSERT_ALWAYS(loc->body.cfunc.prev_loc != loc);
+			  return location_path(loc->body.cfunc.prev_loc);
+		  }
+		  return Qnil;
+	  default:
+		  rb_bug("location_path: unreachable");
+		  UNREACHABLE;
     }
 }
 
@@ -305,6 +307,7 @@ location_realpath(rb_backtrace_location_t *loc)
 	return rb_iseq_realpath(loc->body.iseq.iseq);
       case LOCATION_TYPE_CFUNC:
 	if (loc->body.cfunc.prev_loc) {
+		RUBY_ASSERT_ALWAYS(loc->body.cfunc.prev_loc != loc);
 	    return location_realpath(loc->body.cfunc.prev_loc);
 	}
 	return Qnil;
@@ -364,6 +367,7 @@ location_to_str(rb_backtrace_location_t *loc)
 	break;
       case LOCATION_TYPE_CFUNC:
 	if (loc->body.cfunc.prev_loc) {
+			  RUBY_ASSERT_ALWAYS(loc->body.cfunc.prev_loc != loc);
 	    file = rb_iseq_path(loc->body.cfunc.prev_loc->body.iseq.iseq);
 	    lineno = location_lineno(loc->body.cfunc.prev_loc);
 	}
@@ -714,6 +718,7 @@ bt_iter_cfunc(void *ptr, const rb_control_frame_t *cfp, ID mid)
     loc->type = LOCATION_TYPE_CFUNC;
     loc->body.cfunc.mid = mid;
     if (arg->prev_loc) {
+		RUBY_ASSERT_ALWAYS(loc != arg->prev_loc);
         loc->body.cfunc.prev_loc = arg->prev_loc;
     }
     else if (arg->prev_cfp) {
@@ -722,6 +727,7 @@ bt_iter_cfunc(void *ptr, const rb_control_frame_t *cfp, ID mid)
         arg->init_loc->type = LOCATION_TYPE_ISEQ;
         arg->init_loc->body.iseq.iseq = iseq;
         arg->init_loc->body.iseq.lineno.pc = pc;
+		RUBY_ASSERT_ALWAYS(loc != arg->init_loc);
         loc->body.cfunc.prev_loc = arg->prev_loc = arg->init_loc;
     } else {
         loc->body.cfunc.prev_loc = NULL;
