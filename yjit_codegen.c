@@ -3171,7 +3171,7 @@ c_method_tracing_currently_enabled(const jitstate_t *jit)
 }
 
 static codegen_status_t
-gen_send_cfunc(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const rb_callable_method_entry_t *cme, rb_iseq_t *block, const int32_t argc, VALUE *recv_known_klass)
+gen_send_cfunc(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const rb_callable_method_entry_t *cme, rb_iseq_t *block, int32_t argc, VALUE *recv_known_klass)
 {
     const rb_method_cfunc_t *cfunc = UNALIGNED_MEMBER_PTR(cme->def, body.cfunc);
 
@@ -3227,6 +3227,39 @@ gen_send_cfunc(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const 
     // Check for interrupts
     yjit_check_ints(cb, side_exit);
 
+    if (vm_ci_flag(ci) & VM_CALL_KWARG) {
+        ADD_COMMENT(cb, "build kwargs hash");
+
+        const struct rb_callinfo_kwarg *kw_arg = vm_ci_kwarg(ci);
+        RUBY_ASSERT(kw_arg->keyword_len > 0);
+
+        mov(cb, C_ARG_REGS[0], imm_opnd(kw_arg->keyword_len));
+        call_ptr(cb, REG0, (void *)rb_hash_new_with_size);
+
+        // use R14 as a callee-saved temporary for our new arg
+        push(cb, R14);
+        push(cb, R14);
+        mov(cb, R14, RAX);
+
+        for (int i = 0; i < kw_arg->keyword_len; i++) {
+            x86opnd_t value = ctx_stack_opnd(ctx, kw_arg->keyword_len - 1 - i);
+            mov(cb, C_ARG_REGS[0], R14);
+            jit_mov_gc_ptr(jit, cb, C_ARG_REGS[1], kw_arg->keywords[i]);
+            mov(cb, C_ARG_REGS[2], value);
+            call_ptr(cb, REG0, (void *)rb_hash_aset);
+        }
+
+	ctx_stack_pop(ctx, kw_arg->keyword_len);
+        x86opnd_t kwarg_push = ctx_stack_push(ctx, TYPE_HASH);
+	argc -= kw_arg->keyword_len;
+        argc++;
+
+        mov(cb, kwarg_push, R14);
+
+        pop(cb, R14);
+        pop(cb, R14);
+    }
+
     // Stack overflow check
     // #define CHECK_VM_STACK_OVERFLOW0(cfp, sp, margin)
     // REG_CFP <= REG_SP + 4 * sizeof(VALUE) + sizeof(rb_control_frame_t)
@@ -3274,6 +3307,9 @@ gen_send_cfunc(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const 
     // Write env flags at sp[-1]
     // sp[-1] = frame_type;
     uint64_t frame_type = VM_FRAME_MAGIC_CFUNC | VM_FRAME_FLAG_CFRAME | VM_ENV_FLAG_LOCAL;
+    if (vm_ci_flag(ci) & VM_CALL_KWARG) {
+        frame_type |= VM_FRAME_FLAG_CFRAME_KW;
+    }
     mov(cb, mem_opnd(64, REG0, 8 * -1), imm_opnd(frame_type));
 
     // Allocate a new CFP (ec->cfp--)
@@ -3966,10 +4002,6 @@ gen_send_general(jitstate_t *jit, ctx_t *ctx, struct rb_call_data *cd, rb_iseq_t
           case VM_METHOD_TYPE_ISEQ:
             return gen_send_iseq(jit, ctx, ci, cme, block, argc);
           case VM_METHOD_TYPE_CFUNC:
-            if ((vm_ci_flag(ci) & VM_CALL_KWARG) != 0) {
-                GEN_COUNTER_INC(cb, send_cfunc_kwargs);
-                return YJIT_CANT_COMPILE;
-            }
             return gen_send_cfunc(jit, ctx, ci, cme, block, argc, &comptime_recv_klass);
           case VM_METHOD_TYPE_IVAR:
             if (argc != 0) {
