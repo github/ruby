@@ -2181,6 +2181,10 @@ rb_splat_or_kwargs_p(const struct rb_callinfo *restrict ci)
 }
 
 
+ALWAYS_INLINE(static inline void
+CALLER_SETUP_ARG(struct rb_control_frame_struct *restrict cfp,
+                 struct rb_calling_info *restrict calling,
+                 const struct rb_callinfo *restrict ci));
 static inline void
 CALLER_SETUP_ARG(struct rb_control_frame_struct *restrict cfp,
                  struct rb_calling_info *restrict calling,
@@ -3761,7 +3765,9 @@ vm_callee_setup_block_arg_arg0_check(VALUE *argv)
     return ary;
 }
 
-static int
+ALWAYS_INLINE(static inline int vm_callee_setup_block_arg(rb_execution_context_t *ec, struct rb_calling_info *calling, const struct rb_callinfo *ci, const rb_iseq_t *iseq, VALUE *argv, const enum arg_setup_type arg_setup_type));
+
+static inline int
 vm_callee_setup_block_arg(rb_execution_context_t *ec, struct rb_calling_info *calling, const struct rb_callinfo *ci, const rb_iseq_t *iseq, VALUE *argv, const enum arg_setup_type arg_setup_type)
 {
     if (rb_simple_iseq_p(iseq)) {
