@@ -3809,7 +3809,10 @@ vm_callee_setup_block_arg(rb_execution_context_t *ec, struct rb_calling_info *ca
     }
 }
 
-static int
+ALWAYS_INLINE(static inline int
+vm_yield_setup_args(rb_execution_context_t *ec, const rb_iseq_t *iseq, const int argc, VALUE *argv, int kw_splat, VALUE block_handler, enum arg_setup_type arg_setup_type));
+
+static inline int
 vm_yield_setup_args(rb_execution_context_t *ec, const rb_iseq_t *iseq, const int argc, VALUE *argv, int kw_splat, VALUE block_handler, enum arg_setup_type arg_setup_type)
 {
     struct rb_calling_info calling_entry, *calling;
