@@ -2735,3 +2735,13 @@ assert_equal 'ok', %q{
   foo(s) rescue :ok
   foo(s) rescue :ok
 }
+
+# Ruby array varg
+assert_equal 'foo/bar', %q{
+  def foo
+    File.join("foo", "bar")
+  end
+
+  foo
+  foo
+}
