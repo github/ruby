@@ -802,10 +802,30 @@ rb_obj_is_kind_of(VALUE obj, VALUE c)
 static VALUE
 class_search_ancestor(VALUE cl, VALUE c)
 {
+    if (cl == c) return Qtrue;
+
+    // Fast path for Class checks
+    if (RB_TYPE_P(c, T_CLASS) && RB_TYPE_P(cl, T_CLASS) && !FL_TEST(c, FL_SINGLETON) && !FL_TEST(cl, FL_SINGLETON)) {
+        RUBY_ASSERT(RCLASS_SUPERCLASS_ARY(c));
+        RUBY_ASSERT(RCLASS_SUPERCLASS_ARY(cl));
+
+        int c_num = RCLASS_SUPERCLASS_ARY(c)->num;
+        int cl_num = RCLASS_SUPERCLASS_ARY(cl)->num;
+        VALUE *classes = RCLASS_SUPERCLASS_ARY(cl)->classes;
+
+        // If c's inheritance chain is longer, it cannot be an ancestor
+        if (cl_num <= c_num)
+            return Qfalse;
+
+        // Otherwise check that c is in cl's inheritance chain
+        return RBOOL(classes[cl_num - c_num - 1] == c);
+    }
+
+    // Slow path for Module checks
     while (cl) {
-	if (cl == c || RCLASS_M_TBL(cl) == RCLASS_M_TBL(c))
-	    return cl;
-	cl = RCLASS_SUPER(cl);
+        if (cl == c || RCLASS_M_TBL(cl) == RCLASS_M_TBL(c))
+            return cl;
+        cl = RCLASS_SUPER(cl);
     }
     return 0;
 }

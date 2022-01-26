@@ -37,6 +37,11 @@ struct rb_cvar_class_tbl_entry {
     VALUE class_value;
 };
 
+struct rb_superclass_ary {
+    uint32_t num;
+    VALUE classes[FLEX_ARY_LEN];
+};
+
 struct rb_classext_struct {
     struct st_table *iv_index_tbl; // ID -> struct rb_iv_index_tbl_entry
     struct st_table *iv_tbl;
@@ -55,6 +60,7 @@ struct rb_classext_struct {
      * included. Hopefully that makes sense.
      */
     struct rb_subclass_entry *module_subclass_entry;
+    struct rb_superclass_ary *superclass_ary;
 #if SIZEOF_SERIAL_T != SIZEOF_VALUE && !USE_RVARGC /* otherwise class_serial is in struct RClass */
     rb_serial_t class_serial;
 #endif
@@ -117,6 +123,7 @@ typedef struct rb_classext_struct rb_classext_t;
 #define RCLASS_MODULE_SUBCLASS_ENTRY(c) (RCLASS_EXT(c)->module_subclass_entry)
 #define RCLASS_ALLOCATOR(c) (RCLASS_EXT(c)->allocator)
 #define RCLASS_SUBCLASSES(c) (RCLASS_EXT(c)->subclasses)
+#define RCLASS_SUPERCLASS_ARY(c) (RCLASS_EXT(c)->superclass_ary)
 
 #define RICLASS_IS_ORIGIN FL_USER5
 #define RCLASS_CLONED     FL_USER6
@@ -125,6 +132,7 @@ typedef struct rb_classext_struct rb_classext_t;
 /* class.c */
 void rb_class_subclass_add(VALUE super, VALUE klass);
 void rb_class_remove_from_super_subclasses(VALUE);
+void rb_class_update_superclasses(VALUE, VALUE);
 void rb_class_remove_subclass_head(VALUE);
 int rb_singleton_class_internal_p(VALUE sklass);
 VALUE rb_class_boot(VALUE);
@@ -197,6 +205,7 @@ RCLASS_SET_SUPER(VALUE klass, VALUE super)
         rb_class_subclass_add(super, klass);
     }
     RB_OBJ_WRITE(klass, &RCLASS(klass)->super, super);
+    rb_class_update_superclasses(klass, super);
     return super;
 }
 

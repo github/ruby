@@ -260,6 +260,44 @@ rb_class_boot(VALUE super)
 }
 
 void
+rb_class_update_superclasses(VALUE klass, VALUE super)
+{
+    if (!RB_TYPE_P(klass, T_CLASS)) return;
+    if (super == Qundef || FL_TEST(klass, FL_SINGLETON)) return;
+
+    // find the proper superclass
+    while (super != Qundef && super != Qfalse && !RB_TYPE_P(super, T_CLASS)) {
+        super = RCLASS_SUPER(super);
+    }
+
+    if (RCLASS_SUPERCLASS_ARY(klass)) {
+        // If superclass is already correct
+        if (RCLASS_SUPERCLASS_ARY(klass)->classes[0] == super)
+            return;
+
+        xfree(RCLASS_SUPERCLASS_ARY(klass));
+        RCLASS_SUPERCLASS_ARY(klass) = 0;
+    }
+
+    // this may be passed Qundef or Qfalse
+    struct rb_superclass_ary *ary, *parent_ary;
+    if (super == Qundef || super == Qfalse) {
+        parent_ary = NULL;
+    } else {
+        parent_ary = RCLASS_SUPERCLASS_ARY(super);
+    }
+    uint32_t parent_num = parent_ary ? parent_ary->num : 0;
+    uint32_t num = parent_num + 1;
+
+    RCLASS_SUPERCLASS_ARY(klass) = ary = xmalloc(sizeof(struct rb_superclass_ary) + sizeof(VALUE) * num);
+    ary->num = num;
+    ary->classes[0] = super;
+    if (parent_ary) {
+        memcpy(&ary->classes[1], &parent_ary->classes[0], sizeof(VALUE) * parent_num);
+    }
+}
+
+void
 rb_check_inheritable(VALUE super)
 {
     if (!RB_TYPE_P(super, T_CLASS)) {
