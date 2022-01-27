@@ -270,13 +270,14 @@ rb_class_update_superclasses(VALUE klass, VALUE super)
         super = RCLASS_SUPER(super);
     }
 
-    if (RCLASS_SUPERCLASS_ARY(klass)) {
+    if (RCLASS_SUPERCLASS_ARY(klass)->classes) {
         // If superclass is already correct
         if (RCLASS_SUPERCLASS_ARY(klass)->classes[0] == super)
             return;
 
-        xfree(RCLASS_SUPERCLASS_ARY(klass));
-        RCLASS_SUPERCLASS_ARY(klass) = 0;
+        xfree(RCLASS_SUPERCLASS_ARY(klass)->classes);
+        RCLASS_SUPERCLASS_ARY(klass)->classes = 0;
+        RCLASS_SUPERCLASS_ARY(klass)->num = 0;
     }
 
     // this may be passed Qundef or Qfalse
@@ -289,7 +290,8 @@ rb_class_update_superclasses(VALUE klass, VALUE super)
     uint32_t parent_num = parent_ary ? parent_ary->num : 0;
     uint32_t num = parent_num + 1;
 
-    RCLASS_SUPERCLASS_ARY(klass) = ary = xmalloc(sizeof(struct rb_superclass_ary) + sizeof(VALUE) * num);
+    ary = RCLASS_SUPERCLASS_ARY(klass);
+    ary->classes = xmalloc(sizeof(VALUE) * num);
     ary->num = num;
     ary->classes[0] = super;
     if (parent_ary) {

@@ -39,7 +39,7 @@ struct rb_cvar_class_tbl_entry {
 
 struct rb_superclass_ary {
     uint32_t num;
-    VALUE classes[FLEX_ARY_LEN];
+    VALUE *classes;
 };
 
 struct rb_classext_struct {
@@ -60,7 +60,7 @@ struct rb_classext_struct {
      * included. Hopefully that makes sense.
      */
     struct rb_subclass_entry *module_subclass_entry;
-    struct rb_superclass_ary *superclass_ary;
+    struct rb_superclass_ary superclass_ary;
 #if SIZEOF_SERIAL_T != SIZEOF_VALUE && !USE_RVARGC /* otherwise class_serial is in struct RClass */
     rb_serial_t class_serial;
 #endif
@@ -123,7 +123,7 @@ typedef struct rb_classext_struct rb_classext_t;
 #define RCLASS_MODULE_SUBCLASS_ENTRY(c) (RCLASS_EXT(c)->module_subclass_entry)
 #define RCLASS_ALLOCATOR(c) (RCLASS_EXT(c)->allocator)
 #define RCLASS_SUBCLASSES(c) (RCLASS_EXT(c)->subclasses)
-#define RCLASS_SUPERCLASS_ARY(c) (RCLASS_EXT(c)->superclass_ary)
+#define RCLASS_SUPERCLASS_ARY(c) (&(RCLASS_EXT(c)->superclass_ary))
 
 #define RICLASS_IS_ORIGIN FL_USER5
 #define RCLASS_CLONED     FL_USER6
