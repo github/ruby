@@ -805,7 +805,7 @@ class_search_ancestor(VALUE cl, VALUE c)
     if (cl == c) return Qtrue;
 
     // Fast path for Class checks
-    if (RB_TYPE_P(c, T_CLASS) && RB_TYPE_P(cl, T_CLASS) && !FL_TEST(c, FL_SINGLETON) && !FL_TEST(cl, FL_SINGLETON)) {
+    if (BUILTIN_TYPE(c) == T_CLASS && BUILTIN_TYPE(cl) == T_CLASS && !FL_TEST_RAW(c, FL_SINGLETON) && !FL_TEST_RAW(cl, FL_SINGLETON)) {
         RUBY_ASSERT(RCLASS_SUPERCLASS_ARY(c));
         RUBY_ASSERT(RCLASS_SUPERCLASS_ARY(cl));
 
