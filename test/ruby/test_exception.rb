@@ -252,6 +252,26 @@ class TestException < Test::Unit::TestCase
     }
   end
 
+  def test_catch_throw_in_require_cant_be_rescued
+    Tempfile.create(["dep", ".rb"]) {|t|
+      t.puts("throw :extdep, 42")
+      t.close
+
+      rescue_all = Class.new(Exception)
+      def rescue_all.===(_)
+        raise "should not reach here"
+      end
+
+      v = assert_throw(:extdep) do
+        require t.path
+      rescue rescue_all => e
+        assert(false, "should not reach here")
+      end
+
+      assert_equal(42, v)
+    }
+  end
+
   def test_throw_false
     bug12743 = '[ruby-core:77229] [Bug #12743]'
     Thread.start {
