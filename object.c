@@ -757,6 +757,34 @@ rb_obj_is_instance_of(VALUE obj, VALUE c)
     return RBOOL(rb_obj_class(obj) == c);
 }
 
+static VALUE
+class_search_class_ancestor(VALUE cl, VALUE c)
+{
+    RUBY_ASSERT(RB_TYPE_P(c, T_CLASS));
+    RUBY_ASSERT(RB_TYPE_P(cl, T_CLASS));
+
+    if (cl == c) return Qtrue;
+
+    // Fast path for checks between two classes
+    if (!FL_TEST_RAW(c, FL_SINGLETON) && !FL_TEST_RAW(cl, FL_SINGLETON)) {
+        RUBY_ASSERT(RCLASS_SUPERCLASS_ARY(c));
+        RUBY_ASSERT(RCLASS_SUPERCLASS_ARY(cl));
+
+        int c_num = RCLASS_SUPERCLASS_ARY(c)->num;
+        int cl_num = RCLASS_SUPERCLASS_ARY(cl)->num;
+        VALUE *classes = RCLASS_SUPERCLASS_ARY(cl)->classes;
+
+        // If c's inheritance chain is longer, it cannot be an ancestor
+        if (cl_num <= c_num)
+            return Qfalse;
+
+        // Otherwise check that c is in cl's inheritance chain
+        return RBOOL(classes[cl_num - c_num - 1] == c);
+    } else {
+        // Fall back to slow path
+        return RBOOL(class_search_ancestor(cl, c));
+    }
+}
 
 /*
  *  call-seq:
@@ -793,34 +821,22 @@ rb_obj_is_kind_of(VALUE obj, VALUE c)
 
     RUBY_ASSERT(cl);
 
+    if (RB_TYPE_P(c, T_CLASS)) {
+        return class_search_class_ancestor(cl, c);
+    }
+
     // Note: YJIT needs this function to never allocate and never raise when
     // `c` is a class or a module.
     c = class_or_module_required(c);
-    return RBOOL(class_search_ancestor(cl, RCLASS_ORIGIN(c)));
+    c = RCLASS_ORIGIN(c);
+
+    return RBOOL(class_search_ancestor(cl, c));
 }
+
 
 static VALUE
 class_search_ancestor(VALUE cl, VALUE c)
 {
-    if (cl == c) return Qtrue;
-
-    // Fast path for Class checks
-    if (BUILTIN_TYPE(c) == T_CLASS && BUILTIN_TYPE(cl) == T_CLASS && !FL_TEST_RAW(c, FL_SINGLETON) && !FL_TEST_RAW(cl, FL_SINGLETON)) {
-        RUBY_ASSERT(RCLASS_SUPERCLASS_ARY(c));
-        RUBY_ASSERT(RCLASS_SUPERCLASS_ARY(cl));
-
-        int c_num = RCLASS_SUPERCLASS_ARY(c)->num;
-        int cl_num = RCLASS_SUPERCLASS_ARY(cl)->num;
-        VALUE *classes = RCLASS_SUPERCLASS_ARY(cl)->classes;
-
-        // If c's inheritance chain is longer, it cannot be an ancestor
-        if (cl_num <= c_num)
-            return Qfalse;
-
-        // Otherwise check that c is in cl's inheritance chain
-        return RBOOL(classes[cl_num - c_num - 1] == c);
-    }
-
     // Slow path for Module checks
     while (cl) {
         if (cl == c || RCLASS_M_TBL(cl) == RCLASS_M_TBL(c))
