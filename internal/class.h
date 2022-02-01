@@ -132,7 +132,7 @@ typedef struct rb_classext_struct rb_classext_t;
 /* class.c */
 void rb_class_subclass_add(VALUE super, VALUE klass);
 void rb_class_remove_from_super_subclasses(VALUE);
-void rb_class_update_superclasses(VALUE, VALUE);
+void rb_class_update_superclasses(VALUE);
 void rb_class_remove_subclass_head(VALUE);
 int rb_singleton_class_internal_p(VALUE sklass);
 VALUE rb_class_boot(VALUE);
@@ -205,7 +205,7 @@ RCLASS_SET_SUPER(VALUE klass, VALUE super)
         rb_class_subclass_add(super, klass);
     }
     RB_OBJ_WRITE(klass, &RCLASS(klass)->super, super);
-    rb_class_update_superclasses(klass, super);
+    rb_class_update_superclasses(klass);
     return super;
 }
 

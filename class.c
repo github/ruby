@@ -260,8 +260,10 @@ rb_class_boot(VALUE super)
 }
 
 void
-rb_class_update_superclasses(VALUE klass, VALUE super)
+rb_class_update_superclasses(VALUE klass)
 {
+    VALUE super = RCLASS_SUPER(klass);
+
     if (!RB_TYPE_P(klass, T_CLASS)) return;
     if (super == Qundef || FL_TEST(klass, FL_SINGLETON)) return;
 
@@ -278,6 +280,13 @@ rb_class_update_superclasses(VALUE klass, VALUE super)
         xfree(RCLASS_SUPERCLASS_ARY(klass)->classes);
         RCLASS_SUPERCLASS_ARY(klass)->classes = 0;
         RCLASS_SUPERCLASS_ARY(klass)->num = 0;
+    }
+
+    if (METACLASS_OF(klass) == klass) {
+        // lazy representation of for meta^(n)-class
+        // superclass will be set in ENSURE_EIGENCLASS before this can be
+        // exposed.
+        return;
     }
 
     // this may be passed Qundef or Qfalse
@@ -694,13 +703,14 @@ make_metaclass(VALUE klass)
     rb_singleton_class_attached(metaclass, klass);
 
     if (META_CLASS_OF_CLASS_CLASS_P(klass)) {
-	SET_METACLASS_OF(klass, metaclass);
-	SET_METACLASS_OF(metaclass, metaclass);
+        SET_METACLASS_OF(klass, metaclass);
+        SET_METACLASS_OF(metaclass, metaclass);
+        rb_class_update_superclasses(klass);
     }
     else {
-	VALUE tmp = METACLASS_OF(klass); /* for a meta^(n)-class klass, tmp is meta^(n)-class of Class class */
-	SET_METACLASS_OF(klass, metaclass);
-	SET_METACLASS_OF(metaclass, ENSURE_EIGENCLASS(tmp));
+        VALUE tmp = METACLASS_OF(klass); /* for a meta^(n)-class klass, tmp is meta^(n)-class of Class class */
+        SET_METACLASS_OF(klass, metaclass);
+        SET_METACLASS_OF(metaclass, ENSURE_EIGENCLASS(tmp));
     }
 
     super = RCLASS_SUPER(klass);
