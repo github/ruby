@@ -763,8 +763,6 @@ class_search_class_ancestor(VALUE cl, VALUE c)
     RUBY_ASSERT(RB_TYPE_P(c, T_CLASS));
     RUBY_ASSERT(RB_TYPE_P(cl, T_CLASS));
 
-    if (cl == c) return Qtrue;
-
     // Fast path for checks between two classes
     RUBY_ASSERT(RCLASS_SUPERCLASS_ARY(c));
     RUBY_ASSERT(RCLASS_SUPERCLASS_ARY(cl));
@@ -815,6 +813,9 @@ rb_obj_is_kind_of(VALUE obj, VALUE c)
     VALUE cl = CLASS_OF(obj);
 
     RUBY_ASSERT(cl);
+    RUBY_ASSERT(RB_TYPE_P(cl, T_CLASS));
+
+    if (cl == c) return Qtrue;
 
     if (LIKELY(RB_TYPE_P(c, T_CLASS))) {
         return class_search_class_ancestor(cl, c);
