@@ -265,7 +265,7 @@ rb_class_update_superclasses(VALUE klass)
     VALUE super = RCLASS_SUPER(klass);
 
     if (!RB_TYPE_P(klass, T_CLASS)) return;
-    if (super == Qundef || FL_TEST(klass, FL_SINGLETON)) return;
+    if (super == Qundef) return;
 
     // find the proper superclass
     while (super != Qundef && super != Qfalse && !RB_TYPE_P(super, T_CLASS)) {
@@ -273,21 +273,16 @@ rb_class_update_superclasses(VALUE klass)
     }
 
     if (RCLASS_SUPERCLASS_ARY(klass)->classes) {
-        // If superclass is already correct
-        if (RCLASS_SUPERCLASS_ARY(klass)->classes[0] == super)
-            return;
+        //// If superclass is already correct
+        //if (RCLASS_SUPERCLASS_ARY(klass)->classes[0] == super)
+        //    return;
 
         xfree(RCLASS_SUPERCLASS_ARY(klass)->classes);
         RCLASS_SUPERCLASS_ARY(klass)->classes = 0;
         RCLASS_SUPERCLASS_ARY(klass)->num = 0;
     }
 
-    if (METACLASS_OF(klass) == klass) {
-        // lazy representation of for meta^(n)-class
-        // superclass will be set in ENSURE_EIGENCLASS before this can be
-        // exposed.
-        return;
-    }
+    RUBY_ASSERT(super != Qundef);
 
     // this may be passed Qundef or Qfalse
     struct rb_superclass_ary *ary, *parent_ary;
@@ -295,6 +290,9 @@ rb_class_update_superclasses(VALUE klass)
         parent_ary = NULL;
     } else {
         parent_ary = RCLASS_SUPERCLASS_ARY(super);
+        if (!parent_ary->classes) {
+            return;
+        }
     }
     uint32_t parent_num = parent_ary ? parent_ary->num : 0;
     uint32_t num = parent_num + 1;
@@ -715,7 +713,10 @@ make_metaclass(VALUE klass)
 
     super = RCLASS_SUPER(klass);
     while (RB_TYPE_P(super, T_ICLASS)) super = RCLASS_SUPER(super);
-    RCLASS_SET_SUPER(metaclass, super ? ENSURE_EIGENCLASS(super) : rb_cClass);
+    VALUE super_metaclass = super ? ENSURE_EIGENCLASS(super) : rb_cClass;
+    rb_class_update_superclasses(super_metaclass);
+
+    RCLASS_SET_SUPER(metaclass, super_metaclass);
 
     return metaclass;
 }

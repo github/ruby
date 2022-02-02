@@ -766,24 +766,19 @@ class_search_class_ancestor(VALUE cl, VALUE c)
     if (cl == c) return Qtrue;
 
     // Fast path for checks between two classes
-    if (!FL_TEST_RAW(c, FL_SINGLETON) && !FL_TEST_RAW(cl, FL_SINGLETON)) {
-        RUBY_ASSERT(RCLASS_SUPERCLASS_ARY(c));
-        RUBY_ASSERT(RCLASS_SUPERCLASS_ARY(cl));
+    RUBY_ASSERT(RCLASS_SUPERCLASS_ARY(c));
+    RUBY_ASSERT(RCLASS_SUPERCLASS_ARY(cl));
 
-        int c_num = RCLASS_SUPERCLASS_ARY(c)->num;
-        int cl_num = RCLASS_SUPERCLASS_ARY(cl)->num;
-        VALUE *classes = RCLASS_SUPERCLASS_ARY(cl)->classes;
+    int c_num = RCLASS_SUPERCLASS_ARY(c)->num;
+    int cl_num = RCLASS_SUPERCLASS_ARY(cl)->num;
+    VALUE *classes = RCLASS_SUPERCLASS_ARY(cl)->classes;
 
-        // If c's inheritance chain is longer, it cannot be an ancestor
-        if (cl_num <= c_num)
-            return Qfalse;
+    // If c's inheritance chain is longer, it cannot be an ancestor
+    if (cl_num <= c_num)
+        return Qfalse;
 
-        // Otherwise check that c is in cl's inheritance chain
-        return RBOOL(classes[cl_num - c_num - 1] == c);
-    } else {
-        // Fall back to slow path
-        return RBOOL(class_search_ancestor(cl, c));
-    }
+    // Otherwise check that c is in cl's inheritance chain
+    return RBOOL(classes[cl_num - c_num - 1] == c);
 }
 
 /*
@@ -821,7 +816,7 @@ rb_obj_is_kind_of(VALUE obj, VALUE c)
 
     RUBY_ASSERT(cl);
 
-    if (RB_TYPE_P(c, T_CLASS)) {
+    if (LIKELY(RB_TYPE_P(c, T_CLASS))) {
         return class_search_class_ancestor(cl, c);
     }
 
