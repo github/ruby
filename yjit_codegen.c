@@ -595,7 +595,7 @@ yjit_entry_prologue(codeblock_t *cb, const rb_iseq_t *iseq)
 
 
 
-
+#if 0
 
 static int tracing_invalidate_all_i(void *vstart, void *vend, size_t stride, void *data);
 static void invalidate_all_blocks_for_tracing(const rb_iseq_t *iseq);
@@ -704,6 +704,8 @@ invalidate_all_blocks_for_tracing(const rb_iseq_t *iseq)
     body->jit_func = NULL;
 #endif
 }
+
+#endif // #if 0
 
 static void
 yjit_reg_op(int opcode, codegen_fn gen_fn)
