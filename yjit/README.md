@@ -42,3 +42,41 @@ No.
 
 [rust-install]: https://www.rust-lang.org/tools/install
 [editor-tools]: https://www.rust-lang.org/tools
+
+## Running YJIT on M1
+
+It is possible to run YJIT on an M1 via Rosetta.  You can find the most basic
+instructions below, but there are a few caveats listed further down.
+
+First, install Rosetta:
+
+```
+$ softwareupdate --install-rosetta
+```
+
+Now any command can be run with Rosetta via the `arch` command line tool.
+
+Then you can start your shell in an x86 environment:
+
+```
+$ arch -x86_64 zsh
+```
+
+You can double check your current architecture via the `arch` command:
+
+```
+$ arch -x86_64 zsh
+aaron@tc-lan-adapter ~ % arch
+i386
+aaron@tc-lan-adapter ~ % 
+```
+
+While in your i386 shell, install Cargo and Homebrew, then hack away!
+
+## M1 Caveats
+
+1. You must install a version of Homebrew for each architecture
+2. Cargo will install in $HOME/.cargo by default, and I don't know a good way to change architectures after install
+3. `dev` won't work if you have i386 Homebrew installed on an M1
+
+If you use Fish shell you can [read this link](https://tenderlovemaking.com/2022/01/07/homebrew-rosetta-and-ruby.html) for information on making the dev environment easier.
