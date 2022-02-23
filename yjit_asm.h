@@ -228,16 +228,6 @@ static const x86opnd_t R15B = { OPND_REG, 8, .as.reg = { REG_GP, 15 }};
 
 // Compute the number of bits needed to store a signed or unsigned value
 static uint32_t sig_imm_size(int64_t imm);
-static uint32_t unsig_imm_size(uint64_t imm);
-
-// Memory operand with base register and displacement/offset
-static x86opnd_t mem_opnd(uint32_t num_bits, x86opnd_t base_reg, int32_t disp);
-
-// Scale-index-base memory operand
-//static x86opnd_t mem_opnd_sib(uint32_t num_bits, x86opnd_t base_reg, x86opnd_t index_reg, int32_t scale, int32_t disp);
-
-// Immediate number operand
-static x86opnd_t imm_opnd(int64_t val);
 
 // Constant pointer operand
 static x86opnd_t const_ptr_opnd(const void *ptr);
@@ -262,147 +252,20 @@ static uint8_t *alloc_exec_mem(uint32_t mem_size);
 
 // Code block functions
 static void cb_init(codeblock_t *cb, uint8_t *mem_block, uint32_t mem_size);
-static void cb_align_pos(codeblock_t *cb, uint32_t multiple);
 static void cb_set_pos(codeblock_t *cb, uint32_t pos);
-static void cb_set_write_ptr(codeblock_t *cb, uint8_t *code_ptr);
 static uint8_t *cb_get_ptr(const codeblock_t *cb, uint32_t index);
 static uint8_t *cb_get_write_ptr(const codeblock_t *cb);
 static void cb_write_byte(codeblock_t *cb, uint8_t byte);
 static void cb_write_bytes(codeblock_t *cb, uint32_t num_bytes, ...);
 static void cb_write_int(codeblock_t *cb, uint64_t val, uint32_t num_bits);
-static uint32_t cb_new_label(codeblock_t *cb, const char *name);
-static void cb_write_label(codeblock_t *cb, uint32_t label_idx);
-static void cb_label_ref(codeblock_t *cb, uint32_t label_idx);
-static void cb_link_labels(codeblock_t *cb);
 static void cb_mark_all_writeable(codeblock_t *cb);
 static void cb_mark_position_writeable(codeblock_t *cb, uint32_t write_pos);
 static void cb_mark_all_executable(codeblock_t *cb);
 
 // Encode individual instructions into a code block
-static void add(codeblock_t *cb, x86opnd_t opnd0, x86opnd_t opnd1);
-static void and(codeblock_t *cb, x86opnd_t opnd0, x86opnd_t opnd1);
-static void call_ptr(codeblock_t *cb, x86opnd_t scratch_reg, uint8_t *dst_ptr);
-static inline void call_label(codeblock_t *cb, uint32_t label_idx);
 static void call(codeblock_t *cb, x86opnd_t opnd);
-//static void cmova(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovae(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovb(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovbe(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovc(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-static void cmove(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-static void cmovg(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-static void cmovge(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-static void cmovl(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-static void cmovle(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovna(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovnae(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovnb(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovnbe(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovnc(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-static void cmovne(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovng(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovnge(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovnl(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovnle(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovno(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovnp(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovns(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-static void cmovnz(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovo(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovp(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovpe(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovpo(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void cmovs(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-static void cmovz(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-static void cmp(codeblock_t *cb, x86opnd_t opnd0, x86opnd_t opnd1);
-//static void cdq(codeblock_t *cb);
-//static void cqo(codeblock_t *cb);
-//static void int3(codeblock_t *cb);
-//static void ja_label(codeblock_t *cb, uint32_t label_idx);
-//static void jae_label(codeblock_t *cb, uint32_t label_idx);
-//static void jb_label(codeblock_t *cb, uint32_t label_idx);
-static void jbe_label(codeblock_t *cb, uint32_t label_idx);
-//static void jc_label(codeblock_t *cb, uint32_t label_idx);
-static void je_label(codeblock_t *cb, uint32_t label_idx);
-//static void jg_label(codeblock_t *cb, uint32_t label_idx);
-//static void jge_label(codeblock_t *cb, uint32_t label_idx);
-//static void jl_label(codeblock_t *cb, uint32_t label_idx);
-//static void jle_label(codeblock_t *cb, uint32_t label_idx);
-//static void jna_label(codeblock_t *cb, uint32_t label_idx);
-//static void jnae_label(codeblock_t *cb, uint32_t label_idx);
-//static void jnb_label(codeblock_t *cb, uint32_t label_idx);
-//static void jnbe_label(codeblock_t *cb, uint32_t label_idx);
-//static void jnc_label(codeblock_t *cb, uint32_t label_idx);
-//static void jne_label(codeblock_t *cb, uint32_t label_idx);
-//static void jng_label(codeblock_t *cb, uint32_t label_idx);
-//static void jnge_label(codeblock_t *cb, uint32_t label_idx);
-//static void jnl_label(codeblock_t *cb, uint32_t label_idx);
-//static void jnle_label(codeblock_t *cb, uint32_t label_idx);
-//static void jno_label(codeblock_t *cb, uint32_t label_idx);
-//static void jnp_label(codeblock_t *cb, uint32_t label_idx);
-//static void jns_label(codeblock_t *cb, uint32_t label_idx);
-static void jnz_label(codeblock_t *cb, uint32_t label_idx);
-//static void jo_label(codeblock_t *cb, uint32_t label_idx);
-//static void jp_label(codeblock_t *cb, uint32_t label_idx);
-//static void jpe_label(codeblock_t *cb, uint32_t label_idx);
-//static void jpo_label(codeblock_t *cb, uint32_t label_idx);
-//static void js_label(codeblock_t *cb, uint32_t label_idx);
-static void jz_label(codeblock_t *cb, uint32_t label_idx);
-//static void ja_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jae_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jb_ptr(codeblock_t *cb, uint8_t *ptr);
-static void jbe_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jc_ptr(codeblock_t *cb, uint8_t *ptr);
-static void je_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jg_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jge_ptr(codeblock_t *cb, uint8_t *ptr);
-static void jl_ptr(codeblock_t *cb, uint8_t *ptr);
-static void jle_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jna_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jnae_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jnb_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jnbe_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jnc_ptr(codeblock_t *cb, uint8_t *ptr);
-static void jne_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jng_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jnge_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jnl_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jnle_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jno_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jnp_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jns_ptr(codeblock_t *cb, uint8_t *ptr);
-static void jnz_ptr(codeblock_t *cb, uint8_t *ptr);
-static void jo_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jp_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jpe_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jpo_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void js_ptr(codeblock_t *cb, uint8_t *ptr);
-static void jz_ptr(codeblock_t *cb, uint8_t *ptr);
-//static void jmp_label(codeblock_t *cb, uint32_t label_idx);
 static void jmp_ptr(codeblock_t *cb, uint8_t *ptr);
-static void jmp_rm(codeblock_t *cb, x86opnd_t opnd);
-static void jmp32(codeblock_t *cb, int32_t offset);
-static void lea(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
 static void mov(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-static void movsx(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-//static void neg(codeblock_t *cb, x86opnd_t opnd);
 static inline void nop(codeblock_t *cb, uint32_t length);
-static void not(codeblock_t *cb, x86opnd_t opnd);
-static void or(codeblock_t *cb, x86opnd_t opnd0, x86opnd_t opnd1);
-static void pop(codeblock_t *cb, x86opnd_t reg);
-static void popfq(codeblock_t *cb);
-static void push(codeblock_t *cb, x86opnd_t opnd);
-static void pushfq(codeblock_t *cb);
-static void ret(codeblock_t *cb);
-//static void sal(codeblock_t *cb, x86opnd_t opnd0, x86opnd_t opnd1);
-static void sar(codeblock_t *cb, x86opnd_t opnd0, x86opnd_t opnd1);
-//static void shl(codeblock_t *cb, x86opnd_t opnd0, x86opnd_t opnd1);
-static void shr(codeblock_t *cb, x86opnd_t opnd0, x86opnd_t opnd1);
-static void sub(codeblock_t *cb, x86opnd_t opnd0, x86opnd_t opnd1);
-static void test(codeblock_t *cb, x86opnd_t rm_opnd, x86opnd_t test_opnd);
-//static void ud2(codeblock_t *cb);
-//static void xchg(codeblock_t *cb, x86opnd_t rm_opnd, x86opnd_t r_opnd);
-static void xor(codeblock_t *cb, x86opnd_t opnd0, x86opnd_t opnd1);
-static void cb_write_lock_prefix(codeblock_t *cb);
 
 #endif

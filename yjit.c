@@ -37,11 +37,9 @@
 #include "yjit_asm.c"
 
 // Code block into which we write machine code
-static codeblock_t block;
 static codeblock_t *cb = NULL;
 
 // Code block into which we write out-of-line machine code
-static codeblock_t outline_block;
 static codeblock_t *ocb = NULL;
 
 // NOTE: We can trust that uint8_t has no "padding bits" since the C spec
@@ -326,7 +324,7 @@ rb_get_ec_cfp(rb_execution_context_t *ec) {
 
 VALUE*
 rb_get_cfp_pc(struct rb_control_frame_struct *cfp) {
-    return cfp->pc;
+    return (VALUE*)cfp->pc;
 }
 
 VALUE*
@@ -341,7 +339,7 @@ rb_get_cfp_self(struct rb_control_frame_struct *cfp) {
 
 VALUE*
 rb_get_cfp_ep(struct rb_control_frame_struct *cfp) {
-    return cfp->ep;
+    return (VALUE*)cfp->ep;
 }
 
 VALUE
@@ -390,7 +388,6 @@ rb_get_call_data_ci(struct rb_call_data* cd) {
 // break out of invalidation race when there are multiple ractors.
 static uint32_t yjit_codepage_frozen_bytes = 0;
 
-#include "yjit_utils.c"
 #include "yjit_core.c"
 #include "yjit_iface.c"
 #include "yjit_codegen.c"
