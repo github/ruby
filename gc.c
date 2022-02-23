@@ -3107,6 +3107,8 @@ obj_free(rb_objspace_t *objspace, VALUE obj)
         rb_class_remove_subclass_head(obj);
 	rb_class_remove_from_module_subclasses(obj);
 	rb_class_remove_from_super_subclasses(obj);
+	rb_class_remove_superclasses(obj);
+
 #if !USE_RVARGC
 	if (RCLASS_EXT(obj))
             xfree(RCLASS_EXT(obj));
@@ -4535,6 +4537,7 @@ obj_memsize_of(VALUE obj, int use_all_types)
             if (RCLASS_CC_TBL(obj)) {
                 size += cc_table_memsize(RCLASS_CC_TBL(obj));
             }
+            size += RCLASS_SUPERCLASS_DEPTH(obj) * sizeof(VALUE);
 #if !USE_RVARGC
 	    size += sizeof(rb_classext_t);
 #endif
@@ -9893,6 +9896,14 @@ update_class_ext(rb_objspace_t *objspace, rb_classext_t *ext)
 }
 
 static void
+update_superclasses(rb_objspace_t *objspace, VALUE obj)
+{
+    for (size_t i = 0; i < RCLASS_SUPERCLASS_DEPTH(obj); i++) {
+        UPDATE_IF_MOVED(objspace, RCLASS_SUPERCLASSES(obj)[i]);
+    }
+}
+
+static void
 gc_update_object_references(rb_objspace_t *objspace, VALUE obj)
 {
     RVALUE *any = RANY(obj);
@@ -9909,6 +9920,7 @@ gc_update_object_references(rb_objspace_t *objspace, VALUE obj)
         update_m_tbl(objspace, RCLASS_M_TBL(obj));
         update_cc_tbl(objspace, obj);
         update_cvc_tbl(objspace, obj);
+        update_superclasses(objspace, obj);
 
         gc_update_tbl_refs(objspace, RCLASS_IV_TBL(obj));
 
