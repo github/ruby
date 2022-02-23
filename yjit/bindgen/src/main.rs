@@ -99,6 +99,8 @@ fn main() {
         .allowlist_function("rb_yjit_mark_executable")
         .allowlist_function("rb_yjit_get_page_size")
 
+        .allowlist_var("VM_ENV_FLAG_.*")
+
         // We define VALUE manually
         .blocklist_type("VALUE")
         .opaque_type("rb_iseq_t")
