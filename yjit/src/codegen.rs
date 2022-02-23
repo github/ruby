@@ -434,7 +434,7 @@ fn gen_exit(exit_pc: *mut VALUE, ctx: &Context, cb: &mut CodeBlock) -> CodePtr
     }
 
     // Update CFP->PC
-    //mov(cb, RAX, const_ptr_opnd(exit_pc as *const u8));
+    mov(cb, RAX, const_ptr_opnd(exit_pc as *const u8));
     mov(cb, mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_PC), RAX);
 
     // Accumulate stats about interpreter exits
@@ -808,7 +808,7 @@ pub fn gen_single_block(blockref: &BlockRef, ec: EcPtr, cb: &mut CodeBlock, ocb:
             // Call the code generation function
             status = gen_fn(&mut jit, &mut ctx, cb, ocb);
         }
-        dbg!(&status, opcode);
+        //dbg!(&status, opcode);
 
         // If we can't compile this instruction
         // exit to the interpreter and stop compiling
@@ -1746,7 +1746,7 @@ fn gen_setlocal_generic(jit:&mut JITState, ctx: &mut Context, cb: &mut CodeBlock
 
     // flags & VM_ENV_FLAG_WB_REQUIRED
     let flags_opnd = mem_opnd(64, REG0, SIZEOF_VALUE as i32 * VM_ENV_DATA_INDEX_FLAGS as i32);
-    test(cb, flags_opnd, imm_opnd(VM_ENV_FLAG_WB_REQUIRED as i64));
+    test(cb, flags_opnd, uimm_opnd(VM_ENV_FLAG_WB_REQUIRED.into()));
 
     // Create a side-exit to fall back to the interpreter
     let side_exit = get_side_exit(jit, ocb, ctx);

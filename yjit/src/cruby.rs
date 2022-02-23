@@ -436,7 +436,6 @@ pub const VM_SPECIAL_OBJECT_VMCORE:usize = 0x1;
 pub const VM_ENV_DATA_INDEX_SPECVAL:isize = -1;
 pub const VM_ENV_DATA_INDEX_FLAGS:isize = 0;
 pub const VM_ENV_DATA_SIZE:usize = 3;
-pub const VM_ENV_FLAG_WB_REQUIRED:usize = 0x008;
 
 // From vm_callinfo.h
 pub const VM_CALL_ARGS_SPLAT:u32    = 1 << VM_CALL_ARGS_SPLAT_bit;
