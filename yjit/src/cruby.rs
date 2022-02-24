@@ -85,6 +85,10 @@
 use std::convert::From;
 use std::os::raw::{c_int, c_uint, c_long};
 
+// We check that we can do this with the configure script and a couple of
+// static asserts. u64 and not usize to play nice with lowering to x86.
+pub type size_t = u64;
+
 // Textually include output from rust-bindgen as suggested by its user guide.
 include!("cruby_bindings.inc.rs");
 

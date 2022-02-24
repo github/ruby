@@ -32,6 +32,12 @@ fn main() {
         // Don't want layout tests as they are platform dependent
         .layout_tests(false)
 
+        // Block for stability since output is different on Darwin and Linux
+        .blocklist_type("size_t")
+
+        // Prune these types since they are system dependant and we don't use them
+        .blocklist_type("__.*")
+
         // This struct is public to Ruby C extensions
         .allowlist_type("RBasic")
 
