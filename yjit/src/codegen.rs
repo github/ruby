@@ -1635,12 +1635,22 @@ fn gen_getlocal_wc0(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
 // Compute the index of a local variable from its slot index
 fn slot_to_local_idx(iseq: IseqPtr, slot_idx:i32) -> u32
 {
-    // Convoluted rules from local_var_name() in iseq.c
+    // Layout illustration
+    // This is an array of VALUE
+    //                                           | VM_ENV_DATA_SIZE |
+    //                                           v                  v
+    // low addr <+-------+-------+-------+-------+------------------+
+    //           |local 0|local 1|  ...  |local n|       ....       |
+    //           +-------+-------+-------+-------+------------------+
+    //           ^       ^                       ^                  ^
+    //           +-------+---local_table_size----+         cfp->ep--+
+    //                   |                                          |
+    //                   +------------------slot_idx----------------+
+    //
+    // See usages of local_var_name() from iseq.c for similar calculation.
+
     // Equivalent of iseq->body->local_table_size
-    let local_table_size:i32 = unsafe {
-        let val:i32 = get_iseq_body_local_table_size(iseq).try_into().unwrap();
-        val // return values from unsafe blocks don't pick up type inference from let bindings outside the block
-    };
+    let local_table_size:i32 = unsafe { get_iseq_body_local_table_size(iseq) }.try_into().unwrap();
     let op = slot_idx - (VM_ENV_DATA_SIZE as i32);
     let local_idx = local_table_size - op - 1;
     assert!(local_idx >= 0 && local_idx < local_table_size);
