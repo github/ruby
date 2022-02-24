@@ -18,9 +18,6 @@
 #include "yjit_codegen.h"
 #include "yjit_asm.h"
 
-// Map from YARV opcodes to code generation functions
-static codegen_fn gen_fns[VM_INSTRUCTION_SIZE] = { NULL };
-
 // Map from method entries to code generation functions
 static st_table *yjit_method_codegen_table = NULL;
 
@@ -165,28 +162,6 @@ _counted_side_exit(jitstate_t* jit, uint8_t *existing_side_exit, int64_t *counte
 #define COUNTED_EXIT(jit, side_exit, counter_name) side_exit
 
 #endif // if YJIT_STATS
-
-// Ensure that there is an exit for the start of the block being compiled.
-// Block invalidation uses this exit.
-static void
-jit_ensure_block_entry_exit(jitstate_t *jit)
-{
-    /*
-    block_t *block = jit->block;
-    if (block->entry_exit) return;
-
-    if (jit->insn_idx == block->blockid.idx) {
-        // We are compiling the first instruction in the block.
-        // Generate the exit with the cache in jitstate.
-        block->entry_exit = yjit_side_exit(jit, &block->ctx);
-    }
-    else {
-        VALUE *pc = yjit_iseq_pc_at_idx(block->blockid.iseq, block->blockid.idx);
-        uint32_t pos = yjit_gen_exit(pc, &block->ctx, ocb);
-        block->entry_exit = cb_get_ptr(ocb, pos);
-    }
-    */
-}
 
 static int tracing_invalidate_all_i(void *vstart, void *vend, size_t stride, void *data);
 static void invalidate_all_blocks_for_tracing(const rb_iseq_t *iseq);

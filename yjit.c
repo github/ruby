@@ -12,6 +12,13 @@
 #include "vm_sync.h"
 #include "yjit.h"
 
+// We need size_t to have a known size to simplify code generation and FFI.
+// TODO(alan): check this in configure.ac to fail fast on 32 bit platforms.
+STATIC_ASSERT(64b_size_t, SIZE_MAX == UINT64_MAX);
+// I don't know any C implementation that has uint64_t and puts padding bits
+// into size_t but the standard seems to allow it.
+STATIC_ASSERT(size_t_no_padding_bits, sizeof(size_t) == sizeof(uint64_t));
+
 #ifndef YJIT_CHECK_MODE
 # define YJIT_CHECK_MODE 0
 #endif

@@ -29,6 +29,11 @@ pub extern "C" fn rb_yjit_enabled_p() -> raw::c_int {
     YJIT_ENABLED.load(Ordering::Acquire).into()
 }
 
+/// Like rb_yjit_enabled_p, but for Rust code.
+pub fn is_yjit_enabled() -> bool {
+    YJIT_ENABLED.load(Ordering::Acquire)
+}
+
 /// On which invocation of the ISEQ to invoke YJIT?
 #[no_mangle]
 pub extern "C" fn rb_yjit_call_threshold() -> raw::c_uint {

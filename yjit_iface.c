@@ -42,6 +42,7 @@ static const rb_data_type_t yjit_block_type = {
     0, 0, RUBY_TYPED_FREE_IMMEDIATELY
 };
 
+/*
 // Verify that calling with cd on receiver goes to callee
 static void
 check_cfunc_dispatch(VALUE receiver, struct rb_callinfo *ci, void *callee, rb_callable_method_entry_t *compile_time_cme)
@@ -62,6 +63,7 @@ check_cfunc_dispatch(VALUE receiver, struct rb_callinfo *ci, void *callee, rb_ca
         rb_bug("yjit: output code calls wrong method");
     }
 }
+*/
 
 MJIT_FUNC_EXPORTED VALUE rb_hash_has_key(VALUE hash, VALUE key);
 
@@ -72,21 +74,6 @@ struct yjit_root_struct {
 
 // Hash table of BOP blocks
 static st_table *blocks_assuming_bops;
-
-static bool
-assume_bop_not_redefined(jitstate_t *jit, int redefined_flag, enum ruby_basic_operators bop)
-{
-    if (BASIC_OP_UNREDEFINED_P(bop, redefined_flag)) {
-        RUBY_ASSERT(blocks_assuming_bops);
-
-        jit_ensure_block_entry_exit(jit);
-        st_insert(blocks_assuming_bops, (st_data_t)jit->block, 0);
-        return true;
-    }
-    else {
-        return false;
-    }
-}
 
 // Map klass => id_table[mid, set of blocks]
 // While a block `b` is in the table, b->callee_cme == rb_callable_method_entry(klass, mid).
@@ -103,115 +90,9 @@ struct lookup_dependency_insertion {
 // See assume_method_lookup_stable()
 static st_table *cme_validity_dependency;
 
-static int
-add_cme_validity_dependency_i(st_data_t *key, st_data_t *value, st_data_t new_block, int existing)
-{
-    st_table *block_set;
-    if (existing) {
-        block_set = (st_table *)*value;
-    }
-    else {
-        // Make the set and put it into cme_validity_dependency
-        block_set = st_init_numtable();
-        *value = (st_data_t)block_set;
-    }
-
-    // Put block into set
-    st_insert(block_set, new_block, 1);
-
-    return ST_CONTINUE;
-}
-
-static int
-add_lookup_dependency_i(st_data_t *key, st_data_t *value, st_data_t data, int existing)
-{
-    struct lookup_dependency_insertion *info = (void *)data;
-
-    // Find or make an id table
-    struct rb_id_table *id2blocks;
-    if (existing) {
-        id2blocks = (void *)*value;
-    }
-    else {
-        // Make an id table and put it into the st_table
-        id2blocks = rb_id_table_create(1);
-        *value = (st_data_t)id2blocks;
-    }
-
-    // Find or make a block set
-    st_table *block_set;
-    {
-        VALUE blocks;
-        if (rb_id_table_lookup(id2blocks, info->mid, &blocks)) {
-            // Take existing set
-            block_set = (st_table *)blocks;
-        }
-        else {
-            // Make new block set and put it into the id table
-            block_set = st_init_numtable();
-            rb_id_table_insert(id2blocks, info->mid, (VALUE)block_set);
-        }
-    }
-
-    st_insert(block_set, (st_data_t)info->block, 1);
-
-    return ST_CONTINUE;
-}
-
-// Remember that a block assumes that
-// `rb_callable_method_entry(receiver_klass, cme->called_id) == cme` and that
-// `cme` is valid.
-// When either of these assumptions becomes invalid, rb_yjit_method_lookup_change() or
-// rb_yjit_cme_invalidate() invalidates the block.
-//
-// @raise NoMemoryError
-static void
-assume_method_lookup_stable(VALUE receiver_klass, const rb_callable_method_entry_t *cme, jitstate_t *jit)
-{
-    RUBY_ASSERT(cme_validity_dependency);
-    RUBY_ASSERT(method_lookup_dependency);
-    RUBY_ASSERT(rb_callable_method_entry(receiver_klass, cme->called_id) == cme);
-    RUBY_ASSERT_ALWAYS(RB_TYPE_P(receiver_klass, T_CLASS) || RB_TYPE_P(receiver_klass, T_ICLASS));
-    RUBY_ASSERT_ALWAYS(!rb_objspace_garbage_object_p(receiver_klass));
-
-    jit_ensure_block_entry_exit(jit);
-
-    block_t *block = jit->block;
-
-    cme_dependency_t cme_dep = { receiver_klass, (VALUE)cme };
-    rb_darray_append(&block->cme_dependencies, cme_dep);
-
-    st_update(cme_validity_dependency, (st_data_t)cme, add_cme_validity_dependency_i, (st_data_t)block);
-
-    struct lookup_dependency_insertion info = { block, cme->called_id };
-    st_update(method_lookup_dependency, (st_data_t)receiver_klass, add_lookup_dependency_i, (st_data_t)&info);
-}
-
 static st_table *blocks_assuming_single_ractor_mode;
 
-// Can raise NoMemoryError.
-RBIMPL_ATTR_NODISCARD()
-static bool
-assume_single_ractor_mode(jitstate_t *jit)
-{
-    if (rb_multi_ractor_p()) return false;
-
-    jit_ensure_block_entry_exit(jit);
-
-    st_insert(blocks_assuming_single_ractor_mode, (st_data_t)jit->block, 1);
-    return true;
-}
-
 static st_table *blocks_assuming_stable_global_constant_state;
-
-// Assume that the global constant state has not changed since call to this function.
-// Can raise NoMemoryError.
-static void
-assume_stable_global_constant_state(jitstate_t *jit)
-{
-    jit_ensure_block_entry_exit(jit);
-    st_insert(blocks_assuming_stable_global_constant_state, (st_data_t)jit->block, 1);
-}
 
 static int
 mark_and_pin_keys_i(st_data_t k, st_data_t v, st_data_t ignore)
@@ -355,66 +236,23 @@ rb_yjit_invalidate_all_method_lookup_assumptions(void)
     // method caches, so we do nothing here for now.
 }
 
-// Remove a block from the method lookup dependency table
-static void
-remove_method_lookup_dependency(block_t *block, VALUE receiver_klass, const rb_callable_method_entry_t *callee_cme)
-{
-    RUBY_ASSERT(receiver_klass);
-    RUBY_ASSERT(callee_cme); // callee_cme should be set when receiver_klass is set
-
-    st_data_t image;
-    st_data_t key = (st_data_t)receiver_klass;
-    if (st_lookup(method_lookup_dependency, key, &image)) {
-        struct rb_id_table *id2blocks = (void *)image;
-        ID mid = callee_cme->called_id;
-
-        // Find block set
-        VALUE blocks;
-        if (rb_id_table_lookup(id2blocks, mid, &blocks)) {
-            st_table *block_set = (st_table *)blocks;
-
-            // Remove block from block set
-            st_data_t block_as_st_data = (st_data_t)block;
-            (void)st_delete(block_set, &block_as_st_data, NULL);
-
-            if (block_set->num_entries == 0) {
-                // Block set now empty. Remove from id table.
-                rb_id_table_delete(id2blocks, mid);
-                st_free_table(block_set);
-            }
-        }
-    }
-}
-
-// Remove a block from cme_validity_dependency
-static void
-remove_cme_validity_dependency(block_t *block, const rb_callable_method_entry_t *callee_cme)
-{
-    RUBY_ASSERT(callee_cme);
-
-    st_data_t blocks;
-    if (st_lookup(cme_validity_dependency, (st_data_t)callee_cme, &blocks)) {
-        st_table *block_set = (st_table *)blocks;
-
-        st_data_t block_as_st_data = (st_data_t)block;
-        (void)st_delete(block_set, &block_as_st_data, NULL);
-    }
-}
-
 static void
 yjit_unlink_method_lookup_dependency(block_t *block)
 {
+    /*
     cme_dependency_t *cme_dep;
     rb_darray_foreach(block->cme_dependencies, cme_dependency_idx, cme_dep) {
         remove_method_lookup_dependency(block, cme_dep->receiver_klass, (const rb_callable_method_entry_t *)cme_dep->callee_cme);
         remove_cme_validity_dependency(block, (const rb_callable_method_entry_t *)cme_dep->callee_cme);
     }
     rb_darray_free(block->cme_dependencies);
+    */
 }
 
 static void
 yjit_block_assumptions_free(block_t *block)
 {
+    /*
     st_data_t as_st_data = (st_data_t)block;
     if (blocks_assuming_stable_global_constant_state) {
         st_delete(blocks_assuming_stable_global_constant_state, &as_st_data, NULL);
@@ -427,8 +265,10 @@ yjit_block_assumptions_free(block_t *block)
     if (blocks_assuming_bops) {
         st_delete(blocks_assuming_bops, &as_st_data, NULL);
     }
+    */
 }
 
+// Pointer to a YJIT entry point (machine code generated by YJIT)
 typedef VALUE (*yjit_func_t)(rb_execution_context_t *, rb_control_frame_t *);
 
 bool
@@ -454,12 +294,8 @@ rb_yjit_compile_iseq(const rb_iseq_t *iseq, rb_execution_context_t *ec)
     return success;
 }
 
-struct yjit_block_itr {
-    const rb_iseq_t *iseq;
-    VALUE list;
-};
-
 /* Get a list of the YJIT blocks associated with `rb_iseq` */
+/*
 static VALUE
 yjit_blocks_for(VALUE mod, VALUE rb_iseq)
 {
@@ -484,8 +320,10 @@ yjit_blocks_for(VALUE mod, VALUE rb_iseq)
 
     return all_versions;
 }
+*/
 
 /* Get the address of the code associated with a YJIT::Block */
+/*
 static VALUE
 block_address(VALUE self)
 {
@@ -493,8 +331,10 @@ block_address(VALUE self)
     TypedData_Get_Struct(self, block_t, &yjit_block_type, block);
     return LONG2NUM((intptr_t)block->start_addr);
 }
+*/
 
 /* Get the machine code for YJIT::Block as a binary string */
+/*
 static VALUE
 block_code(VALUE self)
 {
@@ -506,9 +346,11 @@ block_code(VALUE self)
         block->end_addr - block->start_addr
     );
 }
+*/
 
 /* Get the start index in the Instruction Sequence that corresponds to this
  * YJIT::Block */
+/*
 static VALUE
 iseq_start_index(VALUE self)
 {
@@ -517,9 +359,11 @@ iseq_start_index(VALUE self)
 
     return INT2NUM(block->blockid.idx);
 }
+*/
 
 /* Get the end index in the Instruction Sequence that corresponds to this
  * YJIT::Block */
+/*
 static VALUE
 iseq_end_index(VALUE self)
 {
@@ -528,6 +372,7 @@ iseq_end_index(VALUE self)
 
     return INT2NUM(block->end_idx);
 }
+*/
 
 /* Called when a basic operation is redefined */
 void
@@ -620,6 +465,7 @@ rb_yjit_constant_ic_update(const rb_iseq_t *const iseq, IC ic)
 void
 rb_yjit_before_ractor_spawn(void)
 {
+    /*
     if (blocks_assuming_single_ractor_mode) {
 #if YJIT_STATS
         yjit_runtime_counters.invalidate_ractor_spawn += blocks_assuming_single_ractor_mode->num_entries;
@@ -627,6 +473,7 @@ rb_yjit_before_ractor_spawn(void)
 
         st_foreach(blocks_assuming_single_ractor_mode, block_set_invalidate_i, 0);
     }
+    */
 }
 
 #ifdef HAVE_LIBCAPSTONE
@@ -711,6 +558,10 @@ yjit_stats_enabled_p(rb_execution_context_t *ec, VALUE self)
 static VALUE
 get_yjit_stats(rb_execution_context_t *ec, VALUE self)
 {
+    // TODO: take VM lock and call into Rust code
+    return Qnil;
+
+    /*
     // Return Qnil if YJIT isn't enabled
     if (cb == NULL) {
         return Qnil;
@@ -786,6 +637,7 @@ get_yjit_stats(rb_execution_context_t *ec, VALUE self)
     RB_VM_LOCK_LEAVE();
 
     return hash;
+    */
 }
 
 // Primitive called in yjit.rb. Zero out all the counters.
@@ -826,6 +678,7 @@ yjit_count_side_exit_op(const VALUE *exit_pc)
 void
 rb_yjit_iseq_mark(const struct rb_iseq_constant_body *body)
 {
+    /*
     rb_darray_for(body->yjit_blocks, version_array_idx) {
         rb_yjit_block_array_t version_array = rb_darray_get(body->yjit_blocks, version_array_idx);
 
@@ -860,11 +713,13 @@ rb_yjit_iseq_mark(const struct rb_iseq_constant_body *body)
             }
         }
     }
+    */
 }
 
 void
 rb_yjit_iseq_update_references(const struct rb_iseq_constant_body *body)
 {
+    /*
     rb_vm_barrier();
 
     rb_darray_for(body->yjit_blocks, version_array_idx) {
@@ -911,7 +766,7 @@ rb_yjit_iseq_update_references(const struct rb_iseq_constant_body *body)
         }
     }
 
-    /* If YJIT isn't initialized, then cb or ocb could be NULL. */
+    // If YJIT isn't initialized, then cb or ocb could be NULL.
     if (cb) {
         cb_mark_all_executable(cb);
     }
@@ -919,12 +774,14 @@ rb_yjit_iseq_update_references(const struct rb_iseq_constant_body *body)
     if (ocb) {
         cb_mark_all_executable(ocb);
     }
+    */
 }
 
 // Free the yjit resources associated with an iseq
 void
 rb_yjit_iseq_free(const struct rb_iseq_constant_body *body)
 {
+    /*
     rb_darray_for(body->yjit_blocks, version_array_idx) {
         rb_yjit_block_array_t version_array = rb_darray_get(body->yjit_blocks, version_array_idx);
 
@@ -937,9 +794,8 @@ rb_yjit_iseq_free(const struct rb_iseq_constant_body *body)
     }
 
     rb_darray_free(body->yjit_blocks);
+    */
 }
-
-#define PTR2NUM(x)   (LONG2NUM((long)(x)))
 
 /**
  *  call-seq: block.id -> unique_id
@@ -949,6 +805,7 @@ rb_yjit_iseq_free(const struct rb_iseq_constant_body *body)
  *      blocks = blocks_for(iseq)
  *      blocks.group_by(&:id)
  */
+/*
 static VALUE
 block_id(VALUE self)
 {
@@ -956,6 +813,7 @@ block_id(VALUE self)
     TypedData_Get_Struct(self, block_t, &yjit_block_type, block);
     return PTR2NUM(block);
 }
+*/
 
 /**
  *  call-seq: block.outgoing_ids -> list
@@ -963,6 +821,7 @@ block_id(VALUE self)
  *  Returns a list of outgoing ids for the current block.  This list can be used
  *  in conjunction with Block#id to construct a graph of block objects.
  */
+/*
 static VALUE
 outgoing_ids(VALUE self)
 {
@@ -987,6 +846,7 @@ outgoing_ids(VALUE self)
 
     return ids;
 }
+*/
 
 // Can raise RuntimeError
 void
@@ -1010,9 +870,6 @@ rb_yjit_init(struct rb_yjit_options *options)
 
 
     /*
-    rb_yjit_opts = *options;
-    rb_yjit_opts.yjit_enabled = true;
-
     rb_yjit_opts.gen_stats = rb_yjit_opts.gen_stats || getenv("RUBY_YJIT_STATS");
 
 #if !YJIT_STATS
@@ -1020,22 +877,6 @@ rb_yjit_init(struct rb_yjit_options *options)
         rb_warning("--yjit-stats requires that Ruby is compiled with CPPFLAGS='-DYJIT_STATS=1' or CPPFLAGS='-DRUBY_DEBUG=1'");
     }
 #endif
-
-    // Normalize command-line options to default values
-    if (rb_yjit_opts.exec_mem_size < 1) {
-        rb_yjit_opts.exec_mem_size = 256;
-    }
-    if (rb_yjit_opts.call_threshold < 1) {
-        rb_yjit_opts.call_threshold = YJIT_DEFAULT_CALL_THRESHOLD;
-    }
-    if (rb_yjit_opts.max_versions < 1) {
-        rb_yjit_opts.max_versions = 4;
-    }
-
-    // If type propagation is disabled, max 1 version per block
-    if (rb_yjit_opts.no_type_prop) {
-        rb_yjit_opts.max_versions = 1;
-    }
 
     blocks_assuming_stable_global_constant_state = st_init_numtable();
     blocks_assuming_single_ractor_mode = st_init_numtable();
@@ -1068,17 +909,9 @@ rb_yjit_init(struct rb_yjit_options *options)
 #endif
 #endif
 
-    // Make dependency tables
-    method_lookup_dependency = st_init_numtable();
-    cme_validity_dependency = st_init_numtable();
-
     // Initialize the GC hooks
     struct yjit_root_struct *root;
     VALUE yjit_root = TypedData_Make_Struct(0, struct yjit_root_struct, &yjit_root_type, root);
     rb_gc_register_mark_object(yjit_root);
     */
-
-
-
-
 }

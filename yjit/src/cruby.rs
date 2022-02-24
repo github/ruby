@@ -85,6 +85,10 @@
 use std::convert::From;
 use std::os::raw::{c_int, c_uint, c_long};
 
+// We check that we can do this with the configure script and a couple of
+// static asserts. u64 and not usize to play nice with lowering to x86.
+pub type size_t = u64;
+
 // Textually include output from rust-bindgen as suggested by its user guide.
 include!("cruby_bindings.inc.rs");
 
@@ -278,10 +282,15 @@ pub struct rb_callable_method_entry_t {
     core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
 
-/// Pointer to a control frame pointer (CFP)
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(C)]
-pub struct CfpPtr(pub usize);
+pub struct rb_control_frame_struct {
+    _data: [u8; 0],
+    _marker:
+    core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
+}
+
+/// Pointer to a control frame pointer (CFP)
+pub type CfpPtr = *mut rb_control_frame_struct;
 
 impl VALUE {
     // Return whether the value is truthy or falsy in Ruby -- only nil and false are falsy.
@@ -436,7 +445,6 @@ pub const VM_SPECIAL_OBJECT_VMCORE:usize = 0x1;
 pub const VM_ENV_DATA_INDEX_SPECVAL:isize = -1;
 pub const VM_ENV_DATA_INDEX_FLAGS:isize = 0;
 pub const VM_ENV_DATA_SIZE:usize = 3;
-pub const VM_ENV_FLAG_WB_REQUIRED:usize = 0x008;
 
 // From vm_callinfo.h
 pub const VM_CALL_ARGS_SPLAT:u32    = 1 << VM_CALL_ARGS_SPLAT_bit;

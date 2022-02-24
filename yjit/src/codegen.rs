@@ -434,7 +434,7 @@ fn gen_exit(exit_pc: *mut VALUE, ctx: &Context, cb: &mut CodeBlock) -> CodePtr
     }
 
     // Update CFP->PC
-    //mov(cb, RAX, const_ptr_opnd(exit_pc as *const u8));
+    mov(cb, RAX, const_ptr_opnd(exit_pc as *const u8));
     mov(cb, mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_PC), RAX);
 
     // Accumulate stats about interpreter exits
@@ -705,7 +705,7 @@ fn gen_check_ints(cb: &mut CodeBlock, side_exit: CodePtr)
 
 // Generate a stubbed unconditional jump to the next bytecode instruction.
 // Blocks that are part of a guard chain can use this to share the same successor.
-fn jit_jump_to_next_insn(jit: &mut JITState, current_context: &Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb)
+fn jump_to_next_insn(jit: &mut JITState, current_context: &Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb)
 {
     // Reset the depth since in current usages we only ever jump to to
     // chain_depth > 0 from the same instruction.
@@ -767,7 +767,7 @@ pub fn gen_single_block(blockref: &BlockRef, ec: EcPtr, cb: &mut CodeBlock, ocb:
         // opt_getinlinecache wants to be in a block all on its own. Cut the block short
         // if we run into it. See gen_opt_getinlinecache() for details.
         if opcode == OP_OPT_GETINLINECACHE && insn_idx > starting_insn_idx {
-            jit_jump_to_next_insn(&mut jit, &ctx, cb, ocb);
+            jump_to_next_insn(&mut jit, &ctx, cb, ocb);
             break
         }
 
@@ -808,7 +808,7 @@ pub fn gen_single_block(blockref: &BlockRef, ec: EcPtr, cb: &mut CodeBlock, ocb:
             // Call the code generation function
             status = gen_fn(&mut jit, &mut ctx, cb, ocb);
         }
-        dbg!(&status, opcode);
+        //dbg!(&status, opcode);
 
         // If we can't compile this instruction
         // exit to the interpreter and stop compiling
@@ -1746,7 +1746,7 @@ fn gen_setlocal_generic(jit:&mut JITState, ctx: &mut Context, cb: &mut CodeBlock
 
     // flags & VM_ENV_FLAG_WB_REQUIRED
     let flags_opnd = mem_opnd(64, REG0, SIZEOF_VALUE as i32 * VM_ENV_DATA_INDEX_FLAGS as i32);
-    test(cb, flags_opnd, imm_opnd(VM_ENV_FLAG_WB_REQUIRED as i64));
+    test(cb, flags_opnd, uimm_opnd(VM_ENV_FLAG_WB_REQUIRED.into()));
 
     // Create a side-exit to fall back to the interpreter
     let side_exit = get_side_exit(jit, ocb, ctx);
@@ -2004,7 +2004,7 @@ fn gen_get_ivar(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         mov(cb, out_opnd, RAX);
 
         // Jump to next instruction. This allows guard chains to share the same successor.
-        jit_jump_to_next_insn(jit, ctx, cb, ocb);
+        jump_to_next_insn(jit, ctx, cb, ocb);
         return EndBlock;
     }
 
@@ -2100,7 +2100,7 @@ fn gen_get_ivar(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
     }
 
     // Jump to next instruction. This allows guard chains to share the same successor.
-    jit_jump_to_next_insn(jit, ctx, cb, ocb);
+    jump_to_next_insn(jit, ctx, cb, ocb);
     EndBlock
 }
 
@@ -2486,7 +2486,7 @@ fn gen_opt_eq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &m
     let side_exit = get_side_exit(jit, ocb, ctx);
 
     if gen_equality_specialized(jit, ctx, cb, side_exit) {
-        jit_jump_to_next_insn(jit, ctx, cb, ocb);
+        jump_to_next_insn(jit, ctx, cb, ocb);
         EndBlock
     }
     else {
@@ -2577,7 +2577,7 @@ fn gen_opt_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         }
 
         // Jump to next instruction. This allows guard chains to share the same successor.
-        jit_jump_to_next_insn(jit, ctx);
+        jump_to_next_insn(jit, ctx);
         return EndBlock;
     }
     else if (CLASS_OF(comptime_recv) == rb_cHash) {
@@ -2609,7 +2609,7 @@ fn gen_opt_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         mov(cb, stack_ret, RAX);
 
         // Jump to next instruction. This allows guard chains to share the same successor.
-        jit_jump_to_next_insn(jit, ctx);
+        jump_to_next_insn(jit, ctx);
         EndBlock
     }
     else {
@@ -2665,7 +2665,7 @@ fn gen_opt_aset(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         let stack_ret = ctx.stack_push(Type::Unknown);
         mov(cb, stack_ret, REG0);
 
-        jit_jump_to_next_insn(jit, ctx);
+        jump_to_next_insn(jit, ctx);
         return EndBlock;
     }
     else if (CLASS_OF(comptime_recv) == rb_cHash) {
@@ -2690,7 +2690,7 @@ fn gen_opt_aset(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         let stack_ret = ctx.stack_push(Type::Unknown);
         mov(cb, stack_ret, RAX);
 
-        jit_jump_to_next_insn(jit, ctx);
+        jump_to_next_insn(jit, ctx);
         EndBlock
     }
     else {
@@ -3534,7 +3534,7 @@ fn gen_send_cfunc(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: *
             if (known_cfunc_codegen(jit, ctx, ci, cme, block, argc, recv_known_klass)) {
                 // cfunc codegen generated code. Terminate the block so
                 // there isn't multiple calls in the same block.
-                jit_jump_to_next_insn(jit, ctx);
+                jump_to_next_insn(jit, ctx);
                 return EndBlock;
             }
         }
@@ -3700,7 +3700,7 @@ fn gen_send_cfunc(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: *
 
     // Jump (fall through) to the call continuation block
     // We do this to end the current block after the call
-    jit_jump_to_next_insn(jit, ctx);
+    jump_to_next_insn(jit, ctx);
     EndBlock
     */
 }
@@ -4257,7 +4257,7 @@ fn gen_struct_aref(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, co
     let ret = ctx.stack_push(Type::Unknown);
     mov(cb, ret, REG0);
 
-    jit_jump_to_next_insn(jit, ctx);
+    jump_to_next_insn(jit, ctx);
     EndBlock
 }
 
@@ -4285,7 +4285,7 @@ fn gen_struct_aset(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, co
     let ret = ctx.stack_push(Type::Unknown);
     mov(cb, ret, RAX);
 
-    jit_jump_to_next_insn(jit, ctx);
+    jump_to_next_insn(jit, ctx);
     EndBlock
 }
 */
@@ -5100,111 +5100,6 @@ fn gen_opt_invokebuiltin_delegate(jit: &mut JITState, ctx: &mut Context, cb: &mu
 
     KeepCompiling
 }
-
-// Invalidate all generated code and patch C method return code to contain
-// logic for firing the c_return TracePoint event. Once rb_vm_barrier()
-// returns, all other ractors are pausing inside RB_VM_LOCK_ENTER(), which
-// means they are inside a C routine. If there are any generated code on-stack,
-// they are waiting for a return from a C routine. For every routine call, we
-// patch in an exit after the body of the containing VM instruction. This makes
-// it so all the invalidated code exit as soon as execution logically reaches
-// the next VM instruction. The interpreter takes care of firing the tracing
-// event if it so happens that the next VM instruction has one attached.
-//
-// The c_return event needs special handling as our codegen never outputs code
-// that contains tracing logic. If we let the normal output code run until the
-// start of the next VM instruction by relying on the patching scheme above, we
-// would fail to fire the c_return event. The interpreter doesn't fire the
-// event at an instruction boundary, so simply exiting to the interpreter isn't
-// enough. To handle it, we patch in the full logic at the return address. See
-// full_cfunc_return().
-//
-// In addition to patching, we prevent future entries into invalidated code by
-// removing all live blocks from their iseq.
-void
-rb_yjit_tracing_invalidate_all(void)
-{
-    if (!rb_yjit_enabled_p()) return;
-
-    // Stop other ractors since we are going to patch machine code.
-    RB_VM_LOCK_ENTER();
-    rb_vm_barrier();
-
-    // Make it so all live block versions are no longer valid branch targets
-    rb_objspace_each_objects(tracing_invalidate_all_i, NULL);
-
-    // Apply patches
-    const uint32_t old_pos = cb->write_pos;
-    rb_darray_for(global_inval_patches, patch_idx) {
-        struct codepage_patch patch = rb_darray_get(global_inval_patches, patch_idx);
-        cb.set_pos(patch.inline_patch_pos);
-        uint8_t *jump_target = cb_get_ptr(ocb, patch.outlined_target_pos);
-        jmp_ptr(cb, jump_target);
-    }
-    cb.set_pos(old_pos);
-
-    // Freeze invalidated part of the codepage. We only want to wait for
-    // running instances of the code to exit from now on, so we shouldn't
-    // change the code. There could be other ractors sleeping in
-    // branch_stub_hit(), for example. We could harden this by changing memory
-    // protection on the frozen range.
-    RUBY_ASSERT_ALWAYS(yjit_codepage_frozen_bytes <= old_pos && "frozen bytes should increase monotonically");
-    yjit_codepage_frozen_bytes = old_pos;
-
-    cb_mark_all_executable(ocb);
-    cb_mark_all_executable(cb);
-    RB_VM_LOCK_LEAVE();
-}
-
-static int
-tracing_invalidate_all_i(void *vstart, void *vend, size_t stride, void *data)
-{
-    VALUE v = (VALUE)vstart;
-    for (; v != (VALUE)vend; v += stride) {
-        void *ptr = asan_poisoned_object_p(v);
-        asan_unpoison_object(v, false);
-
-        if (rb_obj_is_iseq(v)) {
-            rb_iseq_t *iseq = (rb_iseq_t *)v;
-            invalidate_all_blocks_for_tracing(iseq);
-        }
-
-        asan_poison_object_if(ptr, v);
-    }
-    return 0;
-}
-
-static void
-invalidate_all_blocks_for_tracing(const rb_iseq_t *iseq)
-{
-    struct rb_iseq_constant_body *body = iseq->body;
-    if (!body) return; // iseq yet to be initialized
-
-    ASSERT_vm_locking();
-
-    // Empty all blocks on the iseq so we don't compile new blocks that jump to the
-    // invalidted region.
-    // TODO Leaking the blocks for now since we might have situations where
-    // a different ractor is waiting in branch_stub_hit(). If we free the block
-    // that ractor can wake up with a dangling block.
-    rb_darray_for(body->yjit_blocks, version_array_idx) {
-        rb_yjit_block_array_t version_array = rb_darray_get(body->yjit_blocks, version_array_idx);
-        rb_darray_for(version_array, version_idx) {
-            // Stop listening for invalidation events like basic operation redefinition.
-            block_t *block = rb_darray_get(version_array, version_idx);
-            yjit_unlink_method_lookup_dependency(block);
-            yjit_block_assumptions_free(block);
-        }
-        rb_darray_free(version_array);
-    }
-    rb_darray_free(body->yjit_blocks);
-    body->yjit_blocks = NULL;
-
-#if USE_MJIT
-    // Reset output code entry point
-    body->jit_func = NULL;
-#endif
-}
 */
 
 
@@ -5401,7 +5296,7 @@ impl CodegenGlobals {
         // In test mode we're not linking with the C code
         // so we don't allocate executable memory
         #[cfg(test)]
-        let mut cb = CodeBlock::new_dummy(mem_size / 2);       
+        let mut cb = CodeBlock::new_dummy(mem_size / 2);
         #[cfg(test)]
         let mut ocb = OutlinedCb::wrap(CodeBlock::new_dummy(mem_size / 2));
 

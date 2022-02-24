@@ -211,7 +211,7 @@ pub struct BlockId
 pub const BLOCKID_NULL: BlockId = BlockId { iseq: ptr::null(), idx: 0 };
 
 /// Branch code shape enumeration
-#[derive(PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum BranchShape
 {
     Next0,  // Target 0 is next
@@ -1138,42 +1138,46 @@ pub fn gen_entry_point(iseq: IseqPtr, insn_idx: u32, ec: EcPtr) -> Option<CodePt
 // Generate code for a branch, possibly rewriting and changing the size of it
 fn regenerate_branch(cb: &mut CodeBlock, branch: &mut Branch)
 {
+    // FIXME
     /*
     if (branch->start_addr < cb_get_ptr(cb, yjit_codepage_frozen_bytes)) {
         // Generating this branch would modify frozen bytes. Do nothing.
         return;
     }
+    */
 
-    const uint32_t old_write_pos = cb->write_pos;
-    const bool branch_terminates_block = branch->end_addr == branch->block->end_addr;
+    let old_write_pos = cb.get_write_pos();
 
-    RUBY_ASSERT(branch->dst_addrs[0] != NULL);
+    let mut block = branch.block.borrow_mut();
+    let branch_terminates_block = branch.end_addr == block.end_addr;
 
-    cb_set_write_ptr(cb, branch->start_addr);
-    branch->gen_fn(cb, branch->dst_addrs[0], branch->dst_addrs[1], branch->shape);
-    branch->end_addr = cb.get_write_ptr();
+    // Rewrite the branch
+    assert!(branch.dst_addrs[0].is_some());
+    cb.set_write_ptr(branch.start_addr.unwrap());
+    (branch.gen_fn)(cb, branch.dst_addrs[0].unwrap(), branch.dst_addrs[1], branch.shape);
+    branch.end_addr = Some(cb.get_write_ptr());
 
-    if (branch_terminates_block) {
+    // The block may have shrunk after the branch is rewritten
+    if branch_terminates_block {
         // Adjust block size
-        branch->block->end_addr = branch->end_addr;
+        block.end_addr = branch.end_addr;
     }
 
-    // cb->write_pos is both a write cursor and a marker for the end of
+    // cb.write_pos is both a write cursor and a marker for the end of
     // everything written out so far. Leave cb->write_pos at the end of the
     // block before returning. This function only ever bump or retain the end
     // of block marker since that's what the majority of callers want. When the
     // branch sits at the very end of the codeblock and it shrinks after
     // regeneration, it's up to the caller to drop bytes off the end to
     // not leave a gap and implement branch->shape.
-    if (old_write_pos > cb->write_pos) {
+    if old_write_pos > cb.get_write_pos() {
         // We rewound cb->write_pos to generate the branch, now restore it.
-        cb_set_pos(cb, old_write_pos);
+        cb.set_pos(old_write_pos);
     }
     else {
         // The branch sits at the end of cb and consumed some memory.
-        // Keep cb->write_pos.
+        // Keep cb.write_pos.
     }
-    */
 }
 
 // Create a new outgoing branch entry for a block

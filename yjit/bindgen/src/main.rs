@@ -32,6 +32,12 @@ fn main() {
         // Don't want layout tests as they are platform dependent
         .layout_tests(false)
 
+        // Block for stability since output is different on Darwin and Linux
+        .blocklist_type("size_t")
+
+        // Prune these types since they are system dependant and we don't use them
+        .blocklist_type("__.*")
+
         // This struct is public to Ruby C extensions
         .allowlist_type("RBasic")
 
@@ -98,6 +104,8 @@ fn main() {
         .allowlist_function("rb_yjit_mark_writable")
         .allowlist_function("rb_yjit_mark_executable")
         .allowlist_function("rb_yjit_get_page_size")
+
+        .allowlist_var("VM_ENV_FLAG_.*")
 
         // We define VALUE manually
         .blocklist_type("VALUE")
