@@ -13,13 +13,11 @@
 // Filled by gen_code_for_exit_from_stub().
 static uint8_t *code_for_exit_from_stub = NULL;
 
-static void yjit_free_block(block_t *block);
-
+/*
 // Remove all references to a block then free it.
 static void
 yjit_free_block(block_t *block)
 {
-    /*
     yjit_unlink_method_lookup_dependency(block);
     yjit_block_assumptions_free(block);
 
@@ -66,8 +64,8 @@ yjit_free_block(block_t *block)
     rb_darray_free(block->gc_object_offsets);
 
     free(block);
-    */
 }
+*/
 
 // Invalidate one specific block version
 static void
