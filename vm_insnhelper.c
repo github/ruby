@@ -1108,7 +1108,7 @@ fill_ivar_cache(const rb_iseq_t *iseq, IVC ic, const struct rb_callcache *cc, in
         RB_OBJ_WRITTEN(iseq, Qundef, ent->class_value);
     }
     else {
-        vm_cc_attr_index_set(cc, (int)ent->index + 1);
+        vm_cc_attr_index_set(cc, ent->index);
     }
 }
 
@@ -1123,10 +1123,10 @@ vm_getivar(VALUE obj, ID id, const rb_iseq_t *iseq, IVC ic, const struct rb_call
         // frozen?
     }
     else if (LIKELY(is_attr ?
-                    RB_DEBUG_COUNTER_INC_UNLESS(ivar_get_ic_miss_unset, vm_cc_attr_index(cc) > 0) :
+                    RB_DEBUG_COUNTER_INC_UNLESS(ivar_get_ic_miss_unset, vm_cc_attr_index_p(cc)) :
                     RB_DEBUG_COUNTER_INC_UNLESS(ivar_get_ic_miss_serial,
                                                 ic->entry && ic->entry->class_serial == RCLASS_SERIAL(RBASIC(obj)->klass)))) {
-        uint32_t index = !is_attr ? ic->entry->index : (vm_cc_attr_index(cc) - 1);
+        uint32_t index = !is_attr ? ic->entry->index: (vm_cc_attr_index(cc));
 
         RB_DEBUG_COUNTER_INC(ivar_get_ic_hit);
 
@@ -1215,7 +1215,7 @@ vm_setivar_slowpath(VALUE obj, ID id, VALUE val, const rb_iseq_t *iseq, IVC ic, 
                 rb_raise(rb_eArgError, "too many instance variables");
             }
             else {
-                vm_cc_attr_index_set(cc, (int)(ent->index + 1));
+                vm_cc_attr_index_set(cc, (int)(ent->index));
             }
 
             uint32_t index = ent->index;
@@ -1258,8 +1258,8 @@ vm_setivar(VALUE obj, ID id, VALUE val, const rb_iseq_t *iseq, IVC ic, const str
 
 	if (LIKELY(
 	    (!is_attr && RB_DEBUG_COUNTER_INC_UNLESS(ivar_set_ic_miss_serial, ic->entry && ic->entry->class_serial  == RCLASS_SERIAL(RBASIC(obj)->klass))) ||
-            ( is_attr && RB_DEBUG_COUNTER_INC_UNLESS(ivar_set_ic_miss_unset, vm_cc_attr_index(cc) > 0)))) {
-            uint32_t index = !is_attr ? ic->entry->index : vm_cc_attr_index(cc)-1;
+            ( is_attr && RB_DEBUG_COUNTER_INC_UNLESS(ivar_set_ic_miss_unset, vm_cc_attr_index_p(cc))))) {
+            uint32_t index = !is_attr ? ic->entry->index : vm_cc_attr_index(cc);
 
             if (UNLIKELY(index >= ROBJECT_NUMIV(obj))) {
                 rb_init_iv_list(obj);
@@ -1320,7 +1320,9 @@ vm_getclassvariable(const rb_iseq_t *iseq, const rb_control_frame_t *reg_cfp, ID
         VALUE v = Qundef;
         RB_DEBUG_COUNTER_INC(cvar_read_inline_hit);
 
-        if (st_lookup(RCLASS_IV_TBL(ic->entry->class_value), (st_data_t)id, &v)) {
+        if (st_lookup(RCLASS_IV_TBL(ic->entry->class_value), (st_data_t)id, &v) &&
+            LIKELY(rb_ractor_main_p())) {
+
             return v;
         }
     }
@@ -1766,7 +1768,7 @@ vm_ccs_verify(struct rb_class_cc_entries *ccs, ID mid, VALUE klass)
 
 #ifndef MJIT_HEADER
 
-static const rb_callable_method_entry_t *overloaded_cme(const rb_callable_method_entry_t *cme);
+static const rb_callable_method_entry_t *check_overloaded_cme(const rb_callable_method_entry_t *cme, const struct rb_callinfo * const ci);
 
 static const struct rb_callcache *
 vm_search_cc(const VALUE klass, const struct rb_callinfo * const ci)
@@ -1780,7 +1782,6 @@ vm_search_cc(const VALUE klass, const struct rb_callinfo * const ci)
         if (rb_id_table_lookup(cc_tbl, mid, &ccs_data)) {
             ccs = (struct rb_class_cc_entries *)ccs_data;
             const int ccs_len = ccs->len;
-            VM_ASSERT(vm_ccs_verify(ccs, mid, klass));
 
             if (UNLIKELY(METHOD_ENTRY_INVALIDATED(ccs->cme))) {
                 rb_vm_ccs_free(ccs);
@@ -1788,6 +1789,8 @@ vm_search_cc(const VALUE klass, const struct rb_callinfo * const ci)
                 ccs = NULL;
             }
             else {
+                VM_ASSERT(vm_ccs_verify(ccs, mid, klass));
+
                 for (int i=0; i<ccs_len; i++) {
                     const struct rb_callinfo  *ccs_ci = ccs->entries[i].ci;
                     const struct rb_callcache *ccs_cc = ccs->entries[i].cc;
@@ -1852,15 +1855,8 @@ vm_search_cc(const VALUE klass, const struct rb_callinfo * const ci)
         }
     }
 
-    if (cme->def->iseq_overload &&
-        (vm_ci_flag(ci) & (VM_CALL_ARGS_SIMPLE)) &&
-        (int)vm_ci_argc(ci) == method_entry_iseqptr(cme)->body->param.lead_num
-    ) {
-        // use alternative
-        cme = overloaded_cme(cme);
-        METHOD_ENTRY_CACHED_SET((struct rb_callable_method_entry_struct *)cme);
-        // rp(cme);
-    }
+    cme = check_overloaded_cme(cme, ci);
+
     const struct rb_callcache *cc = vm_cc_new(klass, cme, vm_call_general);
     vm_ccs_push(klass, ccs, ci, cc);
 
@@ -3647,7 +3643,7 @@ vm_call_method_each_type(rb_execution_context_t *ec, rb_control_frame_t *cfp, st
         CALLER_REMOVE_EMPTY_KW_SPLAT(cfp, calling, ci);
 
 	rb_check_arity(calling->argc, 1, 1);
-	vm_cc_attr_index_set(cc, 0);
+	vm_cc_attr_index_initialize(cc);
         const unsigned int aset_mask = (VM_CALL_ARGS_SPLAT | VM_CALL_KW_SPLAT | VM_CALL_KWARG);
         VM_CALL_METHOD_ATTR(v,
                             vm_call_attrset(ec, cfp, calling),
@@ -3658,7 +3654,7 @@ vm_call_method_each_type(rb_execution_context_t *ec, rb_control_frame_t *cfp, st
         CALLER_SETUP_ARG(cfp, calling, ci);
         CALLER_REMOVE_EMPTY_KW_SPLAT(cfp, calling, ci);
 	rb_check_arity(calling->argc, 0, 0);
-	vm_cc_attr_index_set(cc, 0);
+	vm_cc_attr_index_initialize(cc);
         const unsigned int ivar_mask = (VM_CALL_ARGS_SPLAT | VM_CALL_KW_SPLAT);
         VM_CALL_METHOD_ATTR(v,
                             vm_call_ivar(ec, cfp, calling),
@@ -5209,7 +5205,7 @@ vm_opt_neq(const rb_iseq_t *iseq, CALL_DATA cd, CALL_DATA cd_eq, VALUE recv, VAL
         VALUE val = opt_equality(iseq, recv, obj, cd_eq);
 
 	if (val != Qundef) {
-	    return RTEST(val) ? Qfalse : Qtrue;
+	    return RBOOL(!RTEST(val));
 	}
     }
 
@@ -5542,7 +5538,7 @@ static VALUE
 vm_opt_not(const rb_iseq_t *iseq, CALL_DATA cd, VALUE recv)
 {
     if (vm_method_cfunc_is(iseq, cd, recv, rb_obj_not)) {
-	return RTEST(recv) ? Qfalse : Qtrue;
+	return RBOOL(!RTEST(recv));
     }
     else {
 	return Qundef;

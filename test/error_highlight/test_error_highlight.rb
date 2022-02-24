@@ -1194,4 +1194,34 @@ undefined method `time' for 1:Integer
       end
     end
   end
+
+  def test_simulate_funcallv_from_embedded_ruby
+    assert_error_message(NoMethodError, <<~END) do
+undefined method `foo' for nil:NilClass
+    END
+
+      nil.foo + 1
+    rescue NoMethodError => exc
+      def exc.backtrace_locations = []
+      raise
+    end
+  end
+
+  def test_spoofed_filename
+    Tempfile.create(["error_highlight_test", ".rb"], binmode: true) do |tmp|
+      tmp << "module Dummy\nend\n"
+      tmp.close
+
+      assert_error_message(NameError, <<~END) do
+        undefined local variable or method `foo' for "dummy":String
+      END
+
+        "dummy".instance_eval do
+          eval <<-END, nil, tmp.path
+            foo
+          END
+        end
+      end
+    end
+  end
 end

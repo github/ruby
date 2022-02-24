@@ -1932,6 +1932,13 @@ time_init_now(rb_execution_context_t *ec, VALUE time, VALUE zone)
 }
 
 static VALUE
+time_s_now(rb_execution_context_t *ec, VALUE klass, VALUE zone)
+{
+    VALUE t = time_s_alloc(klass);
+    return time_init_now(ec, t, zone);
+}
+
+static VALUE
 time_set_utc_offset(VALUE time, VALUE off)
 {
     struct time_object *tobj;
@@ -2789,9 +2796,10 @@ month_arg(VALUE arg)
         return obj2ubits(arg, 4);
     }
 
+    mon = 0;
     VALUE s = rb_check_string_type(arg);
     if (!NIL_P(s) && RSTRING_LEN(s) > 0) {
-        mon = 0;
+        arg = s;
         for (i=0; i<12; i++) {
             if (RSTRING_LEN(s) == 3 &&
                 STRNCASECMP(months[i], RSTRING_PTR(s), 3) == 0) {
@@ -2799,15 +2807,8 @@ month_arg(VALUE arg)
                 break;
             }
         }
-        if (mon == 0) {
-            char c = RSTRING_PTR(s)[0];
-
-            if ('0' <= c && c <= '9') {
-                mon = obj2ubits(s, 4);
-            }
-        }
     }
-    else {
+    if (mon == 0) {
         mon = obj2ubits(arg, 4);
     }
     return mon;

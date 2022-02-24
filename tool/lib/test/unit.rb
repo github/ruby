@@ -199,6 +199,9 @@ module Test
         @help = "\n" + orig_args.map { |s|
           "  " + (s =~ /[\s|&<>$()]/ ? s.inspect : s)
         }.join("\n")
+
+        @failed_output = options[:stderr_on_failure] ? $stderr : $stdout
+
         @options = options
       end
 
@@ -742,7 +745,19 @@ module Test
             end
             unless error.empty?
               puts "\n""Retrying hung up testcases..."
-              error.map! {|r| ::Object.const_get(r[:testcase])}
+              error = error.map do |r|
+                begin
+                  ::Object.const_get(r[:testcase])
+                rescue NameError
+                  # testcase doesn't specify the correct case, so show `r` for information
+                  require 'pp'
+
+                  $stderr.puts "Retrying is failed because the file and testcase is not consistent:"
+                  PP.pp r, $stderr
+                  @errors += 1
+                  nil
+                end
+              end.compact
               verbose = @verbose
               job_status = options[:job_status]
               options[:verbose] = @verbose = true
@@ -1004,7 +1019,7 @@ module Test
           end
           first, msg = msg.split(/$/, 2)
           first = sprintf("%3d) %s", @report_count += 1, first)
-          $stdout.print(sep, @colorize.decorate(first, color), msg, "\n")
+          @failed_output.print(sep, @colorize.decorate(first, color), msg, "\n")
           sep = nil
         end
         report.clear
@@ -1105,6 +1120,9 @@ module Test
         end
         parser.on '-x', '--exclude REGEXP', 'Exclude test files on pattern.' do |pattern|
           (options[:reject] ||= []) << pattern
+        end
+        parser.on '--stderr-on-failure', 'Use stderr to print failure messages' do
+          options[:stderr_on_failure] = true
         end
       end
 
@@ -1533,7 +1551,7 @@ module Test
           puts if @verbose
           $stdout.flush
 
-          unless defined?(RubyVM::JIT) && RubyVM::JIT.enabled? # compiler process is wrongly considered as leak
+          unless defined?(RubyVM::MJIT) && RubyVM::MJIT.enabled? # compiler process is wrongly considered as leak
             leakchecker.check("#{inst.class}\##{inst.__name__}")
           end
 

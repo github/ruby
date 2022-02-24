@@ -136,6 +136,8 @@ module GC
   #  [count]
   #    The total number of garbage collections ran since application start
   #    (count includes both minor and major garbage collections)
+  #  [time]
+  #    The total time spent in garbage collections (in milliseconds)
   #  [heap_allocated_pages]
   #    The total number of `:heap_eden_pages` + `:heap_tomb_pages`
   #  [heap_sorted_length]
@@ -173,6 +175,13 @@ module GC
   #    The total number of minor garbage collections run since process start
   #  [major_gc_count]
   #    The total number of major garbage collections run since process start
+  #  [compact_count]
+  #    The total number of compactions run since process start
+  #  [read_barrier_faults]
+  #    The total number of times the read barrier was triggered during
+  #    compaction
+  #  [total_moved_objects]
+  #    The total number of objects compaction has moved
   #  [remembered_wb_unprotected_objects]
   #    The total number of objects without write barriers
   #  [remembered_wb_unprotected_objects_limit]
@@ -194,6 +203,40 @@ module GC
   #  This method is only expected to work on CRuby.
   def self.stat hash_or_key = nil
     Primitive.gc_stat hash_or_key
+  end
+
+  # call-seq:
+  #    GC.stat_heap -> Hash
+  #    GC.stat_heap(nil, hash) -> Hash
+  #    GC.stat_heap(heap_name) -> Hash
+  #    GC.stat_heap(heap_name, hash) -> Hash
+  #    GC.stat_heap(heap_name, :key) -> Numeric
+  #
+  # Returns information for memory pools in the GC.
+  #
+  # If the first optional argument, +heap_name+, is passed in and not +nil+, it
+  # returns a +Hash+ containing information about the particular memory pool.
+  # Otherwise, it will return a +Hash+ with memory pool names as keys and
+  # a +Hash+ containing information about the memory pool as values.
+  #
+  # If the second optional argument, +hash_or_key+, is given as +Hash+, it will
+  # be overwritten and returned. This is intended to avoid the probe effect.
+  #
+  # If both optional arguments are passed in and the second optional argument is
+  # a symbol, it will return a +Numeric+ of the value for the particular memory
+  # pool.
+  #
+  # On CRuby, +heap_name+ is of the type +Integer+ but may be of type +String+
+  # on other implementations.
+  #
+  # The contents of the hash are implementation specific and may change in
+  # the future without notice.
+  #
+  # If the optional argument, hash, is given, it is overwritten and returned.
+  #
+  # This method is only expected to work on CRuby.
+  def self.stat_heap heap_name = nil, hash_or_key = nil
+    Primitive.gc_stat_heap heap_name, hash_or_key
   end
 
   #  call-seq:
@@ -257,13 +300,12 @@ module GC
     Primitive.gc_verify_compaction_references(double_heap, toward == :empty)
   end
 
-  # :nodoc:
   # call-seq:
   #     GC.using_rvargc? -> true or false
   #
   # Returns true if using experimental feature Variable Width Allocation, false
   # otherwise.
-  def self.using_rvargc?
+  def self.using_rvargc? # :nodoc:
     GC::INTERNAL_CONSTANTS[:SIZE_POOL_COUNT] > 1
   end
 
@@ -272,8 +314,8 @@ module GC
   #    GC.measure_total_time = true/false
   #
   # Enable to measure GC time.
-  # You can get the result with `GC.stat(:time)`.
-  # Note that the GC time measurement can introduce the performance regression.
+  # You can get the result with <tt>GC.stat(:time)</tt>.
+  # Note that GC time measurement can cause some performance overhead.
   def self.measure_total_time=(flag)
     Primitive.cstmt! %{
       rb_objspace.flags.measure_gc = RTEST(flag) ? TRUE : FALSE;
@@ -284,7 +326,7 @@ module GC
   # call-seq:
   #    GC.measure_total_time -> true/false
   #
-  # Return measure_total_time flag (default: true).
+  # Return measure_total_time flag (default: +true+).
   # Note that measurement can affect the application performance.
   def self.measure_total_time
     Primitive.cexpr! %{

@@ -33,7 +33,7 @@ class TestObjSpace < Test::Unit::TestCase
     b = a.dup
     c = nil
     ObjectSpace.each_object(String) {|x| break c = x if x == a and x.frozen?}
-    rv_size = GC::INTERNAL_CONSTANTS[:RVALUE_SIZE]
+    rv_size = GC::INTERNAL_CONSTANTS[:BASE_SLOT_SIZE]
     assert_equal([rv_size, rv_size, a.length + 1 + rv_size], [a, b, c].map {|x| ObjectSpace.memsize_of(x)})
   end
 
@@ -139,6 +139,18 @@ class TestObjSpace < Test::Unit::TestCase
       assert_operator(max, :>=, long_ary.size+1, "1000 elems + Array class")
     end;
   end
+
+  def test_reachable_objects_during_iteration
+    opts = %w[--disable-gem --disable=frozen-string-literal -robjspace]
+    assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
+    begin;
+      ObjectSpace.each_object{|o|
+        o.inspect
+        ObjectSpace.reachable_objects_from(Class)
+      }
+    end;
+  end
+
 
   def test_reachable_objects_from_root
     root_objects = ObjectSpace.reachable_objects_from_root
@@ -431,6 +443,27 @@ class TestObjSpace < Test::Unit::TestCase
     end
   end
 
+  def test_dump_objects_dumps_page_slot_sizes
+    assert_in_out_err(%w[-robjspace], "#{<<-"begin;"}\n#{<<-'end;'}") do |output, error|
+      begin;
+        def dump_my_heap_please
+          ObjectSpace.dump_all(output: $stdout)
+        end
+
+        p $stdout == dump_my_heap_please
+      end;
+      assert_equal 'true', output.pop
+      assert(output.count > 1)
+      output.each { |l|
+        obj = JSON.parse(l)
+        next if obj["type"] == "ROOT"
+
+        assert(obj["slot_size"] != nil)
+        assert(obj["slot_size"] % GC::INTERNAL_CONSTANTS[:BASE_SLOT_SIZE] == 0)
+      }
+    end
+  end
+
   def test_dump_escapes_method_name
     method_name = "foo\"bar"
     klass = Class.new do
@@ -447,6 +480,13 @@ class TestObjSpace < Test::Unit::TestCase
     assert_equal "foo\"bar", parsed["method"]
   ensure
     ObjectSpace.trace_object_allocations_stop
+  end
+
+  def test_dump_includes_slot_size
+    str = "TEST"
+    dump = ObjectSpace.dump(str)
+
+    assert_includes dump, "\"slot_size\":#{GC::INTERNAL_CONSTANTS[:BASE_SLOT_SIZE]}"
   end
 
   def test_dump_reference_addresses_match_dump_all_addresses

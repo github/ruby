@@ -101,6 +101,7 @@ def sync_default_gems(gem)
     File.write("lib/bundler/bundler.gemspec", gemspec_content)
 
     cp_r("#{upstream}/bundler/spec", "spec/bundler")
+    cp_r(Dir.glob("#{upstream}/bundler/tool/bundler/dev_gems*"), "tool/bundler")
     cp_r(Dir.glob("#{upstream}/bundler/tool/bundler/test_gems*"), "tool/bundler")
     cp_r(Dir.glob("#{upstream}/bundler/tool/bundler/rubocop_gems*"), "tool/bundler")
     cp_r(Dir.glob("#{upstream}/bundler/tool/bundler/standard_gems*"), "tool/bundler")
@@ -381,8 +382,8 @@ def message_filter(repo, sha)
   log = STDIN.read
   log.delete!("\r")
   url = "https://github.com/#{repo}"
-  print "[#{repo}] ", log.gsub(/fix +#\d+|\(#\d+\)/i) {
-    $&.sub(/#/) {"#{url}/pull/"}
+  print "[#{repo}] ", log.gsub(/\b(?i:fix) +\K#(?=\d+\b)|\(\K#(?=\d+\))|\bGH-(?=\d+\b)/) {
+    "#{url}/pull/"
   }.gsub(%r{(?<![-\[\](){}\w@/])(?:(\w+(?:-\w+)*/\w+(?:-\w+)*)@)?(\h{10,40})\b}) {|c|
     "https://github.com/#{$1 || repo}/commit/#{$2[0,12]}"
   }.sub(/\s*(?=(?i:\nCo-authored-by:.*)*\Z)/) {

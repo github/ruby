@@ -47,10 +47,15 @@ class Reline::ANSI
       config.add_default_key_binding_by_keymap(:vi_command, key, func)
     end
     {
+      [27, 91, 90] => :completion_journey_up, # S-Tab
+    }.each_pair do |key, func|
+      config.add_default_key_binding_by_keymap(:emacs, key, func)
+      config.add_default_key_binding_by_keymap(:vi_insert, key, func)
+    end
+    {
       # default bindings
       [27, 32] => :em_set_mark,             # M-<space>
       [24, 24] => :em_exchange_mark,        # C-x C-x
-      [27, 91, 90] => :completion_journey_up, # S-Tab
     }.each_pair do |key, func|
       config.add_default_key_binding_by_keymap(:emacs, key, func)
     end
@@ -142,7 +147,7 @@ class Reline::ANSI
     unless @@buf.empty?
       return @@buf.shift
     end
-    until c = @@input.raw(intr: true) { select([@@input], [], [], 0.1) && @@input.getbyte }
+    until c = @@input.raw(intr: true) { @@input.wait_readable(0.1) && @@input.getbyte }
       Reline.core.line_editor.resize
     end
     (c == 0x16 && @@input.raw(min: 0, tim: 0, &:getbyte)) || c
@@ -340,8 +345,6 @@ class Reline::ANSI
   end
 
   def self.deprep(otio)
-    int_handle = Signal.trap('INT', 'IGNORE')
-    Signal.trap('INT', int_handle)
     Signal.trap('WINCH', @@old_winch_handler) if @@old_winch_handler
   end
 end

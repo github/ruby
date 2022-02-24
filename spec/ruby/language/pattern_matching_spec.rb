@@ -74,6 +74,50 @@ ruby_version_is "2.7" do
             end
           RUBY
         end
+
+        it "can be nested" do
+          eval(<<~RUBY).should == [[0, [2, 4, 6]], [[4, 16, 64]], 27]
+            case [0, [2, 4, 6], [3, 9, 27], [4, 16, 64]]
+            in [*pre, [*, 9, a], *post]
+              [pre, post, a]
+            else
+              false
+            end
+          RUBY
+        end
+
+        it "can be nested with an array pattern" do
+          eval(<<~RUBY).should == [[4, 16, 64]]
+            case [0, [2, 4, 6], [3, 9, 27], [4, 16, 64]]
+            in [_, _, [*, 9, *], *post]
+              post
+            else
+              false
+            end
+          RUBY
+        end
+
+        it "can be nested within a hash pattern" do
+          eval(<<~RUBY).should == [27]
+            case {a: [3, 9, 27]}
+            in {a: [*, 9, *post]}
+              post
+            else
+              false
+            end
+          RUBY
+        end
+
+        it "can nest hash and array patterns" do
+          eval(<<~RUBY).should == [42, 2]
+            case [0, {a: 42, b: [0, 1]}, {a: 42, b: [1, 2]}]
+            in [*, {a:, b: [1, c]}, *]
+              [a, c]
+            else
+              false
+            end
+          RUBY
+        end
       end
     end
 
@@ -1295,6 +1339,65 @@ ruby_version_is "2.7" do
         eval(<<~RUBY).should == 1
           {a: 1} => a:
           a
+        RUBY
+      end
+
+      it "supports pinning instance variables" do
+        eval(<<~RUBY).should == true
+          @a = /a/
+          case 'abc'
+          in ^@a
+            true
+          end
+        RUBY
+      end
+
+      it "supports pinning class variables" do
+        result = nil
+        Module.new do
+          result = module_eval(<<~RUBY)
+            @@a = 0..10
+
+            case 2
+            in ^@@a
+              true
+            end
+          RUBY
+        end
+
+        result.should == true
+      end
+
+      it "supports pinning global variables" do
+        eval(<<~RUBY).should == true
+          $a = /a/
+          case 'abc'
+          in ^$a
+            true
+          end
+        RUBY
+      end
+
+      it "supports pinning expressions" do
+        eval(<<~RUBY).should == true
+          case 'abc'
+            in ^(/a/)
+            true
+          end
+        RUBY
+
+        eval(<<~RUBY).should == true
+          case {name: '2.6', released_at: Time.new(2018, 12, 25)}
+            in {released_at: ^(Time.new(2010)..Time.new(2020))}
+            true
+          end
+        RUBY
+
+        eval(<<~RUBY).should == true
+          case 0
+          in ^(0+0)
+            true
+          end
         RUBY
       end
     end

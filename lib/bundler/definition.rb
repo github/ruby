@@ -87,10 +87,11 @@ module Bundler
         @platforms = @locked_platforms.dup
         @locked_bundler_version = @locked_gems.bundler_version
         @locked_ruby_version = @locked_gems.ruby_version
+        @originally_locked_specs = SpecSet.new(@locked_gems.specs)
 
         if unlock != true
           @locked_deps    = @locked_gems.dependencies
-          @locked_specs   = SpecSet.new(@locked_gems.specs)
+          @locked_specs   = @originally_locked_specs
           @locked_sources = @locked_gems.sources
         else
           @unlock         = {}
@@ -265,7 +266,7 @@ module Bundler
         else
           # Run a resolve against the locally available gems
           Bundler.ui.debug("Found changes from the lockfile, re-resolving dependencies because #{change_reason}")
-          expanded_dependencies = expand_dependencies(dependencies + metadata_dependencies, @remote)
+          expanded_dependencies = expand_dependencies(dependencies + metadata_dependencies, true)
           Resolver.resolve(expanded_dependencies, source_requirements, last_resolve, gem_version_promoter, additional_base_requirements_for_resolve, platforms)
         end
       end
@@ -292,10 +293,7 @@ module Bundler
         locked_major = @locked_bundler_version.segments.first
         current_major = Gem::Version.create(Bundler::VERSION).segments.first
 
-        if updating_major = locked_major < current_major
-          Bundler.ui.warn "Warning: the lockfile is being updated to Bundler #{current_major}, " \
-                          "after which you will be unable to return to Bundler #{@locked_bundler_version.segments.first}."
-        end
+        updating_major = locked_major < current_major
       end
 
       preserve_unknown_sections ||= !updating_major && (Bundler.frozen_bundle? || !(unlocking? || @unlocking_bundler))
@@ -310,14 +308,6 @@ module Bundler
       SharedHelpers.filesystem_access(file) do |p|
         File.open(p, "wb") {|f| f.puts(contents) }
       end
-    end
-
-    def locked_bundler_version
-      if @locked_bundler_version && @locked_bundler_version < Gem::Version.new(Bundler::VERSION)
-        new_version = Bundler::VERSION
-      end
-
-      new_version || @locked_bundler_version || Bundler::VERSION
     end
 
     def locked_ruby_version
@@ -379,7 +369,12 @@ module Bundler
 
       both_sources = Hash.new {|h, k| h[k] = [] }
       @dependencies.each {|d| both_sources[d.name][0] = d }
-      locked_dependencies.each {|d| both_sources[d.name][1] = d }
+
+      locked_dependencies.each do |d|
+        next if !Bundler.feature_flag.bundler_3_mode? && @locked_specs[d.name].empty?
+
+        both_sources[d.name][1] = d
+      end
 
       both_sources.each do |name, (dep, lock_dep)|
         next if dep.nil? || lock_dep.nil?
@@ -501,6 +496,7 @@ module Bundler
 
     def current_ruby_platform_locked?
       return false unless generic_local_platform == Gem::Platform::RUBY
+      return false if Bundler.settings[:force_ruby_platform] && !@platforms.include?(Gem::Platform::RUBY)
 
       current_platform_locked?
     end
@@ -686,13 +682,16 @@ module Bundler
     def converge_specs(specs)
       deps = []
       converged = []
+
+      @dependencies.each do |dep|
+        if specs[dep].any? {|s| s.satisfies?(dep) && (!dep.source || s.source.include?(dep.source)) }
+          deps << dep
+        end
+      end
+
       specs.each do |s|
         # Replace the locked dependency's source with the equivalent source from the Gemfile
         dep = @dependencies.find {|d| s.satisfies?(d) }
-
-        if dep && (!dep.source || s.source.include?(dep.source))
-          deps << dep
-        end
 
         s.source = (dep && dep.source) || sources.get(s.source) || sources.default_source unless Bundler.frozen_bundle?
 
@@ -787,6 +786,7 @@ module Bundler
       else
         { :default => Source::RubygemsAggregate.new(sources, source_map) }.merge(source_map.direct_requirements)
       end
+      source_requirements.merge!(source_map.locked_requirements) unless @remote
       metadata_dependencies.each do |dep|
         source_requirements[dep.name] = sources.metadata_source
       end
@@ -825,7 +825,7 @@ module Bundler
 
     def additional_base_requirements_for_resolve
       return [] unless @locked_gems && unlocking? && !sources.expired_sources?(@locked_gems.sources)
-      converge_specs(@locked_gems.specs).map do |locked_spec|
+      converge_specs(@originally_locked_specs).map do |locked_spec|
         name = locked_spec.name
         dep = Gem::Dependency.new(name, ">= #{locked_spec.version}")
         DepProxy.get_proxy(dep, locked_spec.platform)
@@ -833,7 +833,7 @@ module Bundler
     end
 
     def source_map
-      @source_map ||= SourceMap.new(sources, dependencies)
+      @source_map ||= SourceMap.new(sources, dependencies, @locked_specs)
     end
   end
 end

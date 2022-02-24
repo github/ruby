@@ -108,6 +108,10 @@ class TestSetTraceFunc < Test::Unit::TestCase
                  events.shift)
     assert_equal(["line", 4, __method__, self.class],
                  events.shift)
+    assert_equal(["c-call", 4, :const_added, Module],
+                 events.shift)
+    assert_equal(["c-return", 4, :const_added, Module],
+                 events.shift)
     assert_equal(["c-call", 4, :inherited, Class],
                  events.shift)
     assert_equal(["c-return", 4, :inherited, Class],
@@ -345,6 +349,8 @@ class TestSetTraceFunc < Test::Unit::TestCase
 
     [["c-return", 2, :add_trace_func, Thread],
      ["line", 3, __method__, self.class],
+     ["c-call", 3, :const_added, Module],
+     ["c-return", 3, :const_added, Module],
      ["c-call", 3, :inherited, Class],
      ["c-return", 3, :inherited, Class],
      ["class", 3, nil, nil],
@@ -487,6 +493,8 @@ class TestSetTraceFunc < Test::Unit::TestCase
      [:line,     5, 'xyzzy', self.class,  method,           self,        :inner, :nothing],
      [:c_return, 4, "xyzzy", Integer,     :times,           1,           :outer, 1],
      [:line,     7, 'xyzzy', self.class,  method,           self,        :outer, :nothing],
+     [:c_call,   7, "xyzzy", Module,      :const_added,     TestSetTraceFunc, :outer, :nothing],
+     [:c_return, 7, "xyzzy", Module,      :const_added,     TestSetTraceFunc, :outer, nil],
      [:c_call,   7, "xyzzy", Class,       :inherited,       Object,      :outer, :nothing],
      [:c_return, 7, "xyzzy", Class,       :inherited,       Object,      :outer, nil],
      [:class,    7, "xyzzy", nil,         nil,              xyzzy.class, nil,    :nothing],
@@ -620,6 +628,8 @@ CODE
      [:line,     7, 'xyzzy', self.class,  method,           self,        :outer, :nothing],
      [:c_call,   7, "xyzzy", Class,       :inherited,       Object,      :outer, :nothing],
      [:c_return, 7, "xyzzy", Class,       :inherited,       Object,      :outer, nil],
+     [:c_call,   7, "xyzzy", Class,       :const_added,     Object,      :outer, :nothing],
+     [:c_return, 7, "xyzzy", Class,       :const_added,     Object,      :outer, nil],
      [:class,    7, "xyzzy", nil,         nil,              xyzzy.class, nil,    :nothing],
      [:line,     8, "xyzzy", nil,         nil,              xyzzy.class, nil,    :nothing],
      [:line,     9, "xyzzy", nil,         nil,              xyzzy.class, :XYZZY_outer, :nothing],
@@ -2106,7 +2116,7 @@ CODE
     Thread.pass until t.status == 'sleep'
     # When MJIT thread exists, t.status becomes 'sleep' even if it does not reach m2t_q.pop.
     # This sleep forces it to reach m2t_q.pop for --jit-wait.
-    sleep 1 if defined?(RubyVM::JIT) && RubyVM::JIT.enabled?
+    sleep 1 if defined?(RubyVM::MJIT) && RubyVM::MJIT.enabled?
 
     t.add_trace_func proc{|ev, file, line, *args|
       if file == __FILE__
@@ -2371,7 +2381,7 @@ CODE
     }
     assert_equal [], events, 'script_compiled event should not be invoked on compile error'
 
-    skip "TODO: test for requires"
+    omit "TODO: test for requires"
 
     events.clear
     tp.enable{
@@ -2574,5 +2584,29 @@ CODE
       end
     }
     assert_equal [__LINE__ - 5, __LINE__ - 4, __LINE__ - 3], lines, 'Bug #17868'
+  end
+
+  def test_allow_reentry
+    event_lines = []
+    _l1 = _l2 = _l3 = _l4 = nil
+    TracePoint.new(:line) do |tp|
+      next unless target_thread?
+
+      event_lines << tp.lineno
+      next if (__LINE__ + 2 .. __LINE__ + 4).cover?(tp.lineno)
+      TracePoint.allow_reentry do
+        _a = 1; _l3 = __LINE__
+        _b = 2; _l4 = __LINE__
+      end
+    end.enable do
+      _c = 3; _l1 = __LINE__
+      _d = 4; _l2 = __LINE__
+    end
+
+    assert_equal [_l1, _l3, _l4, _l2, _l3, _l4], event_lines
+
+    assert_raise RuntimeError do
+      TracePoint.allow_reentry{}
+    end
   end
 end

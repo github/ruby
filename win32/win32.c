@@ -4871,7 +4871,7 @@ rb_w32_ulchown(const char *path, int owner, int group)
 
 /* License: Ruby's */
 int
-kill(int pid, int sig)
+kill(rb_pid_t pid, int sig)
 {
     int ret = 0;
     DWORD err;
@@ -8204,3 +8204,71 @@ VALUE (*const rb_f_notimplement_)(int, const VALUE *, VALUE, VALUE) = rb_f_notim
 #if RUBY_MSVCRT_VERSION < 120
 #include "missing/nextafter.c"
 #endif
+
+void *
+rb_w32_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset)
+{
+    void *ptr;
+    //DWORD protect = 0;
+    DWORD protect = PAGE_EXECUTE_READWRITE;
+
+    if (fd > 0 || offset) {
+        /* not supported */
+        errno = EINVAL;
+        return MAP_FAILED;
+    }
+
+/*
+    if (prot & PROT_EXEC) {
+        if (prot & PROT_WRITE) protect = PAGE_EXECUTE_READWRITE;
+        else if (prot & PROT_READ) protect = PAGE_EXECUTE_READ;
+        else protect = PAGE_EXECUTE;
+    }
+    else if (prot & PROT_WRITE) protect = PAGE_READWRITE;
+    else if (prot & PROT_READ) protect = PAGE_READONLY;
+*/
+    ptr = VirtualAlloc(addr, len, MEM_RESERVE | MEM_COMMIT, protect);
+    if (!ptr) {
+        errno = rb_w32_map_errno(GetLastError());
+        return MAP_FAILED;
+    }
+
+    return ptr;
+}
+
+int
+rb_w32_munmap(void *addr, size_t len)
+{
+    if (!VirtualFree(addr, 0, MEM_RELEASE)) {
+        errno = rb_w32_map_errno(GetLastError());
+        return -1;
+    }
+
+    return 0;
+}
+
+inline int
+rb_w32_mprotect(void *addr, size_t len, int prot)
+{
+/*
+    DWORD protect = 0;
+    if (prot & PROT_EXEC) {
+        if (prot & PROT_WRITE) protect = PAGE_EXECUTE_READWRITE;
+        else if (prot & PROT_READ) protect = PAGE_EXECUTE_READ;
+        else protect = PAGE_EXECUTE;
+    }
+    else if (prot & PROT_WRITE) protect = PAGE_READWRITE;
+    else if (prot & PROT_READ) protect = PAGE_READONLY;
+    if (!VirtualProtect(addr, len, protect, NULL)) {
+        errno = rb_w32_map_errno(GetLastError());
+        return -1;
+    }
+*/
+    if (prot & PROT_EXEC) {
+        if (!FlushInstructionCache(GetCurrentProcess(), addr, len)) {
+            errno = rb_w32_map_errno(GetLastError());
+            return -1;
+        }
+    }
+    return 0;
+}

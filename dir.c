@@ -1992,7 +1992,11 @@ rb_glob_error(const char *path, VALUE a, const void *enc, int error)
     struct glob_error_args args;
     VALUE (*errfunc)(VALUE) = glob_func_error;
 
-    if (error == EACCES) {
+    switch (error) {
+      case EACCES:
+#ifdef ENOTCAPABLE
+      case ENOTCAPABLE:
+#endif
 	errfunc = glob_func_warning;
     }
     args.path = path;
@@ -3260,14 +3264,6 @@ rb_file_directory_p(void)
 }
 #endif
 
-/* :nodoc: */
-static VALUE
-rb_dir_exists_p(VALUE obj, VALUE fname)
-{
-    rb_warn_deprecated("Dir.exists?", "Dir.exist?");
-    return rb_file_directory_p(obj, fname);
-}
-
 static void *
 nogvl_dir_empty_p(void *ptr)
 {
@@ -3331,7 +3327,7 @@ rb_dir_s_empty_p(VALUE obj, VALUE dirname)
 	    al.dirattr = ATTR_DIR_ENTRYCOUNT;
 	    if (getattrlist(path, &al, attrbuf, sizeof(attrbuf), 0) == 0) {
 		if (attrbuf[0] >= 2 * sizeof(u_int32_t))
-		    return attrbuf[1] ? Qfalse : Qtrue;
+		    return RBOOL(attrbuf[1] == 0);
 		if (false_on_notdir) return Qfalse;
 	    }
 	    rb_sys_fail_path(orig);
@@ -3386,7 +3382,6 @@ Init_Dir(void)
     rb_define_singleton_method(rb_cDir,"home", dir_s_home, -1);
 
     rb_define_singleton_method(rb_cDir,"exist?", rb_file_directory_p, 1);
-    rb_define_singleton_method(rb_cDir,"exists?", rb_dir_exists_p, 1);
     rb_define_singleton_method(rb_cDir,"empty?", rb_dir_s_empty_p, 1);
 
     rb_define_singleton_method(rb_cFile,"fnmatch", file_s_fnmatch, -1);

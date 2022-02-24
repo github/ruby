@@ -62,7 +62,11 @@
 #define VM_UNREACHABLE(func) UNREACHABLE
 #endif
 
-#include <setjmp.h>
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+# include "wasm/setjmp.h"
+#else
+# include <setjmp.h>
+#endif
 
 #include "ruby/internal/stdbool.h"
 #include "ccan/list/list.h"
@@ -614,8 +618,9 @@ void rb_objspace_call_finalizer(struct rb_objspace *);
 typedef struct rb_hook_list_struct {
     struct rb_event_hook_struct *hooks;
     rb_event_flag_t events;
-    unsigned int need_clean;
     unsigned int running;
+    bool need_clean;
+    bool is_local;
 } rb_hook_list_t;
 
 
@@ -718,6 +723,7 @@ typedef struct rb_vm_struct {
     int builtin_inline_index;
 
     struct rb_id_table *negative_cme_table;
+    st_table *overloaded_cme_table; // cme -> overloaded_cme
 
 #ifndef VM_GLOBAL_CC_CACHE_TABLE_SIZE
 #define VM_GLOBAL_CC_CACHE_TABLE_SIZE 1023
@@ -1110,7 +1116,7 @@ RUBY_SYMBOL_EXPORT_BEGIN
 /* node -> iseq */
 rb_iseq_t *rb_iseq_new         (const rb_ast_body_t *ast, VALUE name, VALUE path, VALUE realpath,                     const rb_iseq_t *parent, enum iseq_type);
 rb_iseq_t *rb_iseq_new_top     (const rb_ast_body_t *ast, VALUE name, VALUE path, VALUE realpath,                     const rb_iseq_t *parent);
-rb_iseq_t *rb_iseq_new_main    (const rb_ast_body_t *ast,             VALUE path, VALUE realpath,                     const rb_iseq_t *parent);
+rb_iseq_t *rb_iseq_new_main    (const rb_ast_body_t *ast,             VALUE path, VALUE realpath,                     const rb_iseq_t *parent, int opt);
 rb_iseq_t *rb_iseq_new_eval    (const rb_ast_body_t *ast, VALUE name, VALUE path, VALUE realpath, VALUE first_lineno, const rb_iseq_t *parent, int isolated_depth);
 rb_iseq_t *rb_iseq_new_with_opt(const rb_ast_body_t *ast, VALUE name, VALUE path, VALUE realpath, VALUE first_lineno, const rb_iseq_t *parent, int isolated_depth,
                                 enum iseq_type, const rb_compile_option_t*);

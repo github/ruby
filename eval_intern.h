@@ -33,7 +33,11 @@ pass_passed_block_handler(rb_execution_context_t *ec)
 #endif
 
 #include <stdio.h>
-#include <setjmp.h>
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+# include "wasm/setjmp.h"
+#else
+# include <setjmp.h>
+#endif
 
 #ifdef __APPLE__
 # ifdef HAVE_CRT_EXTERNS_H
@@ -182,7 +186,8 @@ CREF_CLASS(const rb_cref_t *cref)
 {
     if (CREF_SINGLETON(cref)) {
         return CLASS_OF(cref->klass_or_self);
-    } else {
+    }
+    else {
         return cref->klass_or_self;
     }
 }
@@ -192,7 +197,8 @@ CREF_CLASS_FOR_DEFINITION(const rb_cref_t *cref)
 {
     if (CREF_SINGLETON(cref)) {
         return rb_singleton_class(cref->klass_or_self);
-    } else {
+    }
+    else {
         return cref->klass_or_self;
     }
 }
@@ -281,7 +287,7 @@ VALUE rb_make_exception(int argc, const VALUE *argv);
 
 NORETURN(void rb_method_name_error(VALUE, VALUE));
 
-void rb_fiber_start(rb_fiber_t*);
+NORETURN(void rb_fiber_start(rb_fiber_t*));
 
 NORETURN(void rb_print_undef(VALUE, ID, rb_method_visibility_t));
 NORETURN(void rb_print_undef_str(VALUE, VALUE));

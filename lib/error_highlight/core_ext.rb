@@ -15,6 +15,7 @@ module ErrorHighlight
       return msg unless locs
 
       loc = locs.first
+      return msg unless loc
       begin
         node = RubyVM::AbstractSyntaxTree.of(loc, keep_script_lines: true)
         opts = {}
@@ -29,7 +30,9 @@ module ErrorHighlight
 
         spot = ErrorHighlight.spot(node, **opts)
 
-      rescue SystemCallError, SyntaxError
+      rescue SyntaxError
+      rescue SystemCallError # file not found or something
+      rescue ArgumentError   # eval'ed code
       end
 
       if spot

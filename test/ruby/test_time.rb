@@ -49,7 +49,10 @@ class TestTime < Test::Unit::TestCase
     t = Time.new(*tm, "-12:00")
     assert_equal([2001,2,28,23,59,30,-43200], [t.year, t.month, t.mday, t.hour, t.min, t.sec, t.gmt_offset], bug4090)
     assert_raise(ArgumentError) { Time.new(2000,1,1, 0,0,0, "+01:60") }
-    assert_raise(ArgumentError) { Time.new(2021, 1, 1, "+09:99") }
+    msg = /invalid value for Integer/
+    assert_raise_with_message(ArgumentError, msg) { Time.new(2021, 1, 1, "+09:99") }
+    assert_raise_with_message(ArgumentError, msg) { Time.new(2021, 1, "+09:99") }
+    assert_raise_with_message(ArgumentError, msg) { Time.new(2021, "+09:99") }
   end
 
   def test_time_add()
@@ -113,7 +116,7 @@ class TestTime < Test::Unit::TestCase
       assert_equal(946684800, Time.utc(2000, 1, 1, 0, 0, 0).tv_sec)
 
       # Giveup to try 2nd test because some state is changed.
-      skip if Test::Unit::Runner.current_repeat_count > 0
+      omit if Test::Unit::Runner.current_repeat_count > 0
 
       assert_equal(0x7fffffff, Time.utc(2038, 1, 19, 3, 14, 7).tv_sec)
       assert_equal(0x80000000, Time.utc(2038, 1, 19, 3, 14, 8).tv_sec)
@@ -1180,7 +1183,7 @@ class TestTime < Test::Unit::TestCase
 
   def test_2038
     # Giveup to try 2nd test because some state is changed.
-    skip if Test::Unit::Runner.current_repeat_count > 0
+    omit if Test::Unit::Runner.current_repeat_count > 0
 
     if no_leap_seconds?
       assert_equal(0x80000000, Time.utc(2038, 1, 19, 3, 14, 8).tv_sec)
@@ -1305,21 +1308,23 @@ class TestTime < Test::Unit::TestCase
 
   def test_memsize
     # Time objects are common in some code, try to keep them small
-    skip "Time object size test" if /^(?:i.?86|x86_64)-linux/ !~ RUBY_PLATFORM
-    skip "GC is in debug" if GC::INTERNAL_CONSTANTS[:DEBUG]
+    omit "Time object size test" if /^(?:i.?86|x86_64)-linux/ !~ RUBY_PLATFORM
+    omit "GC is in debug" if GC::INTERNAL_CONSTANTS[:DEBUG]
     require 'objspace'
     t = Time.at(0)
-    size = GC::INTERNAL_CONSTANTS[:RVALUE_SIZE]
-    case size
-    when 20 then expect = 50
-    when 24 then expect = 54
-    when 40 then expect = 86
-    when 48 then expect = 94
-    else
-      flunk "Unsupported RVALUE_SIZE=#{size}, update test_memsize"
-    end
+    sizeof_timew =
+      if RbConfig::SIZEOF.key?("uint64_t") && RbConfig::SIZEOF["long"] * 2 <= RbConfig::SIZEOF["uint64_t"]
+        RbConfig::SIZEOF["uint64_t"]
+      else
+        RbConfig::SIZEOF["void*"] # Same size as VALUE
+      end
+    expect =
+      GC::INTERNAL_CONSTANTS[:BASE_SLOT_SIZE] +
+        sizeof_timew +
+        RbConfig::SIZEOF["void*"] * 4 + 5 + # vtm
+        1 # tzmode, tm_got
     assert_equal expect, ObjectSpace.memsize_of(t)
   rescue LoadError => e
-    skip "failed to load objspace: #{e.message}"
+    omit "failed to load objspace: #{e.message}"
   end
 end

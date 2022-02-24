@@ -333,18 +333,23 @@ location_node_id(rb_backtrace_location_t *loc)
 }
 #endif
 
-void
-rb_frame_info_get(VALUE obj, VALUE *path, VALUE *script_lines, int *node_id)
+int
+rb_get_node_id_from_frame_info(VALUE obj)
 {
 #ifdef USE_ISEQ_NODE_ID
     rb_backtrace_location_t *loc = location_ptr(obj);
-    const rb_iseq_t *iseq = location_iseq(loc);
-    *path = iseq ? rb_iseq_path(iseq) : Qnil;
-    *script_lines = iseq ? iseq->body->variable.script_lines : Qnil;
-    *node_id = location_node_id(loc);
+    return location_node_id(loc);
 #else
-    *path = Qnil;
+    return -1;
 #endif
+}
+
+const rb_iseq_t *
+rb_get_iseq_from_frame_info(VALUE obj)
+{
+    rb_backtrace_location_t *loc = location_ptr(obj);
+    const rb_iseq_t *iseq = location_iseq(loc);
+    return iseq;
 }
 
 static VALUE
@@ -567,15 +572,25 @@ bt_update_cfunc_loc(unsigned long cfunc_counter, rb_backtrace_location_t *cfunc_
     }
 }
 
+static VALUE location_create(rb_backtrace_location_t *srcloc, void *btobj);
+
+static void
+bt_yield_loc(rb_backtrace_location_t *loc, long num_frames, VALUE btobj)
+{
+    for (; num_frames > 0; num_frames--, loc++) {
+        rb_yield(location_create(loc, (void *)btobj));
+    }
+}
+
 static VALUE
-rb_ec_partial_backtrace_object(const rb_execution_context_t *ec, long start_frame, long num_frames, int* start_too_large, bool skip_internal)
+rb_ec_partial_backtrace_object(const rb_execution_context_t *ec, long start_frame, long num_frames, int* start_too_large, bool skip_internal, bool do_yield)
 {
     const rb_control_frame_t *cfp = ec->cfp;
     const rb_control_frame_t *end_cfp = RUBY_VM_END_CONTROL_FRAME(ec);
     ptrdiff_t size;
     rb_backtrace_t *bt;
     VALUE btobj = backtrace_alloc(rb_cBacktrace);
-    rb_backtrace_location_t *loc;
+    rb_backtrace_location_t *loc = NULL;
     unsigned long cfunc_counter = 0;
     GetCoreDataFromValue(btobj, rb_backtrace_t, bt);
 
@@ -626,6 +641,9 @@ rb_ec_partial_backtrace_object(const rb_execution_context_t *ec, long start_fram
                     loc->iseq = iseq;
                     loc->pc = pc;
                     bt_update_cfunc_loc(cfunc_counter, loc-1, iseq, pc);
+                    if (do_yield) {
+                        bt_yield_loc(loc - cfunc_counter, cfunc_counter+1, btobj);
+                    }
                     cfunc_counter = 0;
                 }
             }
@@ -649,6 +667,9 @@ rb_ec_partial_backtrace_object(const rb_execution_context_t *ec, long start_fram
         for (; cfp != end_cfp; cfp = RUBY_VM_PREVIOUS_CONTROL_FRAME(cfp)) {
             if (cfp->iseq && cfp->pc && (!skip_internal || !is_internal_location(cfp))) {
                 bt_update_cfunc_loc(cfunc_counter, loc, cfp->iseq, cfp->pc);
+                if (do_yield) {
+                    bt_yield_loc(loc - cfunc_counter, cfunc_counter, btobj);
+                }
                 break;
             }
         }
@@ -661,7 +682,7 @@ rb_ec_partial_backtrace_object(const rb_execution_context_t *ec, long start_fram
 MJIT_FUNC_EXPORTED VALUE
 rb_ec_backtrace_object(const rb_execution_context_t *ec)
 {
-    return rb_ec_partial_backtrace_object(ec, BACKTRACE_START, ALL_BACKTRACE_LINES, NULL, FALSE);
+    return rb_ec_partial_backtrace_object(ec, BACKTRACE_START, ALL_BACKTRACE_LINES, NULL, FALSE, FALSE);
 }
 
 static VALUE
@@ -777,6 +798,56 @@ backtrace_load_data(VALUE self, VALUE str)
     return self;
 }
 
+/*
+ *  call-seq: Threade::Backtrace::limit -> integer
+ *
+ *  Returns maximum backtrace length set by <tt>--backtrace-limit</tt>
+ *  command-line option. The defalt is <tt>-1</tt> which means unlimited
+ *  backtraces. If the value is zero or positive, the error backtraces,
+ *  produced by Exception#full_message, are abbreviated and the extra lines
+ *  are replaced by <tt>... 3 levels... </tt>
+ *
+ *    $ ruby -r net/http -e "p Thread::Backtrace.limit; Net::HTTP.get(URI('http://wrong.address'))"
+ *    - 1
+ *    .../lib/ruby/3.1.0/socket.rb:227:in `getaddrinfo': Failed to open TCP connection to wrong.address:80 (getaddrinfo: Name or service not known) (SocketError)
+ *        from .../lib/ruby/3.1.0/socket.rb:227:in `foreach'
+ *        from .../lib/ruby/3.1.0/socket.rb:632:in `tcp'
+ *        from .../lib/ruby/3.1.0/net/http.rb:998:in `connect'
+ *        from .../lib/ruby/3.1.0/net/http.rb:976:in `do_start'
+ *        from .../lib/ruby/3.1.0/net/http.rb:965:in `start'
+ *        from .../lib/ruby/3.1.0/net/http.rb:627:in `start'
+ *        from .../lib/ruby/3.1.0/net/http.rb:503:in `get_response'
+ *        from .../lib/ruby/3.1.0/net/http.rb:474:in `get'
+ *    .../lib/ruby/3.1.0/socket.rb:227:in `getaddrinfo': getaddrinfo: Name or service not known (SocketError)
+ *        from .../lib/ruby/3.1.0/socket.rb:227:in `foreach'
+ *        from .../lib/ruby/3.1.0/socket.rb:632:in `tcp'
+ *        from .../lib/ruby/3.1.0/net/http.rb:998:in `connect'
+ *        from .../lib/ruby/3.1.0/net/http.rb:976:in `do_start'
+ *        from .../lib/ruby/3.1.0/net/http.rb:965:in `start'
+ *        from .../lib/ruby/3.1.0/net/http.rb:627:in `start'
+ *        from .../lib/ruby/3.1.0/net/http.rb:503:in `get_response'
+ *        from .../lib/ruby/3.1.0/net/http.rb:474:in `get'
+ *        from -e:1:in `<main>'
+ *
+ *    $ ruby --backtrace-limit 2 -r net/http -e "p Thread::Backtrace.limit; Net::HTTP.get(URI('http://wrong.address'))"
+ *    2
+ *    .../lib/ruby/3.1.0/socket.rb:227:in `getaddrinfo': Failed to open TCP connection to wrong.address:80 (getaddrinfo: Name or service not known) (SocketError)
+ *        from .../lib/ruby/3.1.0/socket.rb:227:in `foreach'
+ *        from .../lib/ruby/3.1.0/socket.rb:632:in `tcp'
+ *         ... 7 levels...
+ *    .../lib/ruby/3.1.0/socket.rb:227:in `getaddrinfo': getaddrinfo: Name or service not known (SocketError)
+ *        from .../lib/ruby/3.1.0/socket.rb:227:in `foreach'
+ *        from .../lib/ruby/3.1.0/socket.rb:632:in `tcp'
+ *         ... 7 levels...
+ *
+ *    $ ruby --backtrace-limit 0 -r net/http -e "p Thread::Backtrace.limit; Net::HTTP.get(URI('http://wrong.address'))"
+ *    0
+ *    .../lib/ruby/3.1.0/socket.rb:227:in `getaddrinfo': Failed to open TCP connection to wrong.address:80 (getaddrinfo: Name or service not known) (SocketError)
+ *         ... 9 levels...
+ *    .../lib/ruby/3.1.0/socket.rb:227:in `getaddrinfo': getaddrinfo: Name or service not known (SocketError)
+ *         ... 9 levels...
+ *
+ */
 static VALUE
 backtrace_limit(VALUE self)
 {
@@ -786,13 +857,13 @@ backtrace_limit(VALUE self)
 VALUE
 rb_ec_backtrace_str_ary(const rb_execution_context_t *ec, long lev, long n)
 {
-    return backtrace_to_str_ary(rb_ec_partial_backtrace_object(ec, lev, n, NULL, FALSE));
+    return rb_backtrace_to_str_ary(rb_ec_partial_backtrace_object(ec, lev, n, NULL, FALSE, FALSE));
 }
 
 VALUE
 rb_ec_backtrace_location_ary(const rb_execution_context_t *ec, long lev, long n, bool skip_internal)
 {
-    return backtrace_to_location_ary(rb_ec_partial_backtrace_object(ec, lev, n, NULL, skip_internal));
+    return rb_backtrace_to_location_ary(rb_ec_partial_backtrace_object(ec, lev, n, NULL, skip_internal, FALSE));
 }
 
 /* make old style backtrace directly */
@@ -1064,7 +1135,7 @@ ec_backtrace_to_ary(const rb_execution_context_t *ec, int argc, const VALUE *arg
 	return rb_ary_new();
     }
 
-    btval = rb_ec_partial_backtrace_object(ec, lev, n, &too_large, FALSE);
+    btval = rb_ec_partial_backtrace_object(ec, lev, n, &too_large, FALSE, FALSE);
 
     if (too_large) {
         return Qnil;
@@ -1185,11 +1256,29 @@ rb_f_caller_locations(int argc, VALUE *argv, VALUE _)
     return ec_backtrace_to_ary(GET_EC(), argc, argv, 1, 1, 0);
 }
 
+/*
+ *  call-seq:
+ *     Thread.each_caller_location{ |loc| ... } -> nil
+ *
+ *  Yields each frame of the current execution stack as a
+ *  backtrace location object.
+ */
+static VALUE
+each_caller_location(VALUE unused)
+{
+    rb_ec_partial_backtrace_object(GET_EC(), 2, ALL_BACKTRACE_LINES, NULL, FALSE, TRUE);
+    return Qnil;
+}
+
 /* called from Init_vm() in vm.c */
 void
 Init_vm_backtrace(void)
 {
-    /* :nodoc: */
+    /*
+     *  An internal representation of the backtrace. The user will never interact with
+     *  objects of this class directly, but class methods can be used to get backtrace
+     *  settings of the current session.
+     */
     rb_cBacktrace = rb_define_class_under(rb_cThread, "Backtrace", rb_cObject);
     rb_define_alloc_func(rb_cBacktrace, backtrace_alloc);
     rb_undef_method(CLASS_OF(rb_cBacktrace), "new");
@@ -1256,6 +1345,8 @@ Init_vm_backtrace(void)
 
     rb_define_global_function("caller", rb_f_caller, -1);
     rb_define_global_function("caller_locations", rb_f_caller_locations, -1);
+
+    rb_define_singleton_method(rb_cThread, "each_caller_location", each_caller_location, 0);
 }
 
 /* debugger API */

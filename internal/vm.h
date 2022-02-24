@@ -96,6 +96,8 @@ MJIT_SYMBOL_EXPORT_BEGIN
 int rb_ec_obj_respond_to(struct rb_execution_context_struct *ec, VALUE obj, ID id, int priv);
 MJIT_SYMBOL_EXPORT_END
 
+void rb_clear_constant_cache(void);
+
 /* vm_dump.c */
 void rb_print_backtrace(void);
 
@@ -111,7 +113,8 @@ VALUE rb_backtrace_to_str_ary(VALUE obj);
 VALUE rb_backtrace_to_location_ary(VALUE obj);
 void rb_backtrace_each(VALUE (*iter)(VALUE recv, VALUE str), VALUE output);
 int rb_frame_info_p(VALUE obj);
-void rb_frame_info_get(VALUE obj, VALUE *path, VALUE *script_lines, int *node_id);
+int rb_get_node_id_from_frame_info(VALUE obj);
+const struct rb_iseq_struct *rb_get_iseq_from_frame_info(VALUE obj);
 
 MJIT_SYMBOL_EXPORT_BEGIN
 VALUE rb_ec_backtrace_object(const struct rb_execution_context_struct *ec);

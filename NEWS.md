@@ -1,411 +1,149 @@
-# NEWS for Ruby 3.1.0
+# NEWS for Ruby 3.2.0
 
-This document is a list of user visible feature changes
-since the **3.0.0** release, except for bug fixes.
+This document is a list of user-visible feature changes
+since the **3.1.0** release, except for bug fixes.
 
 Note that each entry is kept to a minimum, see links for details.
 
 ## Language changes
 
-*   The block arguments can be now be anonymous, if the block will
-    only be passed to another method. [[Feature #11256]]
+* Anonymous rest and keyword rest arguments can now be passed as
+  arguments, instead of just used in method parameters.
+  [[Feature #18351]]
 
     ```ruby
-    def foo(&)
-      bar(&)
+    def foo(*)
+      bar(*)
+    end
+    def baz(**)
+      quux(**)
     end
     ```
 
-*   Pin operator now takes an expression. [[Feature #17411]]
+* Constant assignment evaluation order for constants set on explicit
+  objects has been made consistent with single attribute assignment
+  evaluation order.  With this code:
 
     ```ruby
-    Prime.each_cons(2).lazy.find_all{_1 in [n, ^(n + 2)]}.take(3).to_a
-    #=> [[3, 5], [5, 7], [11, 13]]
+    foo::BAR = baz
     ```
 
-*   Pin operator now supports instance, class, and global variables.
-    [[Feature #17724]]
+  `foo` is now called before `baz`. Similarly, for multiple assignment
+  to constants,  left-to-right evaluation order is used.  With this
+  code:
 
     ```ruby
-    @n = 5
-    Prime.each_cons(2).lazy.find{_1 in [n, ^@n]}
-    #=> [3, 5]
+      foo1::BAR1, foo2::BAR2 = baz1, baz2
     ```
 
-*   One-line pattern matching is no longer experimental.
+  The following evaluation order is now used:
 
-*   Multiple assignment evaluation order has been made consistent with
-    single assignment evaluation order.  With single assignment, Ruby
-    uses a left-to-right evaluation order.  With this code:
+  1. `foo1`
+  2. `foo2`
+  3. `baz1`
+  4. `baz2`
 
-    ```ruby
-    foo[0] = bar
-    ```
+  [[Bug #15928]]
 
-    The following evaluation order is used:
-
-    1. `foo`
-    2. `bar`
-    3. `[]=` called on the result of `foo`
-
-    In Ruby before 3.1.0, multiple assignment did not follow this
-    evaluation order.  With this code:
-
-    ```ruby
-    foo[0], bar.baz = a, b
-    ```
-
-    Versions of Ruby before 3.1.0 would evaluate in the following
-    order
-
-    1. `a`
-    2. `b`
-    3. `foo`
-    4. `[]=` called on the result of `foo`
-    5. `bar`
-    6. `baz=` called on the result of `bar`
-
-    Starting in Ruby 3.1.0, evaluation order is now consistent with
-    single assignment, with the left hand side being evaluated before
-    the right hand side:
-
-    1. `foo`
-    2. `bar`
-    3. `a`
-    4. `b`
-    5. `[]=` called on the result of `foo`
-    6. `baz=` called on the result of `bar`
-
-    [[Bug #4443]]
-
-*   Values in Hash literals and keyword arguments can be omitted.
-    [[Feature #14579]]
-
-    For example,
-
-    * `{x:, y:}` is a syntax sugar of `{x: x, y: y}`.
-    * `foo(x:, y:)` is a syntax sugar of `foo(x: x, y: y)`.
-
-    Constant names, local variable names, and method names are allowed as
-    key names.  Note that a reserved word is considered as a local
-    variable or method name even if it's a pseudo variable name such as
-    `self`.
-
-*   non main-Ractors can get instance variables (ivars) of classes/modules
-    if ivars refer to shareable objects.
-    [[Feature #17592]]
+* Find pattern is no longer experimental.
+  [[Feature #18585]]
 
 ## Command line options
 
 ## Core classes updates
 
-Outstanding ones only.
+Note: We're only listing outstanding class updates.
 
-* Array
-
-    * Array#intersect? is added. [[Feature #15198]]
-
-* Class
-
-    *   Class#descendants, which returns an array of classes
-        directly or indirectly inheriting from the receiver, not
-        including the receiver or singleton classes.
-        [[Feature #14394]]
-
-        ```ruby
-        class A; end
-        class B < A; end
-        class C < B; end
-        A.descendants    #=> [B, C]
-        B.descendants    #=> [C]
-        C.descendants    #=> []
-        ```
-
-    *   Class#subclasses, which returns an array of classes
-        directly inheriting from the receiver, not
-        including singleton classes.
-        [[Feature #18273]]
-
-        ```ruby
-        class A; end
-        class B < A; end
-        class C < B; end
-        class D < A; end
-        A.subclasses    #=> [D, B]
-        B.subclasses    #=> [C]
-        C.subclasses    #=> []
-        ```
-
-* Enumerable
-
-    *   Enumerable#compact is added. [[Feature #17312]]
-
-    *   Enumerable#tally now accepts an optional hash to count. [[Feature #17744]]
-
-    *   Enumerable#each_cons and each_slice to return a receiver. [[GH-1509]]
-
-        ```ruby
-        [1, 2, 3].each_cons(2){}
-        # 3.0 => nil
-        # 3.1 => [1, 2, 3]
-
-        [1, 2, 3].each_slice(2){}
-        # 3.0 => nil
-        # 3.1 => [1, 2, 3]
-        ```
-
-* Enumerator::Lazy
-
-    *   Enumerator::Lazy#compact is added. [[Feature #17312]]
-
-* File
-
-    *   File.dirname now accepts an optional argument for the level to
-        strip path components. [[Feature #12194]]
-
-* GC
-
-    *   "GC.measure_total_time = true" enables the measurement of GC.
-        Measurement can introduce overhead. It is enabled by default.
-        GC.measure_total_time returns the current setting.
-        GC.stat[:time] or GC.stat(:time) returns measured time
-        in milli-soconds.
-
-    *   GC.total_time returns measured time in nano-seconds.
-
-* Integer
-
-    *   Integer.try_convert is added. [[Feature #15211]]
-
-* Kernel
-
-
-    *   Kernel#load now accepts a module as the second argument,
-        and will load the file using the given module as the top
-        level module. [[Feature #6210]]
+* Hash
+    * Hash#shift now always returns nil if the hash is
+      empty, instead of returning the default value or
+      calling the default proc. [[Bug #16908]]
 
 * MatchData
-
-    *   MatchData#match is added [[Feature #18172]]
-
-    *   MatchData#match_length is added [[Feature #18172]]
+    * MatchData#byteoffset has been added. [[Feature #13110]]
 
 * Module
+    * Module.used_refinements has been added. [[Feature #14332]]
+    * Module#refinements has been added. [[Feature #12737]]
+    * Module#const_added has been added. [[Feature #17881]]
 
-    *   Module#prepend now modifies the ancestor chain if the receiver
-        already includes the argument. Module#prepend still does not
-        modify the ancestor chain if the receiver has already prepended
-        the argument. [[Bug #17423]]
-
-    *   Module#private, #public, #protected, and #module_function will
-        now return their arguments.  If a single argument is given, it
-        is returned. If no arguments are given, nil is returned.  If
-        multiple arguments are given, they are returned as an array.
-        [[Feature #12495]]
-
-* Process
-
-    *   Process.\_fork is added. This is a core method for fork(2).
-        Do not call this method directly; it is called by existing
-        fork methods: Kernel.#fork, Process.fork, and IO.popen("-").
-        Application monitoring libraries can overwride this method to
-        hook fork event. [[Feature #17795]]
-
-* Struct
-
-    *   Passing only keyword arguments to Struct#initialize is warned.
-        You need to use a Hash literal to set a Hash to a first member.
-        [[Feature #16806]]
-
-    *   StructClass#keyword_init? is added [[Feature #18008]]
-
-* String
-
-    *   Update Unicode version to 13.0.0 [[Feature #17750]]
-        and Emoji version to 13.0 [[Feature #18029]]
-
-* Queue
-
-    *   Queue#initialize now accepts an Enumerable of initial values.
-        [[Feature #17327]]
-
-* Thread
-
-    *   Thread#native_thread_id is added. [[Feature #17853]]
-
-* Thread::Backtrace
-
-    *   Thread::Backtrace.limit, which returns the value to limit backtrace
-        length set by `--backtrace-limit` command line option, is added.
-        [[Feature #17479]]
-
-* $LOAD_PATH
-
-    *   $LOAD_PATH.resolve_feature_path does not raise. [[Feature #16043]]
-
-* Fiber Scheduler
-
-    *   Add support for `Addrinfo.getaddrinfo` using `address_resolve` hook.
-        [[Feature #17370]]
-
-    *   Introduce non-blocking `Timeout.timeout` using `timeout_after` hook.
-        [[Feature #17470]]
-
-    *   Introduce new scheduler hooks `io_read` and `io_write` along with a
-        low level `IO::Buffer` for zero-copy read/write. [[Feature #18020]]
-
-    *   IO hooks `io_wait`, `io_read`, `io_write`, receive the original IO object
-        where possible. [[Bug #18003]]
-
-    *   Make `Monitor` fiber-safe. [[Bug #17827]]
-
-    *   Replace copy coroutine with pthread implementation. [[Feature #18015]]
+* Proc
+    * Proc#dup returns an instance of subclass. [[Bug #17545]]
 
 * Refinement
+    * Refinement#refined_class has been added. [[Feature #12737]]
 
-    *   New class which represents a module created by Module#refine.
-        `include` and `prepend` are deprecated, and `import_methods` is added
-        instead. [[Bug #17429]]
+* Set
+    * Set is now available as a builtin class without the need for `require "set"`. [[Feature #16989]]
+      It is currently autoloaded via the `Set` constant or a call to `Enumerable#to_set`.
+
+* String
+    * String#byteindex and String#byterindex have been added. [[Feature #13110]]
+
+* Struct
+    * A Struct class can also be initialized with keyword arguments
+      without `keyword_init: true` on `Struct.new` [[Feature #16806]]
 
 ## Stdlib updates
 
 *   The following default gem are updated.
-    * RubyGems
-    * Bundler
-    * RDoc 6.3.2
-    * ReLine
-    * JSON 2.6.1
-    * Psych 4.0.2
-    * FileUtils 1.6.0
-    * Fiddle 1.1.0
-    * StringIO 3.0.1
-    * IO::Console 0.5.9
-    * IO::Wait 0.2.0
-    * CSV 3.2.1
-    * Etc 1.3.0
-    * Date 3.2.2
-    * Zlib 2.1.1
-    * StringScanner 3.0.1
-    * IpAddr 1.2.3
-    * Logger 1.4.4
-    * OStruct 0.5.0
-    * Irb
-    * Racc 1.6.0
-    * Delegate 0.2.0
-    * Benchmark 0.2.0
-    * CGI 0.3.1
-    * Readline(C-ext) 0.1.3
-    * Timeout 0.2.0
-    * YAML 0.2.0
-    * URI 0.11.0
-    * OpenSSL
-    * DidYouMean
-    * Weakref 0.1.1
-    * Tempfile 0.1.2
-    * TmpDir 0.1.2
-    * English 0.7.1
-    * Net::Protocol 0.1.2
-    * Net::Http 0.2.0
-    * BigDecimal
-    * OptionParser 0.2.0
-    * Set 1.0.2
-    * Find 0.1.1
-    * Rinda 0.1.1
-    * Erb 2.2.3
-    * NKF 0.1.1
-    * Base64 0.1.1
-    * OpenUri 0.2.0
-    * SecureRandom 0.1.1
-    * Resolv 0.2.1
-    * Resolv::Replace 0.1.0
-    * Time 0.2.0
-    * PP 0.2.1
-    * Prettyprint 0.1.1
-    * Drb 2.1.0
-    * Pathname 0.2.0
-    * Digest 3.1.0.pre3
-    * Un 0.2.0
+    * RubyGems 3.4.0.dev
+    * bigdecimal 3.1.2
+    * bundler 2.4.0.dev
+    * etc 1.4.0
+    * io-console 0.5.11
+    * io-wait 0.2.2
+    * ipaddr 1.2.4
+    * reline 0.3.1
 *   The following bundled gems are updated.
-    * minitest 5.14.4
-    * power_assert 2.0.1
-    * rake 13.0.6
-    * test-unit 3.5.1
-    * rbs 1.8.0
-    * typeprof 0.20.4
+    * net-imap 0.2.3
+    * rbs 2.2.2
+    * typeprof 0.21.2
 *   The following default gems are now bundled gems.
-    * net-ftp
-    * net-imap
-    * net-pop
-    * net-smtp
-    * matrix
-    * prime
 
 ## Compatibility issues
 
-Excluding feature bug fixes.
+Note: Excluding feature bug fixes.
 
-* `rb_io_wait_readable`, `rb_io_wait_writable` and `rb_wait_for_single_fd` are
-  deprecated in favour of `rb_io_maybe_wait_readable`,
-  `rb_io_maybe_wait_writable` and `rb_io_maybe_wait` respectively.
-  `rb_thread_wait_fd` and `rb_thread_fd_writable` are deprecated. [[Bug #18003]]
+### Removed constants
+
+The following deprecated constants are removed.
+
+* `Fixnum` and `Bignum` [[Feature #12005]]
+* `Random::DEFAULT` [[Feature #17351]]
+* `Struct::Group`
+* `Struct::Passwd`
+
+### Removed methods
+
+The following deprecated methods are removed.
+
+* `Dir.exists?` [[Feature #17391]]
+* `File.exists?` [[Feature #17391]]
+* `Kernel#=~` [[Feature #15231]]
+* `Kernel#taint`, `Kernel#untaint`, `Kernel#tainted?`
+  [[Feature #16131]]
+* `Kernel#trust`, `Kernel#untrust`, `Kernel#untrusted?`
+  [[Feature #16131]]
 
 ## Stdlib compatibility issues
 
-* `ERB#initialize` warns `safe_level` and later arguments even without -w.
-  [[Feature #14256]]
-
-* `lib/debug.rb` is replaced with `debug.gem`
-
-* `Kernel#pp` in `lib/pp.rb` uses the width of `IO#winsize` by default.
-  This means that the output width is automatically changed depending on
-  your terminal size. [[Feature #12913]]
-
 ## C API updates
 
-* Documented. [[GH-4815]]
+### Removed C APIs
 
-* `rb_gc_force_recycle` is deprecated and has been changed to a no-op.
-  [[Feature #18290]]
+The following deprecated APIs are removed.
+
+* `rb_cData` variable.
+* "taintedness" and "trustedness" functions. [[Feature #16131]]
 
 ## Implementation improvements
 
-* `instance_eval` and `instance_exec` now only allocate a singleton class when
-  required, avoiding extra objects and improving performance. [[GH-5146]]
+## JIT
 
-* The performance of `Struct` accessors is improved. [[GH-5131]]
-
-* `mandatory_only?` builtin special form to improve performance on
-  builtin methods. [[GH-5112]]
-
-### JIT
-
-* The default `--jit-max-cache` is changed from 100 to 10000.
-
-* JIT-ed code is no longer cancelled when a TracePoint for class events
-  is enabled.
-
-* The JIT compiler no longer skips compilation of methods longer than
-  1000 instructions.
-
-* `--jit-verbose` and `--jit-warning` output "JIT cancel" when JIT-ed
-  code is disabled because TracePoint or GC.compact is used.
-
-* `RubyVM::MJIT` is renamed to `RubyVM::JIT`. [[Feature #17490]]
+### MJIT
 
 ### YJIT: New experimental in-process JIT compiler
-
-New JIT compiler available as an experimental feature. [[Feature #18229]]
-
-See [this blog post](https://shopify.engineering/yjit-just-in-time-compiler-cruby
-) introducing the project.
-
-* Disabled by default, use `--yjit` command-line option to enable YJIT.
-
-* Performance improvements on most real-world software, up to 22% on railsbench, 39% on liquid-render.
-
-* Fast warm-up times.
-
-* Limited to macOS & Linux on x86-64 platforms for now.
 
 ## Static analysis
 
@@ -413,91 +151,27 @@ See [this blog post](https://shopify.engineering/yjit-just-in-time-compiler-crub
 
 ### TypeProf
 
-* [Experimental IDE support](https://github.com/ruby/typeprof/blob/master/doc/ide.md) has been implemented.
-* Many bug fixes and performance improvements since Ruby 3.0.0.
-
 ## Debugger
-
-* A new debugger [debug.gem](https://github.com/ruby/debug) is bundled.
-  debug.gem is fast debugger implementation and it provides many features
-  like remote debugging, colorful REPL, IDE (VSCode) integration and more.
-  It replaces `lib/debug.rb` standard library.
-
-* `rdbg` command is also installed into `bin/` directory to start and control
-  debugging execution.
 
 ## error_highlight
 
-A built-in gem, error_highlight, has been introduced.
-It includes fine-grained error location in backtrace:
-
-```
-$ ruby test.rb
-test.rb:1:in `<main>': undefined method `time' for 1:Integer (NoMethodError)
-
-1.time {}
- ^^^^^
-Did you mean?  times
-```
-
-This gem is enabled by default.
-You can disable it by using a command-line option `--disable-error_highlight`.
-See [the repository](https://github.com/ruby/error_highlight) in detail.
+## IRB Autocomplete and Document Display
 
 ## Miscellaneous changes
 
-* lib/objspace/trace.rb is added, which is a tool for tracing the object
-  allocation. Just by requiring this file, tracing is started *immediately*.
-  Just by `Kernel#p`, you can investigate where an object was created.
-  Note that just requiring this file brings a large performance overhead.
-  This is only for debugging purpose. Do not use this in production.
-  [[Feature #17762]]
-
-* Now exceptions raised in finalizers will be printed to `STDERR`, unless
-  `$VERBOSE` is `nil`.  [[Feature #17798]]
-
-[Bug #4443]:      https://bugs.ruby-lang.org/issues/4443
-[Feature #6210]:  https://bugs.ruby-lang.org/issues/6210
-[Feature #11256]: https://bugs.ruby-lang.org/issues/11256
-[Feature #12194]: https://bugs.ruby-lang.org/issues/12194
-[Feature #12495]: https://bugs.ruby-lang.org/issues/12495
-[Feature #12913]: https://bugs.ruby-lang.org/issues/12913
-[Feature #14256]: https://bugs.ruby-lang.org/issues/14256
-[Feature #14394]: https://bugs.ruby-lang.org/issues/14394
-[Feature #14579]: https://bugs.ruby-lang.org/issues/14579
-[Feature #15198]: https://bugs.ruby-lang.org/issues/15198
-[Feature #15211]: https://bugs.ruby-lang.org/issues/15211
-[Feature #16043]: https://bugs.ruby-lang.org/issues/16043
+[Feature #12005]: https://bugs.ruby-lang.org/issues/12005
+[Feature #12737]: https://bugs.ruby-lang.org/issues/12737
+[Feature #13110]: https://bugs.ruby-lang.org/issues/13110
+[Feature #14332]: https://bugs.ruby-lang.org/issues/14332
+[Feature #15231]: https://bugs.ruby-lang.org/issues/15231
+[Bug #15928]:     https://bugs.ruby-lang.org/issues/15928
+[Feature #16131]: https://bugs.ruby-lang.org/issues/16131
 [Feature #16806]: https://bugs.ruby-lang.org/issues/16806
-[Feature #17312]: https://bugs.ruby-lang.org/issues/17312
-[Feature #17327]: https://bugs.ruby-lang.org/issues/17327
-[Feature #17370]: https://bugs.ruby-lang.org/issues/17370
-[Feature #17411]: https://bugs.ruby-lang.org/issues/17411
-[Bug #17423]:     https://bugs.ruby-lang.org/issues/17423
-[Bug #17429]:     https://bugs.ruby-lang.org/issues/17429
-[Feature #17470]: https://bugs.ruby-lang.org/issues/17470
-[Feature #17479]: https://bugs.ruby-lang.org/issues/17479
-[Feature #17490]: https://bugs.ruby-lang.org/issues/17490
-[Feature #17592]: https://bugs.ruby-lang.org/issues/17592
-[Feature #17724]: https://bugs.ruby-lang.org/issues/17724
-[Feature #17744]: https://bugs.ruby-lang.org/issues/17744
-[Feature #17750]: https://bugs.ruby-lang.org/issues/17750
-[Feature #17762]: https://bugs.ruby-lang.org/issues/17762
-[Feature #17795]: https://bugs.ruby-lang.org/issues/17795
-[Feature #17798]: https://bugs.ruby-lang.org/issues/17798
-[Bug #17827]:     https://bugs.ruby-lang.org/issues/17827
-[Feature #17853]: https://bugs.ruby-lang.org/issues/17853
-[Bug #18003]:     https://bugs.ruby-lang.org/issues/18003
-[Feature #18008]: https://bugs.ruby-lang.org/issues/18008
-[Feature #18015]: https://bugs.ruby-lang.org/issues/18015
-[Feature #18020]: https://bugs.ruby-lang.org/issues/18020
-[Feature #18029]: https://bugs.ruby-lang.org/issues/18029
-[Feature #18172]: https://bugs.ruby-lang.org/issues/18172
-[Feature #18229]: https://bugs.ruby-lang.org/issues/18229
-[Feature #18273]: https://bugs.ruby-lang.org/issues/18273
-[Feature #18290]: https://bugs.ruby-lang.org/issues/18290
-[GH-1509]: https://github.com/ruby/ruby/pull/1509
-[GH-4815]: https://github.com/ruby/ruby/pull/4815
-[GH-5112]: https://github.com/ruby/ruby/pull/5112
-[GH-5131]: https://github.com/ruby/ruby/pull/5131
-[GH-5146]: https://github.com/ruby/ruby/pull/5146
+[Bug #16908]:     https://bugs.ruby-lang.org/issues/16908
+[Feature #16989]: https://bugs.ruby-lang.org/issues/16989
+[Feature #17351]: https://bugs.ruby-lang.org/issues/17351
+[Feature #17391]: https://bugs.ruby-lang.org/issues/17391
+[Bug #17545]:     https://bugs.ruby-lang.org/issues/17545
+[Feature #17881]: https://bugs.ruby-lang.org/issues/17881
+[Feature #18351]: https://bugs.ruby-lang.org/issues/18351
+[Feature #18585]: https://bugs.ruby-lang.org/issues/18585

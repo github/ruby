@@ -134,7 +134,6 @@ typedef struct rb_iseq_struct rb_iseq_t;
 typedef struct rb_method_iseq_struct {
     const rb_iseq_t * iseqptr; /*!< iseq pointer, should be separated from iseqval */
     rb_cref_t * cref;          /*!< class reference, should be marked */
-    const rb_callable_method_entry_t *mandatory_only_cme;
 } rb_method_iseq_t; /* check rb_add_method_iseq() when modify the fields */
 
 typedef struct rb_method_cfunc_struct {
@@ -182,6 +181,7 @@ struct rb_method_definition_struct {
     unsigned int iseq_overload: 1;
     int alias_count : 27;
     int complemented_count : 28;
+    unsigned int no_redef_warning: 1;
 
     union {
         rb_method_iseq_t iseq;

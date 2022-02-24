@@ -5317,7 +5317,7 @@ rb_big2dbl(VALUE x)
     double d = big2dbl(x);
 
     if (isinf(d)) {
-	rb_warning("Bignum out of Float range");
+	rb_warning("Integer out of Float range");
 	if (d < 0.0)
 	    d = -HUGE_VAL;
 	else
@@ -6730,14 +6730,15 @@ rb_big_hash(VALUE x)
 
 /*
  * call-seq:
- *   big.coerce(numeric)  ->  array
+ *   int.coerce(numeric)  ->  array
  *
- * Returns an array with both a +numeric+ and a +big+ represented as Bignum
- * objects.
+ * Returns an array with both a +numeric+ and a +int+ represented as
+ * Integer objects or Float objects.
  *
- * This is achieved by converting +numeric+ to a Bignum.
+ * This is achieved by converting +numeric+ to an Integer or a Float.
  *
- * A TypeError is raised if the +numeric+ is not a Fixnum or Bignum type.
+ * A TypeError is raised if the +numeric+ is not an Integer or a Float
+ * type.
  *
  *     (0x3FFFFFFFFFFFFFFF+1).coerce(42)   #=> [42, 4611686018427387904]
  */
@@ -7169,10 +7170,6 @@ rb_int_powm(int const argc, VALUE * const argv, VALUE const num)
 void
 Init_Bignum(void)
 {
-    /* An obsolete class, use Integer */
-    rb_define_const(rb_cObject, "Bignum", rb_cInteger);
-    rb_deprecate_constant(rb_cObject, "Bignum");
-
     rb_define_method(rb_cInteger, "coerce", rb_int_coerce, 1);
 
 #ifdef USE_GMP

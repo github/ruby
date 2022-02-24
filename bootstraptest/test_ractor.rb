@@ -211,6 +211,17 @@ assert_equal '[:a, :b, :c, :d, :e, :f, :g]', %q{
   Ractor.make_shareable(closure).call
 }
 
+# Now autoload in non-main Ractor is not supported
+assert_equal 'ok', %q{
+  autoload :Foo, 'foo.rb'
+  r = Ractor.new do
+    p Foo
+  rescue Ractor::UnsafeError
+    :ok
+  end
+  r.take
+}
+
 ###
 ###
 # Ractor still has several memory corruption so skip huge number of tests
@@ -1081,6 +1092,28 @@ assert_equal 'can not access class variables from non-main Ractors', %q{
     class C
       p @@cv
     end
+  end
+
+  begin
+    r.take
+  rescue Ractor::RemoteError => e
+    e.cause.message
+  end
+}
+
+# also cached cvar in shareable-objects are not allowed to access from non-main Ractor
+assert_equal 'can not access class variables from non-main Ractors', %q{
+  class C
+    @@cv = 'str'
+    def self.cv
+      @@cv
+    end
+  end
+
+  C.cv # cache
+
+  r = Ractor.new do
+    C.cv
   end
 
   begin

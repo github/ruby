@@ -412,6 +412,11 @@ class TestProc < Test::Unit::TestCase
     assert_equal(:foo, bc.foo)
   end
 
+  def test_dup_subclass
+    c1 = Class.new(Proc)
+    assert_equal c1, c1.new{}.dup.class, '[Bug #17545]'
+  end
+
   def test_binding
     b = proc {|x, y, z| proc {}.binding }.call(1, 2, 3)
     class << b; attr_accessor :foo; end
@@ -1261,7 +1266,7 @@ class TestProc < Test::Unit::TestCase
     assert_equal([[:req, :a], [:rest, :b], [:req, :c], [:block, :d]], method(:pmo6).to_proc.parameters)
     assert_equal([[:req, :a], [:opt, :b], [:rest, :c], [:req, :d], [:block, :e]], method(:pmo7).to_proc.parameters)
     assert_equal([[:req], [:block, :b]], method(:pma1).to_proc.parameters)
-    assert_equal([[:keyrest]], method(:pmk1).to_proc.parameters)
+    assert_equal([[:keyrest, :**]], method(:pmk1).to_proc.parameters)
     assert_equal([[:keyrest, :o]], method(:pmk2).to_proc.parameters)
     assert_equal([[:req, :a], [:keyrest, :o]], method(:pmk3).to_proc.parameters)
     assert_equal([[:opt, :a], [:keyrest, :o]], method(:pmk4).to_proc.parameters)

@@ -42,6 +42,7 @@ m4_include([tool/m4/ruby_try_cflags.m4])dnl
 m4_include([tool/m4/ruby_try_cxxflags.m4])dnl
 m4_include([tool/m4/ruby_try_ldflags.m4])dnl
 m4_include([tool/m4/ruby_universal_arch.m4])dnl
+m4_include([tool/m4/ruby_wasm_tools.m4])dnl
 m4_include([tool/m4/ruby_werror_flag.m4])dnl
 
 AC_ARG_VAR([cflags], [additional CFLAGS (ignored when CFLAGS is given)])dnl
@@ -136,6 +137,9 @@ AS_IF([test ! -z "$ac_cv_prog_CC" -a ! -z "$CC" -a "$CC" != "$ac_cv_prog_CC"], [
   AC_MSG_ERROR(cached CC is different -- throw away $cache_file
 (it is also a good idea to do 'make clean' before compiling))
 ])
+
+RUBY_WASM_TOOLS
+
 AS_CASE(["${build_os}"],
 [linux*|cygwin*|msys*], [
     # Naruse prefers GCC on Linux
@@ -165,38 +169,42 @@ AC_ARG_VAR([STRIP],    [Strip command])
 # We don't want to bother things like `ccache gcc`, `clang -shared-libgcc`, ...
 set rb_dummy ${CC}
 rb_CC=$2
+AC_DEFUN([RUBY_CHECK_PROG_FOR_CC], [
+    rb_prog=`echo "${rb_CC}" | sed "$2"`
+    AC_CHECK_PROG([$1], [$rb_prog], [$rb_prog])
+])
 AS_CASE(["/${rb_CC} "],
 [*@<:@\ /@:>@"cc "*], [
     # Don't try g++/clang++ when CC=cc
-    AC_CHECK_TOOLS([CXX],    [cl.exe CC c++])
+    AC_CHECK_PROGS([CXX],    [cl.exe CC c++])
 ],
 [*icc*],              [
     # Intel C++ has interprocedural optimizations.  It tends to come with its
     # own linker etc.
-    AC_CHECK_TOOL([AR],      [`echo "${rb_CC}" | sed s/icc/xiar/`])
-    AC_CHECK_TOOL([CXX],     [`echo "${rb_CC}" | sed s/icc/icpc/`])
-    AC_CHECK_TOOL([LD],      [`echo "${rb_CC}" | sed s/icc/xild/`])
+    RUBY_CHECK_PROG_FOR_CC([AR],      [s/icc/xiar/])
+    RUBY_CHECK_PROG_FOR_CC([CXX],     [s/icc/icpc/])
+    RUBY_CHECK_PROG_FOR_CC([LD],      [s/icc/xild/])
 ],
 [*gcc*],              [
-    # Dito for GCC.
-    AC_CHECK_TOOL([LD],      [`echo "${rb_CC}" | sed s/gcc/ld/`])
-    AC_CHECK_TOOL([AR],      [`echo "${rb_CC}" | sed s/gcc/gcc-ar/`])
-    AC_CHECK_TOOL([CXX],     [`echo "${rb_CC}" | sed s/gcc/g++/`])
-    AC_CHECK_TOOL([NM],      [`echo "${rb_CC}" | sed s/gcc/gcc-nm/`])
-    AC_CHECK_TOOL([RANLIB],  [`echo "${rb_CC}" | sed s/gcc/gcc-ranlib/`])
+    # Ditto for GCC.
+    RUBY_CHECK_PROG_FOR_CC([LD],      [s/gcc/ld/])
+    RUBY_CHECK_PROG_FOR_CC([AR],      [s/gcc/gcc-ar/])
+    RUBY_CHECK_PROG_FOR_CC([CXX],     [s/gcc/g++/])
+    RUBY_CHECK_PROG_FOR_CC([NM],      [s/gcc/gcc-nm/])
+    RUBY_CHECK_PROG_FOR_CC([RANLIB],  [s/gcc/gcc-ranlib/])
 ],
 [*clang*],            [
-    # Dito for LLVM.  Note however that llvm-as is a LLVM-IR to LLVM bitcode
+    # Ditto for LLVM.  Note however that llvm-as is a LLVM-IR to LLVM bitcode
     # assembler that does not target your machine native binary.
     : ${LD:="${CC}"}         # ... try -fuse-ld=lld ?
-    AC_CHECK_TOOL([AR],      [`echo "${rb_CC}" | sed s/clang/llvm-ar/`])
-#   AC_CHECK_TOOL([AS],      [`echo "${rb_CC}" | sed s/clang/llvm-as/`])
-    AC_CHECK_TOOL([CXX],     [`echo "${rb_CC}" | sed s/clang/clang++/`])
-    AC_CHECK_TOOL([NM],      [`echo "${rb_CC}" | sed s/clang/llvm-nm/`])
-    AC_CHECK_TOOL([OBJCOPY], [`echo "${rb_CC}" | sed s/clang/llvm-objcopy/`])
-    AC_CHECK_TOOL([OBJDUMP], [`echo "${rb_CC}" | sed s/clang/llvm-objdump/`])
-    AC_CHECK_TOOL([RANLIB],  [`echo "${rb_CC}" | sed s/clang/llvm-ranlib/`])
-    AC_CHECK_TOOL([STRIP],   [`echo "${rb_CC}" | sed s/clang/llvm-strip/`])
+    RUBY_CHECK_PROG_FOR_CC([AR],      [s/clang/llvm-ar/])
+#   RUBY_CHECK_PROG_FOR_CC([AS],      [s/clang/llvm-as/])
+    RUBY_CHECK_PROG_FOR_CC([CXX],     [s/clang/clang++/])
+    RUBY_CHECK_PROG_FOR_CC([NM],      [s/clang/llvm-nm/])
+    RUBY_CHECK_PROG_FOR_CC([OBJCOPY], [s/clang/llvm-objcopy/])
+    RUBY_CHECK_PROG_FOR_CC([OBJDUMP], [s/clang/llvm-objdump/])
+    RUBY_CHECK_PROG_FOR_CC([RANLIB],  [s/clang/llvm-ranlib/])
+    RUBY_CHECK_PROG_FOR_CC([STRIP],   [s/clang/llvm-strip/])
 ])
 AS_UNSET(rb_CC)
 AS_UNSET(rb_dummy)
@@ -402,6 +410,15 @@ AS_CASE(["$build_os"],
     ])
     rm -fr conftest*
   ])
+AS_CASE(["$target_os"],
+  [wasi*], [
+    # Clang linker automatically uses wasm-opt with -O if it found.
+    # https://github.com/llvm/llvm-project/blob/812828984c10857a4cd260eb638c52a4411f9143/clang/lib/Driver/ToolChains/WebAssembly.cpp#L95-L118
+    # However optimization before asyncify causes misoptimization,
+    # so wrap clang to insert our fake wasm-opt, which does nothing, in PATH.
+    CC_WRAPPER=`cd -P "${tooldir}" && pwd`/wasm-clangw
+    CC="$CC_WRAPPER $CC"
+  ])
 
 cc_version=
 for option in --version -v -V -qversion; do
@@ -579,7 +596,6 @@ RUBY_WERROR_FLAG([
 rpathflag=''
 AS_IF([test x"${RPATHFLAG}" = x], [
     AS_CASE(["$target_os"],
-	[hpux*], [AS_IF([test "$rb_cv_prog_gnu_ld" = no], [rpathflag='+b '])],
 	[aix*], [rpathflag='-blibpath:'],
 	[for rpathflag in -R "-rpath "; do
 	    AS_CASE("$rpathflag",
@@ -629,7 +645,7 @@ AS_CASE(["$GCC:${warnflags+set}:${extra_warnflags:+set}:"],
     ])
     for wflag in \
 		 -Werror=deprecated-declarations \
-		 -Werror=division-by-zero \
+		 -Werror=division-by-zero -Werror=div-by-zero \
 		 -Werror=duplicated-cond \
 		 -Werror=implicit-function-declaration \
 		 -Werror=implicit-int \
@@ -740,7 +756,7 @@ AS_IF([test "$GCC" = yes], [
 
     # -fstack-protector
     AS_CASE(["$target_os"],
-    [mingw*|emscripten*], [
+    [mingw*|emscripten*|wasi*], [
 	stack_protector=no
     ])
     AS_IF([test -z "${stack_protector+set}"], [
@@ -1068,8 +1084,6 @@ main()
 		])
 		cleanlibs='$(TARGET_SO).dSYM'
 		],
-[hpux*], [	LIBS="-lm $LIBS"
-		ac_cv_c_inline=no],
 [solaris*], [	LIBS="-lm $LIBS"
 		ac_cv_func_vfork=no
 		AC_MSG_CHECKING(whether _XOPEN_SOURCE is already given)
@@ -1139,6 +1153,7 @@ main()
 		ac_cv_header_sys_time_h=no
 		ac_cv_header_sys_times_h=no
 		ac_cv_header_sys_socket_h=no
+		ac_cv_func_execv=yes
 		ac_cv_func_lstat=yes
 		ac_cv_func_times=yes
 		ac_cv_func_waitpid=yes
@@ -1148,6 +1163,7 @@ main()
 		ac_cv_func_lchown=yes
 		ac_cv_func_link=yes
 		ac_cv_func_readlink=yes
+		ac_cv_func_shutdown=yes
 		ac_cv_func_symlink=yes
 		ac_cv_lib_crypt_crypt=no
 		ac_cv_func_getpgrp_void=no
@@ -1218,6 +1234,14 @@ main()
 		RUBY_APPEND_OPTIONS(LDFLAGS, "-sFORCE_FILESYSTEM=1")
 		ac_cv_func_shutdown=no
 		],
+[wasi*],[	LIBS="-lm -lwasi-emulated-mman -lwasi-emulated-signal -lwasi-emulated-getpid -lwasi-emulated-process-clocks $LIBS"
+		RUBY_APPEND_OPTIONS(CFLAGS, -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_PROCESS_CLOCKS)
+		RUBY_APPEND_OPTIONS(CPPFLAGS, -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_PROCESS_CLOCKS)
+		POSTLINK="\$(WASMOPT) --asyncify \$(wasmoptflags) --pass-arg=asyncify-ignore-imports -o \$@ \$@${POSTLINK:+; $POSTLINK}"
+		# wasi-libc's sys/socket.h is not compatible with -std=gnu99,
+		# so re-declare shutdown in include/ruby/missing.h
+		ac_cv_func_shutdown=no
+		],
 [	LIBS="-lm $LIBS"])
 : ${ORIG_LIBS=$LIBS}
 
@@ -1241,15 +1265,14 @@ AS_IF([test -n "${rb_there_is_in_fact_no_gplusplus_but_autoconf_is_cheating_us}"
 
 AC_CHECK_LIB(crypt, crypt)      # glibc (GNU/Linux, GNU/Hurd, GNU/kFreeBSD)
 AC_CHECK_LIB(dl, dlopen)	# Dynamic linking for SunOS/Solaris and SYSV
-AC_CHECK_LIB(dld, shl_load)	# Dynamic linking for HP-UX
 AC_CHECK_LIB(socket, shutdown)  # SunOS/Solaris
 
-if pkg-config --exists capstone; then
-   CAPSTONE_CFLAGS=`pkg-config --cflags capstone`
-   CAPSTONE_LIB_L=`pkg-config --libs-only-L capstone`
+AS_IF([test -n "${PKG_CONFIG}" && ${PKG_CONFIG} --exists capstone], [
+   CAPSTONE_CFLAGS=`${PKG_CONFIG} --cflags capstone`
+   CAPSTONE_LIB_L=`${PKG_CONFIG} --libs-only-L capstone`
    LDFLAGS="$LDFLAGS $CAPSTONE_LIB_L"
    CFLAGS="$CFLAGS $CAPSTONE_CFLAGS"
-fi
+])
 
 AC_CHECK_LIB(capstone, cs_open) # Capstone disassembler for debugging YJIT
 
@@ -1280,6 +1303,7 @@ AC_CHECK_HEADERS(sanitizer/asan_interface.h)
 AC_CHECK_HEADERS(sanitizer/msan_interface.h)
 AC_CHECK_HEADERS(setjmpex.h)
 AC_CHECK_HEADERS(stdalign.h)
+AC_CHECK_HEADERS(stdio.h)
 AC_CHECK_HEADERS(sys/attr.h)
 AC_CHECK_HEADERS(sys/eventfd.h)
 AC_CHECK_HEADERS(sys/fcntl.h)
@@ -1653,7 +1677,19 @@ AS_IF([test "$GCC" = yes], [
     ])
     ])
     AS_IF([test "$rb_cv_func___builtin_unreachable" = yes], [
-	AC_DEFINE_UNQUOTED(UNREACHABLE, [__builtin_unreachable()])
+	AC_DEFINE(HAVE___BUILTIN_UNREACHABLE)
+    ])
+
+    AC_CACHE_CHECK(for __assume, rb_cv_func___assume,
+    [RUBY_WERROR_FLAG([
+        AC_LINK_IFELSE([AC_LANG_PROGRAM([[]],
+            [[__assume(1);]])],
+            [rb_cv_func___assume=yes],
+            [rb_cv_func___assume=no])
+    ])
+    ])
+    AS_IF([test "$rb_cv_func___assume" = yes], [
+	AC_DEFINE(HAVE___ASSUME)
     ])
 }
 
@@ -1912,7 +1948,14 @@ AC_DEFUN([RUBY_REQUIRE_FUNC], [
     AS_IF([test "$ac_cv_func_[]AS_TR_SH($1)" = yes], [],
           [AC_MSG_ERROR($1[() must be supported])])
 ])
-m4_map_args_w([dup dup2], [RUBY_REQUIRE_FUNC(], [)])
+
+# dup and dup2 are always available except for WASI
+AS_CASE(["$target_os"],
+    [wasi*], [],
+    [
+        m4_map_args_w([dup dup2], [RUBY_REQUIRE_FUNC(], [)])
+    ]
+)
 
 AC_REPLACE_FUNCS(acosh)
 AC_REPLACE_FUNCS(cbrt)
@@ -1939,7 +1982,6 @@ AC_DEFINE(HAVE_ISFINITE)        # C99; backward compatibility
 # for missing/setproctitle.c
 AS_CASE(["$target_os"],
 [aix* | k*bsd*-gnu | kopensolaris*-gnu | linux* | darwin*], [AC_DEFINE(SPT_TYPE,SPT_REUSEARGV)],
-[hpux*], [AC_DEFINE(SPT_TYPE,SPT_PSTAT) ],
 [])
 AC_CHECK_HEADERS(sys/pstat.h)
 
@@ -1954,6 +1996,8 @@ AC_CHECK_FUNCS(_longjmp)		# used for AC_ARG_WITH(setjmp-type)
 test x$ac_cv_func__longjmp = xno && ac_cv_func__setjmp=no
 AC_CHECK_FUNCS(arc4random_buf)
 AC_CHECK_FUNCS(atan2l atan2f)
+AC_CHECK_FUNCS(chmod)
+AC_CHECK_FUNCS(chown)
 AC_CHECK_FUNCS(chroot)
 AC_CHECK_FUNCS(chsize)
 AC_CHECK_FUNCS(clock_gettime)
@@ -1969,6 +2013,10 @@ AC_CHECK_FUNCS(dup3)
 AC_CHECK_FUNCS(eaccess)
 AC_CHECK_FUNCS(endgrent)
 AC_CHECK_FUNCS(eventfd)
+AC_CHECK_FUNCS(execl)
+AC_CHECK_FUNCS(execle)
+AC_CHECK_FUNCS(execv)
+AC_CHECK_FUNCS(execve)
 AC_CHECK_FUNCS(explicit_memset)
 AC_CHECK_FUNCS(fcopyfile)
 AC_CHECK_FUNCS(fchmod)
@@ -1984,7 +2032,10 @@ AC_CHECK_FUNCS(ftruncate)
 AC_CHECK_FUNCS(ftruncate64)		# used for Win32 platform
 AC_CHECK_FUNCS(getattrlist)
 AC_CHECK_FUNCS(getcwd)
+AC_CHECK_FUNCS(getegid)
 AC_CHECK_FUNCS(getentropy)
+AC_CHECK_FUNCS(geteuid)
+AC_CHECK_FUNCS(getgid)
 AC_CHECK_FUNCS(getgidx)
 AC_CHECK_FUNCS(getgrnam)
 AC_CHECK_FUNCS(getgrnam_r)
@@ -1993,6 +2044,7 @@ AC_CHECK_FUNCS(getlogin)
 AC_CHECK_FUNCS(getlogin_r)
 AC_CHECK_FUNCS(getpgid)
 AC_CHECK_FUNCS(getpgrp)
+AC_CHECK_FUNCS(getppid)
 AC_CHECK_FUNCS(getpriority)
 AC_CHECK_FUNCS(getpwnam)
 AC_CHECK_FUNCS(getpwnam_r)
@@ -2004,6 +2056,7 @@ AC_CHECK_FUNCS(getresuid)
 AC_CHECK_FUNCS(getrlimit)
 AC_CHECK_FUNCS(getsid)
 AC_CHECK_FUNCS(gettimeofday)		# for making ac_cv_func_gettimeofday
+AC_CHECK_FUNCS(getuid)
 AC_CHECK_FUNCS(getuidx)
 AC_CHECK_FUNCS(gmtime_r)
 AC_CHECK_FUNCS(grantpt)
@@ -2011,6 +2064,7 @@ AC_CHECK_FUNCS(initgroups)
 AC_CHECK_FUNCS(ioctl)
 AC_CHECK_FUNCS(isfinite)
 AC_CHECK_FUNCS(issetugid)
+AC_CHECK_FUNCS(kill)
 AC_CHECK_FUNCS(killpg)
 AC_CHECK_FUNCS(lchmod)
 AC_CHECK_FUNCS(lchown)
@@ -2032,10 +2086,15 @@ AC_CHECK_FUNCS(mkfifo)
 AC_CHECK_FUNCS(mknod)
 AC_CHECK_FUNCS(mktime)
 AC_CHECK_FUNCS(mmap)
+AC_CHECK_FUNCS(mremap)
 AC_CHECK_FUNCS(openat)
+AC_CHECK_FUNCS(pclose)
+AC_CHECK_FUNCS(pipe)
 AC_CHECK_FUNCS(pipe2)
 AC_CHECK_FUNCS(poll)
+AC_CHECK_FUNCS(popen)
 AC_CHECK_FUNCS(posix_fadvise)
+AC_CHECK_FUNCS(posix_madvise)
 AC_CHECK_FUNCS(posix_memalign)
 AC_CHECK_FUNCS(ppoll)
 AC_CHECK_FUNCS(pread)
@@ -2074,12 +2133,15 @@ AC_CHECK_FUNCS(spawnv)
 AC_CHECK_FUNCS(symlink)
 AC_CHECK_FUNCS(syscall)
 AC_CHECK_FUNCS(sysconf)
+AC_CHECK_FUNCS(system)
 AC_CHECK_FUNCS(tanh)
 AC_CHECK_FUNCS(telldir)
 AC_CHECK_FUNCS(timegm)
 AC_CHECK_FUNCS(times)
 AC_CHECK_FUNCS(truncate)
 AC_CHECK_FUNCS(truncate64)		# used for Win32
+AC_CHECK_FUNCS(tzset)
+AC_CHECK_FUNCS(umask)
 AC_CHECK_FUNCS(unsetenv)
 AC_CHECK_FUNCS(utimensat)
 AC_CHECK_FUNCS(utimes)
@@ -2588,6 +2650,9 @@ AS_CASE([$coroutine_type], [yes|''], [
         [*-emscripten*], [
             coroutine_type=emscripten
         ],
+        [*-wasi*], [
+            coroutine_type=asyncify
+        ],
         [
             AC_CHECK_FUNCS([getcontext swapcontext makecontext],
                 [coroutine_type=ucontext],
@@ -2917,7 +2982,6 @@ STATIC=
       RUBY_APPEND_OPTION(CCDLFLAGS, -fPIC)])
   ], [
     AS_CASE(["$target_os"],
-	[hpux*],          [CCDLFLAGS="$CCDLFLAGS +Z"],
 	[solaris*|irix*], [CCDLFLAGS="$CCDLFLAGS -KPIC"],
 	[sunos*],         [CCDLFLAGS="$CCDLFLAGS -PIC"],
 	[esix*|uxpds*],   [CCDLFLAGS="$CCDLFLAGS -KPIC"],
@@ -2932,11 +2996,6 @@ STATIC=
        [enable_rpath=$enableval], [enable_rpath="$rb_cv_binary_elf"])
 
   AS_CASE(["$target_os"],
-	[hpux*], [	DLDFLAGS="$DLDFLAGS -E"
-			: ${LDSHARED='$(LD) -b'}
-			XLDFLAGS="$XLDFLAGS -Wl,-E"
-			: ${LIBPATHENV=SHLIB_PATH}
-			rb_cv_dlopen=yes],
 	[solaris*], [	AS_IF([test "$GCC" = yes], [
 			    : ${LDSHARED='$(CC) -shared'}
 			    AS_IF([test "$rb_cv_prog_gnu_ld" = yes], [
@@ -3184,8 +3243,6 @@ AS_IF([test x$with_valgrind != xno],
 
 : "dlext & soext" && {
   AS_CASE(["$target_os"],
-    [hpux*], [
-	DLEXT=sl],
     [darwin*], [
 	SOEXT=dylib
 	DLEXT=bundle],
@@ -3297,7 +3354,7 @@ AS_IF([test x"${exec_prefix}" != xNONE], [
     RUBY_EXEC_PREFIX=$ac_default_prefix
 ])
 pat=`echo "${RUBY_EXEC_PREFIX}" | tr -c '\012' .`'\(.*\)'
-for var in bindir libdir rubylibprefix; do
+for var in bindir includedir libdir rubylibprefix; do
     eval val='"$'$var'"'
     AS_CASE(["$val"], ["${RUBY_EXEC_PREFIX}"*], [val='${exec_prefix}'"`expr \"$val\" : \"$pat\"`"])
     eval $var='"$val"'
@@ -3492,10 +3549,6 @@ AS_CASE("$enable_shared", [yes], [
 	], [
 	    LIBRUBY_RPATHFLAGS='-R${libdir}'
 	])
-	],
-    [hpux*], [
-	XLDFLAGS="$XLDFLAGS "'-Wl,+s,+b,$(libdir)'
-	LIBRUBY_ALIASES='$(LIBRUBY_SONAME) lib$(RUBY_SO_NAME).$(SOEXT)'
 	],
     [aix*], [
 	RUBY_APPEND_OPTIONS(LIBRUBY_DLDFLAGS, ["${linker_flag}-bnoentry" "$XLDFLAGS" "$LDFLAGS_OPTDIR"])
@@ -3698,12 +3751,15 @@ AC_SUBST(INSTALLDOC)
 
 AC_ARG_ENABLE(jit-support,
         AS_HELP_STRING([--disable-jit-support], [disable JIT features]),
-        [MJIT_SUPPORT=$enableval
-         AS_IF([test x"$enable_jit_support" = "xyes"],
-                 [AC_DEFINE(USE_MJIT, 1)],
-                 [AC_DEFINE(USE_MJIT, 0)])],
-        [MJIT_SUPPORT=yes
-         AC_DEFINE(USE_MJIT, 1)])
+        [MJIT_SUPPORT=$enableval],
+        # Enable mjit by default except for WASI
+        [AS_IF([test x"$target_os" != "xwasi"],
+		[MJIT_SUPPORT=yes],
+		[MJIT_SUPPORT=no ])])
+
+AS_IF([test x"$MJIT_SUPPORT" = "xyes"],
+	[AC_DEFINE(USE_MJIT, 1)],
+	[AC_DEFINE(USE_MJIT, 0)])
 
 AC_SUBST(MJIT_SUPPORT)
 
@@ -3841,11 +3897,16 @@ AS_CASE(["$target_os"],
 	    LIBRUBYARG='-l$(RUBY_SO_NAME)'
 	])
 	],
-    [hpux*], [
-	AS_CASE(["$YACC"],[*yacc*], [
-	    XCFLAGS="$XCFLAGS -DYYMAXDEPTH=300"
-	    YACC="$YACC -Nl40000 -Nm40000"
-	])
+    [wasi*], [
+        FIRSTMAKEFILE=GNUmakefile:wasm/GNUmakefile.in
+        AC_LIBOBJ([wasm/missing])
+        AC_LIBOBJ([wasm/runtime])
+        AC_LIBOBJ([wasm/fiber])
+        AC_LIBOBJ([wasm/machine])
+        AC_LIBOBJ([wasm/setjmp])
+        AC_LIBOBJ([wasm/machine_core])
+        AC_LIBOBJ([wasm/setjmp_core])
+        PLATFORM_DIR=wasm
 ])
 
 MINIOBJS="$MINIDLNOBJ"
@@ -4276,8 +4337,7 @@ AS_MESSAGE([$PACKAGE library version = $ruby_version])
 AS_IF([test x"$CC_WRAPPER" != x], [
     CC='$(CC_WRAPPER) '"${CC@%:@$CC_WRAPPER }"
     CPP='$(CC_WRAPPER) '"${CPP@%:@$CC_WRAPPER }"
-    CC_WRAPPER='$(rubyarchdir)/darwin-cc'
-    XCC_WRAPPER='$(top_srcdir)/tool/darwin-cc'
+    XCC_WRAPPER="$CC_WRAPPER"
 ])
 AC_SUBST(CC_WRAPPER, '')
 AC_SUBST(XCC_WRAPPER)
