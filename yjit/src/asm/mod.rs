@@ -174,15 +174,11 @@ impl CodeBlock
         }
     }
 
-    /*
     // Set the current write position from a pointer
-    void set_write_ptr(codeblock_t *cb, uint8_t *code_ptr)
-    {
-        intptr_t pos = code_ptr - cb->mem_block_;
-        assert (pos < cb->mem_size);
-        cb_set_pos(cb, (uint32_t)pos);
+    pub fn set_write_ptr(&mut self, code_ptr: CodePtr) {
+        let pos = (code_ptr.raw_ptr() as usize) - (self.mem_block as usize);
+        self.set_pos(pos.try_into().unwrap());
     }
-    */
 
     // Get a direct pointer into the executable memory block
     pub fn get_ptr(&mut self, offset: usize) -> CodePtr {
