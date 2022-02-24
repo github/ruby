@@ -282,10 +282,15 @@ pub struct rb_callable_method_entry_t {
     core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
 
-/// Pointer to a control frame pointer (CFP)
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(C)]
-pub struct CfpPtr(pub usize);
+pub struct rb_control_frame_struct {
+    _data: [u8; 0],
+    _marker:
+    core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
+}
+
+/// Pointer to a control frame pointer (CFP)
+pub type CfpPtr = *mut rb_control_frame_struct;
 
 impl VALUE {
     // Return whether the value is truthy or falsy in Ruby -- only nil and false are falsy.
