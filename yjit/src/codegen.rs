@@ -705,7 +705,7 @@ fn gen_check_ints(cb: &mut CodeBlock, side_exit: CodePtr)
 
 // Generate a stubbed unconditional jump to the next bytecode instruction.
 // Blocks that are part of a guard chain can use this to share the same successor.
-fn jit_jump_to_next_insn(jit: &mut JITState, current_context: &Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb)
+fn jump_to_next_insn(jit: &mut JITState, current_context: &Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb)
 {
     // Reset the depth since in current usages we only ever jump to to
     // chain_depth > 0 from the same instruction.
@@ -767,7 +767,7 @@ pub fn gen_single_block(blockref: &BlockRef, ec: EcPtr, cb: &mut CodeBlock, ocb:
         // opt_getinlinecache wants to be in a block all on its own. Cut the block short
         // if we run into it. See gen_opt_getinlinecache() for details.
         if opcode == OP_OPT_GETINLINECACHE && insn_idx > starting_insn_idx {
-            jit_jump_to_next_insn(&mut jit, &ctx, cb, ocb);
+            jump_to_next_insn(&mut jit, &ctx, cb, ocb);
             break
         }
 
@@ -2004,7 +2004,7 @@ fn gen_get_ivar(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         mov(cb, out_opnd, RAX);
 
         // Jump to next instruction. This allows guard chains to share the same successor.
-        jit_jump_to_next_insn(jit, ctx, cb, ocb);
+        jump_to_next_insn(jit, ctx, cb, ocb);
         return EndBlock;
     }
 
@@ -2100,7 +2100,7 @@ fn gen_get_ivar(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
     }
 
     // Jump to next instruction. This allows guard chains to share the same successor.
-    jit_jump_to_next_insn(jit, ctx, cb, ocb);
+    jump_to_next_insn(jit, ctx, cb, ocb);
     EndBlock
 }
 
@@ -2486,7 +2486,7 @@ fn gen_opt_eq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &m
     let side_exit = get_side_exit(jit, ocb, ctx);
 
     if gen_equality_specialized(jit, ctx, cb, side_exit) {
-        jit_jump_to_next_insn(jit, ctx, cb, ocb);
+        jump_to_next_insn(jit, ctx, cb, ocb);
         EndBlock
     }
     else {
@@ -2577,7 +2577,7 @@ fn gen_opt_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         }
 
         // Jump to next instruction. This allows guard chains to share the same successor.
-        jit_jump_to_next_insn(jit, ctx);
+        jump_to_next_insn(jit, ctx);
         return EndBlock;
     }
     else if (CLASS_OF(comptime_recv) == rb_cHash) {
@@ -2609,7 +2609,7 @@ fn gen_opt_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         mov(cb, stack_ret, RAX);
 
         // Jump to next instruction. This allows guard chains to share the same successor.
-        jit_jump_to_next_insn(jit, ctx);
+        jump_to_next_insn(jit, ctx);
         EndBlock
     }
     else {
@@ -2665,7 +2665,7 @@ fn gen_opt_aset(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         let stack_ret = ctx.stack_push(Type::Unknown);
         mov(cb, stack_ret, REG0);
 
-        jit_jump_to_next_insn(jit, ctx);
+        jump_to_next_insn(jit, ctx);
         return EndBlock;
     }
     else if (CLASS_OF(comptime_recv) == rb_cHash) {
@@ -2690,7 +2690,7 @@ fn gen_opt_aset(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         let stack_ret = ctx.stack_push(Type::Unknown);
         mov(cb, stack_ret, RAX);
 
-        jit_jump_to_next_insn(jit, ctx);
+        jump_to_next_insn(jit, ctx);
         EndBlock
     }
     else {
@@ -3534,7 +3534,7 @@ fn gen_send_cfunc(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: *
             if (known_cfunc_codegen(jit, ctx, ci, cme, block, argc, recv_known_klass)) {
                 // cfunc codegen generated code. Terminate the block so
                 // there isn't multiple calls in the same block.
-                jit_jump_to_next_insn(jit, ctx);
+                jump_to_next_insn(jit, ctx);
                 return EndBlock;
             }
         }
@@ -3700,7 +3700,7 @@ fn gen_send_cfunc(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: *
 
     // Jump (fall through) to the call continuation block
     // We do this to end the current block after the call
-    jit_jump_to_next_insn(jit, ctx);
+    jump_to_next_insn(jit, ctx);
     EndBlock
     */
 }
@@ -4257,7 +4257,7 @@ fn gen_struct_aref(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, co
     let ret = ctx.stack_push(Type::Unknown);
     mov(cb, ret, REG0);
 
-    jit_jump_to_next_insn(jit, ctx);
+    jump_to_next_insn(jit, ctx);
     EndBlock
 }
 
@@ -4285,7 +4285,7 @@ fn gen_struct_aset(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, co
     let ret = ctx.stack_push(Type::Unknown);
     mov(cb, ret, RAX);
 
-    jit_jump_to_next_insn(jit, ctx);
+    jump_to_next_insn(jit, ctx);
     EndBlock
 }
 */
@@ -5296,7 +5296,7 @@ impl CodegenGlobals {
         // In test mode we're not linking with the C code
         // so we don't allocate executable memory
         #[cfg(test)]
-        let mut cb = CodeBlock::new_dummy(mem_size / 2);       
+        let mut cb = CodeBlock::new_dummy(mem_size / 2);
         #[cfg(test)]
         let mut ocb = OutlinedCb::wrap(CodeBlock::new_dummy(mem_size / 2));
 
