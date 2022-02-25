@@ -84,6 +84,14 @@ impl JITState {
         }
     }
 
+    pub fn get_block(&self) -> BlockRef {
+        self.block.clone()
+    }
+
+    pub fn get_insn_idx(&self) -> u32 {
+        self.insn_idx
+    }
+
     pub fn get_iseq(self:&JITState) -> IseqPtr {
         self.iseq
     }
@@ -738,11 +746,14 @@ fn jump_to_next_insn(jit: &mut JITState, current_context: &Context, cb: &mut Cod
 //       but the input start_ctx argument should remain immutable.
 pub fn gen_single_block(blockref: &BlockRef, ec: EcPtr, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> Result<(), ()>
 {
-    let mut block = blockref.borrow_mut();
-    let blockid = block.get_blockid();
-    //verify_blockid(blockid);
+    let blockid = {
+        let block = blockref.borrow();
+        let blockid = block.get_blockid();
+        //verify_blockid(blockid);
 
-    assert!(!(blockid.idx == 0 && block.get_ctx().get_stack_size() > 0));
+        assert!(!(blockid.idx == 0 && block.get_ctx().get_stack_size() > 0));
+        blockid
+    };
 
     let iseq = blockid.iseq;
     let iseq_size = unsafe { get_iseq_encoded_size(iseq) };
@@ -756,7 +767,7 @@ pub fn gen_single_block(blockref: &BlockRef, ec: EcPtr, cb: &mut CodeBlock, ocb:
     jit.ec = Some(ec);
 
     // Mark the start position of the block
-    block.set_start_addr(cb.get_write_ptr());
+    blockref.borrow_mut().set_start_addr(cb.get_write_ptr());
 
     // For each instruction to compile
     // NOTE: could rewrite this loop with a std::iter::Iterator
@@ -815,6 +826,8 @@ pub fn gen_single_block(blockref: &BlockRef, ec: EcPtr, cb: &mut CodeBlock, ocb:
         // If we can't compile this instruction
         // exit to the interpreter and stop compiling
         if status == CantCompile {
+            let mut block = jit.block.borrow_mut();
+
             // TODO: if the codegen function makes changes to ctx and then return YJIT_CANT_COMPILE,
             // the exit this generates would be wrong. We could save a copy of the entry context
             // and assert that ctx is the same here.
@@ -841,11 +854,16 @@ pub fn gen_single_block(blockref: &BlockRef, ec: EcPtr, cb: &mut CodeBlock, ocb:
         }
     }
 
-    // Mark the end position of the block
-    block.set_end_addr(cb.get_write_ptr());
+    // Finish filling out the block
+    {
+        let mut block = jit.block.borrow_mut();
 
-    // Store the index of the last instruction in the block
-    block.set_end_idx(insn_idx);
+        // Mark the end position of the block
+        block.set_end_addr(cb.get_write_ptr());
+
+        // Store the index of the last instruction in the block
+        block.set_end_idx(insn_idx);
+    }
 
     // We currently can't handle cases where the request is for a block that
     // doesn't go to the next instruction.
@@ -1083,7 +1101,7 @@ fn gen_adjuststack(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
 fn gen_opt_plus(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     if !jit_at_current_insn(jit) {
-        defer_compilation(jit, cb, ctx);
+        defer_compilation(jit, ctx, cb, ocb);
         return EndBlock;
     }
 
@@ -2120,7 +2138,7 @@ fn gen_getinstancevariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeB
 {
     // Defer compilation so we can specialize on a runtime `self`
     if !jit_at_current_insn(jit) {
-        defer_compilation(jit, cb, ctx);
+        defer_compilation(jit, ctx, cb, ocb);
         return EndBlock;
     }
 
@@ -2335,7 +2353,7 @@ fn gen_fixnum_cmp(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
 {
     // Defer compilation so we can specialize base on a runtime receiver
     if !jit_at_current_insn(jit) {
-        defer_compilation(jit, cb, ctx);
+        defer_compilation(jit, ctx, cb, ocb);
         return EndBlock;
     }
 
@@ -2490,7 +2508,7 @@ fn gen_opt_eq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &m
 {
     // Defer compilation so we can specialize base on a runtime receiver
     if !jit_at_current_insn(jit) {
-        defer_compilation(jit, cb, ctx);
+        defer_compilation(jit, ctx, cb, ocb);
         return EndBlock;
     }
 
@@ -2528,7 +2546,7 @@ fn gen_opt_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
 
     // Defer compilation so we can specialize base on a runtime receiver
     if (!jit_at_current_insn(jit)) {
-        defer_compilation(jit, cb, ctx);
+        defer_compilation(jit, ctx, cb, ocb);
         return EndBlock;
     }
 
@@ -2632,7 +2650,7 @@ fn gen_opt_aset(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
 {
     // Defer compilation so we can specialize on a runtime `self`
     if (!jit_at_current_insn(jit)) {
-        defer_compilation(jit, cb, ctx);
+        defer_compilation(jit, ctx, cb, ocb);
         return EndBlock;
     }
 
@@ -2713,7 +2731,7 @@ fn gen_opt_and(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &
 {
     // Defer compilation so we can specialize on a runtime `self`
     if !jit_at_current_insn(jit) {
-        defer_compilation(jit, cb, ctx);
+        defer_compilation(jit, ctx, cb, ocb);
         return EndBlock;
     }
 
@@ -2758,7 +2776,7 @@ fn gen_opt_or(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &m
 {
     // Defer compilation so we can specialize on a runtime `self`
     if !jit_at_current_insn(jit) {
-        defer_compilation(jit, cb, ctx);
+        defer_compilation(jit, ctx, cb, ocb);
         return EndBlock;
     }
 
@@ -2803,7 +2821,7 @@ fn gen_opt_minus(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
 {
     // Defer compilation so we can specialize on a runtime `self`
     if !jit_at_current_insn(jit) {
-        defer_compilation(jit, cb, ctx);
+        defer_compilation(jit, ctx, cb, ocb);
         return EndBlock;
     }
 
@@ -4310,7 +4328,7 @@ fn gen_send_general(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
 
     // Defer compilation so we can specialize on class of receiver
     if !jit_at_current_insn(jit) {
-        defer_compilation(jit, cb, ctx);
+        defer_compilation(jit, ctx, cb, ocb);
         return EndBlock;
     }
 
@@ -4510,7 +4528,7 @@ fn gen_invokesuper(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
 
     // Defer compilation so we can specialize on class of receiver
     if (!jit_at_current_insn(jit)) {
-        defer_compilation(jit, cb, ctx);
+        defer_compilation(jit, ctx, cb, ocb);
         return EndBlock;
     }
 
@@ -4735,7 +4753,7 @@ fn gen_anytostring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
 fn gen_objtostring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     if (!jit_at_current_insn(jit)) {
-        defer_compilation(jit, cb, ctx);
+        defer_compilation(jit, ctx, cb, ocb);
         return EndBlock;
     }
 

@@ -673,7 +673,7 @@ pub fn call_rel32(cb: &mut CodeBlock, rel32: i32) {
     cb.write_byte(0xe8);
 
     // Write the relative 32-bit jump offset
-    cb.write_int(rel32.try_into().unwrap(), 32);
+    cb.write_bytes(&rel32.to_le_bytes());
 }
 
 /// call - Call a pointer, encode with a 32-bit offset if possible

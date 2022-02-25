@@ -76,6 +76,15 @@ fn test_call_label() {
 }
 
 #[test]
+fn test_call_ptr() {
+    // calling a lower address
+    check_bytes("e8fbffffff", |cb| {
+        let ptr = cb.get_write_ptr();
+        call_ptr(cb, RAX, ptr.raw_ptr());
+    });
+}
+
+#[test]
 fn test_call_reg() {
     check_bytes("ffd0", |cb| call(cb, RAX));
 }
