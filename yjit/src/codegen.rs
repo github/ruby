@@ -233,23 +233,7 @@ fn add_comment(cb: &mut CodeBlock, comment_str: &str)
 {
     #[cfg(feature = "asm_comments")]
     {
-        /*
-        // We can't add comments to the outlined code block
-        if (cb == ocb)
-            return;
-
-        // Avoid adding duplicate comment strings (can happen due to deferred codegen)
-        size_t num_comments = rb_darray_size(yjit_code_comments);
-        if (num_comments > 0) {
-            struct yjit_comment last_comment = rb_darray_get(yjit_code_comments, num_comments - 1);
-            if (last_comment.offset == cb->write_pos && strcmp(last_comment.comment, comment_str) == 0) {
-                return;
-            }
-        }
-
-        struct yjit_comment new_comment = (struct yjit_comment){ cb->write_pos, comment_str };
-        rb_darray_append(&yjit_code_comments, new_comment);
-        */
+        cb.add_comment(comment_str);
     }
 }
 

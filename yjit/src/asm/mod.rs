@@ -87,6 +87,10 @@ pub struct CodeBlock
     // References to labels
     label_refs: Vec<LabelRef>,
 
+    // Comments for assembly instructions, if that feature is enabled
+    #[cfg(feature="asm_comments")]
+    asm_comments: Vec<(usize, String)>,
+
     // Keep track of the current aligned write position.
     // Used for changing protection when writing to the JIT buffer
     current_aligned_write_pos: usize,
@@ -108,7 +112,8 @@ impl CodeBlock
         let mut dummy_block = vec![0; mem_size];
         let mem_ptr = dummy_block.as_mut_ptr();
 
-        Self {
+        #[cfg(not(feature="asm_comments"))]
+        return Self {
             dummy_block: dummy_block,
             mem_block: mem_ptr,
             mem_size: mem_size,
@@ -119,11 +124,27 @@ impl CodeBlock
             current_aligned_write_pos: ALIGNED_WRITE_POSITION_NONE,
             page_size: 4096,
             dropped_bytes: false
+        };
+
+        #[cfg(feature="asm_comments")]
+        Self {
+            dummy_block: dummy_block,
+            mem_block: mem_ptr,
+            mem_size: mem_size,
+            write_pos: 0,
+            label_addrs: Vec::new(),
+            label_names: Vec::new(),
+            label_refs: Vec::new(),
+            asm_comments: Vec::new(),
+            current_aligned_write_pos: ALIGNED_WRITE_POSITION_NONE,
+            page_size: 4096,
+            dropped_bytes: false
         }
     }
 
     pub fn new(mem_block: *mut u8, mem_size: usize, page_size: usize) -> Self {
-        Self {
+        #[cfg(not(feature="asm_comments"))]
+        return Self {
             dummy_block: vec![0; 0],
             mem_block: mem_block,
             mem_size: mem_size,
@@ -134,12 +155,59 @@ impl CodeBlock
             current_aligned_write_pos: ALIGNED_WRITE_POSITION_NONE,
             page_size,
             dropped_bytes: false
+        };
+
+        #[cfg(feature="asm_comments")]
+        Self {
+            dummy_block: vec![0; 0],
+            mem_block: mem_block,
+            mem_size: mem_size,
+            write_pos: 0,
+            label_addrs: Vec::new(),
+            label_names: Vec::new(),
+            label_refs: Vec::new(),
+            asm_comments: Vec::new(),
+            current_aligned_write_pos: ALIGNED_WRITE_POSITION_NONE,
+            page_size,
+            dropped_bytes: false
         }
     }
 
     // Check if this code block has sufficient remaining capacity
     pub fn has_capacity(&self, num_bytes: usize) -> bool {
         self.write_pos + num_bytes < self.mem_size
+    }
+
+    /// Add an assembly comment if the feature is on.
+    /// If not, this becomes an inline no-op.
+    #[inline]
+    pub fn add_comment(&mut self, comment: &str) {
+        #[cfg(feature="asm_comments")]
+        {
+            let is_dup = if let Some((last_pos, last_comment)) = self.asm_comments.last() {
+                *last_pos == self.write_pos && *last_comment == comment
+            } else { false };
+            if !is_dup {
+                self.asm_comments.push((self.write_pos, String::from(comment)));
+            }
+        }
+    }
+
+    /// Add an assembly comment at a specific byte offset if the feature is on.
+    /// If not, this becomes an inline no-op.
+    #[inline]
+    pub fn add_comment_at(&mut self, pos:usize, comment: &str) {
+        #[cfg(feature="asm_comments")]
+        self.asm_comments.push((pos, String::from(comment)));
+    }
+
+    /// Get a slice (readonly ref) of assembly comments - if the feature is off, this will be empty.
+    pub fn get_comments(&self) -> Option<&[(usize, String)]> {
+        #[cfg(feature="asm_comments")]
+        return Some(self.asm_comments.as_slice());
+
+        #[cfg(not(feature="asm_comments"))]
+        None
     }
 
     pub fn get_write_pos(&self) -> usize {
