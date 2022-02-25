@@ -328,18 +328,6 @@ rb_get_mct_func(rb_method_cfunc_t *mct)
     return (void*)mct->func; // this field is defined as type VALUE (*func)(ANYARGS)
 }
 
-int
-rb_get_builtin_argc(struct rb_builtin_function* bi)
-{
-    return bi->argc;
-}
-
-void*
-rb_get_builtin_func_ptr(struct rb_builtin_function* bi)
-{
-    return bi->func_ptr;
-}
-
 const rb_iseq_t*
 rb_def_iseq_ptr(rb_method_definition_t *def)
 {

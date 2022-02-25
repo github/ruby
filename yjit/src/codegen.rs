@@ -3898,7 +3898,7 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
     let leaf_builtin: Option<*const rb_builtin_function> = if leaf_builtin_raw == (0 as *const rb_builtin_function) { None } else { Some(leaf_builtin_raw) };
     match (block, leaf_builtin) {
         (None, Some(builtin_info)) => {
-            let builtin_argc = unsafe { get_builtin_argc(builtin_info) };
+            let builtin_argc = unsafe { (*builtin_info).argc };
             if builtin_argc + 1 /* for self */ + 1 /* for ec */ <= (C_ARG_REGS.len() as i32) {
                 add_comment(cb, "inlined leaf builtin");
 
@@ -3913,7 +3913,7 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
                     mov(cb, c_arg_reg, stack_opnd);
                 }
                 ctx.stack_pop((builtin_argc + 1).try_into().unwrap());
-                let builtin_func_ptr = unsafe { get_builtin_func_ptr(builtin_info) };
+                let builtin_func_ptr = unsafe { (*builtin_info).func_ptr as *const u8 };
                 call_ptr(cb, REG0, builtin_func_ptr);
 
                 // Push the return value

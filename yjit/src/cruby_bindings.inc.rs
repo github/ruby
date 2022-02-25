@@ -421,6 +421,22 @@ extern "C" {
 extern "C" {
     pub fn rb_ec_str_resurrect(ec: *mut rb_execution_context_struct, str_: VALUE) -> VALUE;
 }
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rb_builtin_function {
+    pub func_ptr: *const ::std::os::raw::c_void,
+    pub argc: ::std::os::raw::c_int,
+    pub index: ::std::os::raw::c_int,
+    pub name: *const ::std::os::raw::c_char,
+    pub compiler: ::std::option::Option<
+        unsafe extern "C" fn(
+            arg1: *mut FILE,
+            arg2: ::std::os::raw::c_long,
+            arg3: ::std::os::raw::c_uint,
+            arg4: bool,
+        ),
+    >,
+}
 extern "C" {
     pub fn rb_vm_insn_addr2opcode(addr: *const ::std::os::raw::c_void) -> ::std::os::raw::c_int;
 }

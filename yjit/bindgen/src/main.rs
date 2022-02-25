@@ -131,7 +131,6 @@ fn main() {
         .allowlist_function("rb_yjit_get_page_size")
         .allowlist_function("rb_leaf_invokebuiltin_iseq_p")
         .allowlist_function("rb_leaf_builtin_function")
-        .blocklist_type("rb_builtin_function")
 
         // Not sure why it's picking these up, but don't.
         .blocklist_type("FILE")

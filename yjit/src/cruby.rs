@@ -158,12 +158,6 @@ extern "C" {
     #[link_name = "rb_get_mct_func"]
     pub fn get_mct_func(mct: * const rb_method_cfunc_t) -> *const u8;
 
-    #[link_name="rb_get_builtin_argc"]
-    pub fn get_builtin_argc(bi: * const rb_builtin_function) -> c_int;
-
-    #[link_name="rb_get_builtin_func_ptr"]
-    pub fn get_builtin_func_ptr(bi: * const rb_builtin_function) -> *mut u8;
-
     #[link_name = "rb_def_iseq_ptr"]
     pub fn def_iseq_ptr(def: *const rb_method_definition_t) -> IseqPtr;
 
@@ -317,9 +311,9 @@ pub struct rb_method_cfunc_t {
         core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
 
-/// Ruby built-in C function info
+/// Opaque FILE type
 #[repr(C)]
-pub struct rb_builtin_function {
+pub struct FILE {
     _data: [u8; 0],
     _marker:
         core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
