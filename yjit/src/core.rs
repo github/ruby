@@ -883,22 +883,22 @@ impl Context {
 
     /// Erase local variable type information
     /// eg: because of a call we can't track
-    pub fn clear_local_types(ctx: &mut Self) {
+    pub fn clear_local_types(&mut self) {
         // When clearing local types we must detach any stack mappings to those
         // locals. Even if local values may have changed, stack values will not.
-        for (i, mapping) in ctx.temp_mapping.iter_mut().enumerate() {
+        for (i, mapping) in self.temp_mapping.iter_mut().enumerate() {
             *mapping = match *mapping {
                 MapToStack => MapToStack,
                 MapToSelf => MapToSelf,
                 MapToLocal(idx) => {
-                    ctx.temp_types[i] = ctx.local_types[idx as usize];
+                    self.temp_types[i] = self.local_types[idx as usize];
                     MapToStack
                 },
             }
         }
 
         // Clear the local types
-        ctx.local_types = [Type::default(); MAX_LOCAL_TYPES];
+        self.local_types = [Type::default(); MAX_LOCAL_TYPES];
     }
 
     /// Compute a difference score for two context objects

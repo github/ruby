@@ -12,6 +12,7 @@ pub const NIL_REDEFINED_OP_FLAG: u32 = 512;
 pub const TRUE_REDEFINED_OP_FLAG: u32 = 1024;
 pub const FALSE_REDEFINED_OP_FLAG: u32 = 2048;
 pub const PROC_REDEFINED_OP_FLAG: u32 = 4096;
+pub const VM_BLOCK_HANDLER_NONE: u32 = 0;
 pub type ID = ::std::os::raw::c_ulong;
 pub type rb_alloc_func_t = ::std::option::Option<unsafe extern "C" fn(klass: VALUE) -> VALUE>;
 extern "C" {
@@ -421,6 +422,9 @@ extern "C" {
     pub fn rb_ec_str_resurrect(ec: *mut rb_execution_context_struct, str_: VALUE) -> VALUE;
 }
 extern "C" {
+    pub fn rb_vm_insn_addr2opcode(addr: *const ::std::os::raw::c_void) -> ::std::os::raw::c_int;
+}
+extern "C" {
     pub fn rb_yjit_mark_writable(mem_block: *mut ::std::os::raw::c_void, mem_size: u32);
 }
 extern "C" {
@@ -440,6 +444,12 @@ extern "C" {
 }
 extern "C" {
     pub fn rb_iseq_opcode_at_pc(iseq: *const rb_iseq_t, pc: *const VALUE) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn rb_leaf_invokebuiltin_iseq_p(iseq: *const rb_iseq_t) -> bool;
+}
+extern "C" {
+    pub fn rb_leaf_builtin_function(iseq: *const rb_iseq_t) -> *const rb_builtin_function;
 }
 extern "C" {
     pub fn rb_hash_new_with_size(size: st_index_t) -> VALUE;

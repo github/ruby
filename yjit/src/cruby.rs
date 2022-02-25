@@ -137,6 +137,9 @@ extern "C" {
     #[link_name = "rb_get_cme_defined_class"]
     pub fn get_cme_defined_class(cme: * const rb_callable_method_entry_t) -> VALUE;
 
+    #[link_name = "rb_get_cme_def"]
+    pub fn get_cme_def(cme: * const rb_callable_method_entry_t) -> *const rb_method_definition_t;
+
     #[link_name = "rb_get_cme_def_type"]
     pub fn get_cme_def_type(cme: * const rb_callable_method_entry_t) -> rb_method_type_t;
 
@@ -146,11 +149,35 @@ extern "C" {
     #[link_name = "rb_get_cme_def_body_optimized_type"]
     pub fn get_cme_def_body_optimized_type(cme: * const rb_callable_method_entry_t) -> method_optimized_type;
 
+    #[link_name = "rb_get_cme_def_body_cfunc"]
+    pub fn get_cme_def_body_cfunc(cme: * const rb_callable_method_entry_t) -> *mut rb_method_cfunc_t;
+
+    #[link_name = "rb_get_mct_argc"]
+    pub fn get_mct_argc(mct: * const rb_method_cfunc_t) -> c_int;
+
+    #[link_name = "rb_get_mct_func"]
+    pub fn get_mct_func(mct: * const rb_method_cfunc_t) -> *const u8;
+
+    #[link_name="rb_get_builtin_argc"]
+    pub fn get_builtin_argc(bi: * const rb_builtin_function) -> c_int;
+
+    #[link_name="rb_get_builtin_func_ptr"]
+    pub fn get_builtin_func_ptr(bi: * const rb_builtin_function) -> *mut u8;
+
+    #[link_name = "rb_def_iseq_ptr"]
+    pub fn def_iseq_ptr(def: *const rb_method_definition_t) -> IseqPtr;
+
     #[link_name = "rb_iseq_encoded_size"]
     pub fn get_iseq_encoded_size(iseq: IseqPtr) -> c_uint;
 
     #[link_name = "rb_get_iseq_body_iseq_encoded"]
     pub fn get_iseq_body_iseq_encoded(iseq: IseqPtr) -> *mut VALUE;
+
+    #[link_name = "rb_get_iseq_body_builtin_inline_p"]
+    pub fn get_iseq_body_builtin_inline_p(iseq: IseqPtr) -> bool;
+
+    #[link_name = "rb_get_iseq_body_stack_max"]
+    pub fn get_iseq_body_stack_max(iseq:IseqPtr) -> c_uint;
 
     #[link_name = "rb_get_iseq_flags_has_opt"]
     pub fn get_iseq_flags_has_opt(iseq: IseqPtr) -> c_int;
@@ -158,8 +185,23 @@ extern "C" {
     #[link_name = "rb_get_iseq_body_local_table_size"]
     pub fn get_iseq_body_local_table_size(iseq: IseqPtr) -> c_uint;
 
-    #[link_name = "rb_get_iseq_body_param_num"]
-    pub fn get_iseq_body_param_num(iseq: IseqPtr) -> c_int;
+    #[link_name = "rb_get_iseq_body_param_keyword_num"]
+    pub fn get_iseq_body_param_keyword_num(iseq: IseqPtr) -> c_int;
+
+    #[link_name = "rb_get_iseq_body_param_size"]
+    pub fn get_iseq_body_param_size(iseq: IseqPtr) -> c_uint;
+
+    #[link_name = "rb_get_iseq_body_param_lead_num"]
+    pub fn get_iseq_body_param_lead_num(iseq: IseqPtr) -> c_int;
+
+    #[link_name = "rb_get_iseq_body_param_opt_num"]
+    pub fn get_iseq_body_param_opt_num(iseq: IseqPtr) -> c_int;
+
+    #[link_name = "rb_get_iseq_body_param_opt_table"]
+    pub fn get_iseq_body_param_opt_table(iseq: IseqPtr) -> *const VALUE;
+
+    #[link_name = "rb_iseq_needs_lead_args_only"]
+    pub fn iseq_needs_lead_args_only(iseq: *const rb_iseq_t) -> bool;
 
     #[link_name = "rb_get_call_data_ci"]
     pub fn get_call_data_ci(cd: * const rb_call_data) -> *const rb_callinfo;
@@ -184,6 +226,8 @@ extern "C" {
     pub fn rb_vm_set_ivar_idx(obj: VALUE, idx: u32, val: VALUE) -> VALUE;
     pub fn rb_vm_setinstancevariable(iseq: IseqPtr, obj: VALUE, id: ID, val: VALUE, ic: IVC);
     pub fn rb_aliased_callable_method_entry(me: *const rb_callable_method_entry_t) -> *const rb_callable_method_entry_t;
+    pub fn rb_iseq_only_optparam_p(iseq: IseqPtr) -> bool;
+    pub fn rb_iseq_only_kwparam_p(iseq: IseqPtr) -> bool;
 
     #[link_name = "rb_vm_ci_argc"]
     pub fn vm_ci_argc(ci: * const rb_callinfo) -> c_int;
@@ -253,6 +297,29 @@ pub type EcPtr = *const rb_execution_context_struct;
 /// Opaque execution-context type
 #[repr(C)]
 pub struct iseq_inline_iv_cache_entry {
+    _data: [u8; 0],
+    _marker:
+        core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
+}
+
+#[repr(C)]
+pub struct rb_method_definition_t {
+    _data: [u8; 0],
+    _marker:
+        core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
+}
+
+/// Opaque cfunc type
+#[repr(C)]
+pub struct rb_method_cfunc_t {
+    _data: [u8; 0],
+    _marker:
+        core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
+}
+
+/// Ruby built-in C function info
+#[repr(C)]
+pub struct rb_builtin_function {
     _data: [u8; 0],
     _marker:
         core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
@@ -452,8 +519,10 @@ pub const VM_CALL_ARGS_BLOCKARG:u32 = 1 << VM_CALL_ARGS_BLOCKARG_bit;
 pub const VM_CALL_FCALL:u32         = 1 << VM_CALL_FCALL_bit;
 pub const VM_CALL_KWARG:u32         = 1 << VM_CALL_KWARG_bit;
 pub const VM_CALL_KW_SPLAT:u32      = 1 << VM_CALL_KW_SPLAT_bit;
+pub const VM_CALL_TAILCALL:u32      = 1 << VM_CALL_TAILCALL_bit;
 
 pub const SIZEOF_VALUE: usize = 8;
+pub const SIZEOF_VALUE_I32: i32 = SIZEOF_VALUE as i32;
 
 pub const RUBY_FL_SINGLETON:usize = RUBY_FL_USER_0;
 
@@ -507,7 +576,7 @@ pub const RUBY_OFFSET_CFP_ISEQ: i32 = 16;
 pub const RUBY_OFFSET_CFP_SELF: i32 = 24;
 pub const RUBY_OFFSET_CFP_EP: i32 = 32;
 pub const RUBY_OFFSET_CFP_BLOCK_CODE: i32 = 40;
-pub const RUBY_OFFSET_CFP_BP: i32 = 48;
+pub const RUBY_OFFSET_CFP_BP: i32 = 48; // field __bp__
 pub const RUBY_OFFSET_CFP_JIT_RETURN: i32 = 56;
 pub const RUBY_SIZEOF_CONTROL_FRAME: usize = 64;
 

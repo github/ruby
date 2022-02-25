@@ -292,6 +292,12 @@ rb_get_cme_def_type(rb_callable_method_entry_t* cme)
     return cme->def->type;
 }
 
+rb_method_definition_t *
+rb_get_cme_def(rb_callable_method_entry_t* cme)
+{
+    return cme->def;
+}
+
 ID
 rb_get_cme_def_body_attr_id(rb_callable_method_entry_t* cme)
 {
@@ -304,6 +310,42 @@ rb_get_cme_def_body_optimized_type(rb_callable_method_entry_t* cme)
     return cme->def->body.optimized.type;
 }
 
+rb_method_cfunc_t*
+rb_get_cme_def_body_cfunc(rb_callable_method_entry_t* cme)
+{
+    return UNALIGNED_MEMBER_PTR(cme->def, body.cfunc);
+}
+
+int
+rb_get_mct_argc(rb_method_cfunc_t *mct)
+{
+    return mct->argc;
+}
+
+void*
+rb_get_mct_func(rb_method_cfunc_t *mct)
+{
+    return (void*)mct->func; // this field is defined as type VALUE (*func)(ANYARGS)
+}
+
+int
+rb_get_builtin_argc(struct rb_builtin_function* bi)
+{
+    return bi->argc;
+}
+
+void*
+rb_get_builtin_func_ptr(struct rb_builtin_function* bi)
+{
+    return bi->func_ptr;
+}
+
+const rb_iseq_t*
+rb_def_iseq_ptr(rb_method_definition_t *def)
+{
+    return def_iseq_ptr(def);
+}
+
 unsigned int
 rb_get_iseq_body_local_table_size(rb_iseq_t* iseq) {
     return iseq->body->local_table_size;
@@ -314,14 +356,83 @@ rb_get_iseq_body_iseq_encoded(rb_iseq_t* iseq) {
     return iseq->body->iseq_encoded;
 }
 
+bool
+rb_get_iseq_body_builtin_inline_p(rb_iseq_t* iseq) {
+    return iseq->body->builtin_inline_p;
+}
+
+unsigned
+rb_get_iseq_body_stack_max(rb_iseq_t* iseq) {
+    return iseq->body->stack_max;
+}
+
 int
 rb_get_iseq_flags_has_opt(rb_iseq_t* iseq) {
     return iseq->body->param.flags.has_opt;
 }
 
 int
-rb_get_iseq_body_param_num(rb_iseq_t* iseq) {
+rb_get_iseq_body_param_keyword_num(rb_iseq_t* iseq) {
     return iseq->body->param.keyword->num;
+}
+
+unsigned
+rb_get_iseq_body_param_size(rb_iseq_t* iseq) {
+    return iseq->body->param.size;
+}
+
+int
+rb_get_iseq_body_param_lead_num(rb_iseq_t* iseq) {
+    return iseq->body->param.lead_num;
+}
+
+int
+rb_get_iseq_body_param_opt_num(rb_iseq_t* iseq) {
+    return iseq->body->param.opt_num;
+}
+
+VALUE*
+rb_get_iseq_body_param_opt_table(rb_iseq_t* iseq) {
+    return iseq->body->param.opt_table;
+}
+
+// Returns whether the iseq only needs positional (lead) argument setup.
+bool
+rb_iseq_needs_lead_args_only(const rb_iseq_t *iseq)
+{
+    // When iseq->body->local_iseq == iseq, setup_parameters_complex()
+    // doesn't do anything to setup the block parameter.
+    bool takes_block = iseq->body->param.flags.has_block;
+    return (!takes_block || iseq->body->local_iseq == iseq) &&
+        iseq->body->param.flags.has_opt          == false &&
+        iseq->body->param.flags.has_rest         == false &&
+        iseq->body->param.flags.has_post         == false &&
+        iseq->body->param.flags.has_kw           == false &&
+        iseq->body->param.flags.has_kwrest       == false &&
+        iseq->body->param.flags.accepts_no_kwarg == false;
+}
+
+// If true, the iseq is leaf and it can be replaced by a single C call.
+bool
+rb_leaf_invokebuiltin_iseq_p(const rb_iseq_t *iseq)
+{
+    unsigned int invokebuiltin_len = insn_len(BIN(opt_invokebuiltin_delegate_leave));
+    unsigned int leave_len = insn_len(BIN(leave));
+
+    return (iseq->body->iseq_size == (invokebuiltin_len + leave_len) &&
+        rb_vm_insn_addr2opcode((void *)iseq->body->iseq_encoded[0]) == BIN(opt_invokebuiltin_delegate_leave) &&
+        rb_vm_insn_addr2opcode((void *)iseq->body->iseq_encoded[invokebuiltin_len]) == BIN(leave) &&
+        iseq->body->builtin_inline_p
+    );
+}
+
+// Return an rb_builtin_function if the iseq contains only that leaf builtin function.
+const struct rb_builtin_function*
+rb_leaf_builtin_function(const rb_iseq_t *iseq)
+{
+    if (!rb_leaf_invokebuiltin_iseq_p(iseq))
+        return NULL;
+    return (const struct rb_builtin_function *)iseq->body->iseq_encoded[1];
 }
 
 struct rb_control_frame_struct *

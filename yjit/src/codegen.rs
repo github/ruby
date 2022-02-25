@@ -35,7 +35,7 @@ enum CodegenStatus {
 }
 
 /// Code generation function signature
-type CodeGenFn = fn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus;
+type InsnGenFn = fn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus;
 
 /// Code generation state
 /// This struct only lives while code is being generated
@@ -1852,7 +1852,7 @@ fn gen_checkkeyword(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
 {
     // When a keyword is unspecified past index 32, a hash will be used
     // instead. This can only happen in iseqs taking more than 32 keywords.
-    if unsafe { get_iseq_body_param_num(jit.iseq) >= 32 } {
+    if unsafe { get_iseq_body_param_keyword_num(jit.iseq) >= 32 } {
         return CantCompile;
     }
 
@@ -2505,8 +2505,6 @@ fn gen_opt_eq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &m
 }
 
 /*
-static codegen_status_t gen_send_general(jitstate_t *jit, ctx_t *ctx, struct rb_call_data *cd, rb_iseq_t *block);
-
 fn gen_opt_neq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // opt_neq is passed two rb_call_data as arguments:
@@ -3321,11 +3319,12 @@ fn jit_protected_callee_ancestry_guard(jit: &mut JITState, cb: &mut CodeBlock, c
     jz_ptr(cb, counted_exit!(ocb, side_exit, send_se_protected_check_failed));
 }
 
-/*
 // Return true when the codegen function generates code.
 // known_recv_klass is non-NULL when the caller has used jit_guard_known_klass().
 // See yjit_reg_method().
-typedef bool (*method_codegen_t)(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const rb_callable_method_entry_t *cme, rb_iseq_t *block, const int32_t argc, VALUE *known_recv_klass);
+type MethodGenFn = fn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool;
+
+/*
 
 // Register a specialized codegen function for a particular method. Note that
 // the if the function returns true, the code it generates runs without a
@@ -3333,7 +3332,7 @@ typedef bool (*method_codegen_t)(jitstate_t *jit, ctx_t *ctx, const struct rb_ca
 // behavior changes, the codegen function should only target simple code paths
 // that do not allocate and do not make method calls.
 static void
-yjit_reg_method(VALUE klass, const char *mid_str, method_codegen_t gen_fn)
+yjit_reg_method(VALUE klass, const char *mid_str, MethodGenFn gen_fn)
 {
     ID mid = rb_intern(mid_str);
     const rb_method_entry_t *me = rb_method_entry_at(klass, mid);
@@ -3474,18 +3473,19 @@ jit_thread_s_current(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, 
     mov(cb, stack_ret, REG0);
     return true;
 }
-
+*/
 // Check if we know how to codegen for a particular cfunc method
-static method_codegen_t
-lookup_cfunc_codegen(const rb_method_definition_t *def)
+fn lookup_cfunc_codegen(def: *const rb_method_definition_t) -> Option<MethodGenFn>
 {
-    method_codegen_t gen_fn;
+    /*
+    TODO(noah): implement lookup_cfunc_codegen
+    MethodGenFn gen_fn;
     if (st_lookup(yjit_method_codegen_table, def->method_serial, (st_data_t *)&gen_fn)) {
         return gen_fn;
     }
-    return NULL;
+    */
+    return None;
 }
-*/
 
 // Is anyone listening for :c_call and :c_return event currently?
 fn c_method_tracing_currently_enabled(jit: &JITState) -> bool
@@ -3507,60 +3507,53 @@ fn c_method_tracing_currently_enabled(jit: &JITState) -> bool
     */
 }
 
-fn gen_send_cfunc(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: * const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, recv_known_klass: *const VALUE) -> CodegenStatus
+fn gen_send_cfunc(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: * const rb_callinfo, cme: * const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, recv_known_klass: *const VALUE) -> CodegenStatus
 {
-    todo!();
-    /*
-    const rb_method_cfunc_t *cfunc = UNALIGNED_MEMBER_PTR(cme->def, body.cfunc);
+    let cfunc = unsafe { get_cme_def_body_cfunc(cme) };
+    let cfunc_argc = unsafe { get_mct_argc(cfunc) };
 
     // If the function expects a Ruby array of arguments
-    if (cfunc->argc < 0 && cfunc->argc != -1) {
+    if cfunc_argc < 0 && cfunc_argc != -1 {
         gen_counter_incr!(cb, send_cfunc_ruby_array_varg);
         return CantCompile;
     }
 
     // If the argument count doesn't match
-    if (cfunc->argc >= 0 && cfunc->argc != argc) {
+    if cfunc_argc >= 0 && cfunc_argc != argc {
         gen_counter_incr!(cb, send_cfunc_argc_mismatch);
         return CantCompile;
     }
 
     // Don't JIT functions that need C stack arguments for now
-    if (cfunc->argc >= 0 && argc + 1 > NUM_C_ARG_REGS) {
+    if cfunc_argc >= 0 && argc + 1 > (C_ARG_REGS.len() as i32) {
         gen_counter_incr!(cb, send_cfunc_toomany_args);
         return CantCompile;
     }
 
-    if (c_method_tracing_currently_enabled(jit)) {
+    if c_method_tracing_currently_enabled(jit) {
         // Don't JIT if tracing c_call or c_return
         gen_counter_incr!(cb, send_cfunc_tracing);
         return CantCompile;
     }
 
     // Delegate to codegen for C methods if we have it.
-    {
-        method_codegen_t known_cfunc_codegen;
-        if ((known_cfunc_codegen = lookup_cfunc_codegen(cme->def))) {
-            if (known_cfunc_codegen(jit, ctx, ci, cme, block, argc, recv_known_klass)) {
-                // cfunc codegen generated code. Terminate the block so
-                // there isn't multiple calls in the same block.
-                jump_to_next_insn(jit, ctx);
-                return EndBlock;
-            }
+    let cme_def = unsafe { get_cme_def(cme) };
+    let codegen_p = lookup_cfunc_codegen(cme_def);
+    if codegen_p.is_some() {
+        let known_cfunc_codegen = codegen_p.unwrap();
+        if known_cfunc_codegen(jit, ctx, cb, ocb, ci, cme, block, argc, recv_known_klass) {
+            // cfunc codegen generated code. Terminate the block so
+            // there isn't multiple calls in the same block.
+            jump_to_next_insn(jit, ctx, cb, ocb);
+            return EndBlock;
         }
     }
 
     // Callee method ID
-    //ID mid = vm_ci_mid(ci);
-    //printf("JITting call to C function \"%s\", argc: %lu\n", rb_id2name(mid), argc);
-    //print_str(cb, "");
-    //print_str(cb, "calling CFUNC:");
-    //print_str(cb, rb_id2name(mid));
-    //print_str(cb, "recv");
-    //print_ptr(cb, recv);
+    let mid = unsafe { vm_ci_mid(ci) };
 
     // Create a side-exit to fall back to the interpreter
-    uint8_t *side_exit = get_side_exit(jit, ocb, ctx);
+    let side_exit = get_side_exit(jit, ocb, ctx);
 
     // Check for interrupts
     gen_check_ints(cb, side_exit);
@@ -3568,7 +3561,7 @@ fn gen_send_cfunc(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: *
     // Stack overflow check
     // #define CHECK_VM_STACK_OVERFLOW0(cfp, sp, margin)
     // REG_CFP <= REG_SP + 4 * SIZEOF_VALUE + sizeof(rb_control_frame_t)
-    lea(cb, REG0, ctx.sp_opnd(SIZEOF_VALUE * 4 + 2 * sizeof(rb_control_frame_t)));
+    lea(cb, REG0, ctx.sp_opnd((SIZEOF_VALUE * 4 + 2 * RUBY_SIZEOF_CONTROL_FRAME) as isize));
     cmp(cb, REG_CFP, REG0);
     jle_ptr(cb, counted_exit!(ocb, side_exit, send_se_cf_overflow));
 
@@ -3576,50 +3569,49 @@ fn gen_send_cfunc(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: *
     let recv = ctx.stack_opnd(argc);
 
     // Store incremented PC into current control frame in case callee raises.
-    jit_save_pc(jit, REG0);
+    jit_save_pc(jit, cb, REG0);
 
-    if (block) {
+    if let Some(block_iseq) = block {
         // Change cfp->block_code in the current frame. See vm_caller_setup_arg_block().
-        // VM_CFP_TO_CAPTURED_BLCOK does &cfp->self, rb_captured_block->code.iseq aliases
+        // VM_CFP_TO_CAPTURED_BLOCK does &cfp->self, rb_captured_block->code.iseq aliases
         // with cfp->block_code.
-        jit_mov_gc_ptr(jit, cb, REG0, (VALUE)block);
-        mov(cb, member_opnd(REG_CFP, rb_control_frame_t, block_code), REG0);
+        jit_mov_gc_ptr(jit, cb, REG0, VALUE(block_iseq as usize));
+        let block_code_opnd = mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_BLOCK_CODE);
+        mov(cb, block_code_opnd, REG0);
     }
 
     // Increment the stack pointer by 3 (in the callee)
     // sp += 3
-    lea(cb, REG0, ctx.sp_opnd(SIZEOF_VALUE * 3));
+    lea(cb, REG0, ctx.sp_opnd((SIZEOF_VALUE as isize) * 3));
 
     // Write method entry at sp[-3]
     // sp[-3] = me;
     // Put compile time cme into REG1. It's assumed to be valid because we are notified when
-    // any cme we depend on become outdated. See rb_yjit_method_lookup_change().
-    jit_mov_gc_ptr(jit, cb, REG1, (VALUE)cme);
+    // any cme we depend on become outdated. See yjit_method_lookup_change().
+    jit_mov_gc_ptr(jit, cb, REG1, VALUE(cme as usize));
     mov(cb, mem_opnd(64, REG0, 8 * -3), REG1);
 
     // Write block handler at sp[-2]
     // sp[-2] = block_handler;
-    if (block) {
+    if let Some(block_iseq) = block {
         // reg1 = VM_BH_FROM_ISEQ_BLOCK(VM_CFP_TO_CAPTURED_BLOCK(reg_cfp));
-        lea(cb, REG1, member_opnd(REG_CFP, rb_control_frame_t, self));
+        let cfp_self = mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_SELF);
+        lea(cb, REG1, cfp_self);
         or(cb, REG1, imm_opnd(1));
         mov(cb, mem_opnd(64, REG0, 8 * -2), REG1);
-    }
-    else {
-        mov(cb, mem_opnd(64, REG0, 8 * -2), imm_opnd(VM_BLOCK_HANDLER_NONE));
+    } else {
+        let dst_opnd = mem_opnd(64, REG0, 8 * -2);
+        mov(cb, dst_opnd, uimm_opnd(VM_BLOCK_HANDLER_NONE.into()));
     }
 
     // Write env flags at sp[-1]
     // sp[-1] = frame_type;
-    uint64_t frame_type = VM_FRAME_MAGIC_CFUNC | VM_FRAME_FLAG_CFRAME | VM_ENV_FLAG_LOCAL;
-    mov(cb, mem_opnd(64, REG0, 8 * -1), imm_opnd(frame_type));
+    let frame_type = VM_FRAME_MAGIC_CFUNC | VM_FRAME_FLAG_CFRAME | VM_ENV_FLAG_LOCAL;
+    mov(cb, mem_opnd(64, REG0, 8 * -1), uimm_opnd(frame_type.into()));
 
     // Allocate a new CFP (ec->cfp--)
-    sub(
-        cb,
-        member_opnd(REG_EC, rb_execution_context_t, cfp),
-        imm_opnd(sizeof(rb_control_frame_t))
-    );
+    let ec_cfp_opnd = mem_opnd(64, REG_EC, RUBY_OFFSET_EC_CFP);
+    sub(cb,ec_cfp_opnd,uimm_opnd(RUBY_SIZEOF_CONTROL_FRAME as u64));
 
     // Setup the new frame
     // *cfp = (const struct rb_control_frame_struct) {
@@ -3631,19 +3623,24 @@ fn gen_send_cfunc(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: *
     //    .block_code = 0,
     //    .__bp__     = sp,
     // };
-    mov(cb, REG1, member_opnd(REG_EC, rb_execution_context_t, cfp));
-    mov(cb, member_opnd(REG1, rb_control_frame_t, pc), imm_opnd(0));
-    mov(cb, member_opnd(REG1, rb_control_frame_t, sp), REG0);
-    mov(cb, member_opnd(REG1, rb_control_frame_t, iseq), imm_opnd(0));
-    mov(cb, member_opnd(REG1, rb_control_frame_t, block_code), imm_opnd(0));
-    mov(cb, member_opnd(REG1, rb_control_frame_t, __bp__), REG0);
-    sub(cb, REG0, imm_opnd(SIZEOF_VALUE));
-    mov(cb, member_opnd(REG1, rb_control_frame_t, ep), REG0);
-    mov(cb, REG0, recv);
-    mov(cb, member_opnd(REG1, rb_control_frame_t, self), REG0);
 
+    // Can we re-use ec_cfp_opnd from above?
+    let ec_cfp_opnd = mem_opnd(64, REG_EC, RUBY_OFFSET_EC_CFP);
+    mov(cb, REG1, ec_cfp_opnd);
+    mov(cb, mem_opnd(64, REG1, RUBY_OFFSET_CFP_PC), imm_opnd(0));
+
+    mov(cb, mem_opnd(64, REG1, RUBY_OFFSET_CFP_SP), REG0);
+    mov(cb, mem_opnd(64, REG1, RUBY_OFFSET_CFP_ISEQ), imm_opnd(0));
+    mov(cb, mem_opnd(64, REG1, RUBY_OFFSET_CFP_BLOCK_CODE), imm_opnd(0));
+    mov(cb, mem_opnd(64, REG1, RUBY_OFFSET_CFP_BP), REG0);
+    sub(cb, REG0, uimm_opnd(SIZEOF_VALUE as u64));
+    mov(cb, mem_opnd(64, REG1, RUBY_OFFSET_CFP_EP), REG0);
+    mov(cb, REG0, recv);
+    mov(cb, mem_opnd(64, REG1, RUBY_OFFSET_CFP_SELF), REG0);
+
+    /*
     // Verify that we are calling the right function
-    if (YJIT_CHECK_MODE > 0) {
+    if (YJIT_CHECK_MODE > 0) {  // TODO: will we have a YJIT_CHECK_MODE?
         // Call check_cfunc_dispatch
         mov(cb, C_ARG_REGS[0], recv);
         jit_mov_gc_ptr(jit, cb, C_ARG_REGS[1], (VALUE)ci);
@@ -3651,56 +3648,55 @@ fn gen_send_cfunc(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: *
         jit_mov_gc_ptr(jit, cb, C_ARG_REGS[3], (VALUE)cme);
         call_ptr(cb, REG0, (void *)&check_cfunc_dispatch);
     }
+    */
 
     // Copy SP into RAX because REG_SP will get overwritten
     lea(cb, RAX, ctx.sp_opnd(0));
 
     // Pop the C function arguments from the stack (in the caller)
-    ctx.stack_pop(argc + 1);
+    ctx.stack_pop((argc + 1).try_into().unwrap());
 
     // Write interpreter SP into CFP.
     // Needed in case the callee yields to the block.
-    jit_save_sp(jit, ctx);
+    gen_save_sp(cb, ctx);
 
     // Non-variadic method
-    if (cfunc->argc >= 0) {
+    if cfunc_argc >= 0 {
         // Copy the arguments from the stack to the C argument registers
         // self is the 0th argument and is at index argc from the stack top
-        for (int32_t i = 0; i < argc + 1; ++i)
-        {
-            let stack_opnd = mem_opnd(64, RAX, -(argc + 1 - i) * SIZEOF_VALUE);
+        for i in 0..=argc as usize { // "as usize?" Yeah, you can't index an array by an i32.
+            let stack_opnd = mem_opnd(64, RAX, -(argc + 1 - (i as i32)) * SIZEOF_VALUE_I32);
             let c_arg_reg = C_ARG_REGS[i];
             mov(cb, c_arg_reg, stack_opnd);
         }
     }
+
     // Variadic method
-    if (cfunc->argc == -1) {
+    if cfunc_argc == -1 {
         // The method gets a pointer to the first argument
         // rb_f_puts(int argc, VALUE *argv, VALUE recv)
-        mov(cb, C_ARG_REGS[0], imm_opnd(argc));
-        lea(cb, C_ARG_REGS[1], mem_opnd(64, RAX, -(argc) * SIZEOF_VALUE));
-        mov(cb, C_ARG_REGS[2], mem_opnd(64, RAX, -(argc + 1) * SIZEOF_VALUE));
+        mov(cb, C_ARG_REGS[0], imm_opnd(argc.into()));
+        lea(cb, C_ARG_REGS[1], mem_opnd(64, RAX, -(argc) * SIZEOF_VALUE_I32));
+        mov(cb, C_ARG_REGS[2], mem_opnd(64, RAX, -(argc + 1) * SIZEOF_VALUE_I32));
     }
 
     // Call the C function
     // VALUE ret = (cfunc->func)(recv, argv[0], argv[1]);
     // cfunc comes from compile-time cme->def, which we assume to be stable.
-    // Invalidation logic is in rb_yjit_method_lookup_change()
-    call_ptr(cb, REG0, (void*)cfunc->func);
+    // Invalidation logic is in yjit_method_lookup_change()
+    call_ptr(cb, REG0, unsafe { get_mct_func(cfunc) });
 
     // Record code position for TracePoint patching. See full_cfunc_return().
-    record_global_inval_patch(cb, outline_full_cfunc_return_pos);
+    record_global_inval_patch(cb, CodegenGlobals::get_outline_full_cfunc_return_pos());
 
     // Push the return value on the Ruby stack
     let stack_ret = ctx.stack_push(Type::Unknown);
     mov(cb, stack_ret, RAX);
 
     // Pop the stack frame (ec->cfp++)
-    add(
-        cb,
-        member_opnd(REG_EC, rb_execution_context_t, cfp),
-        imm_opnd(sizeof(rb_control_frame_t))
-    );
+    // Can we reuse ec_cfp_opnd from above?
+    let ec_cfp_opnd = mem_opnd(64, REG_EC, RUBY_OFFSET_EC_CFP);
+    add(cb, ec_cfp_opnd,uimm_opnd(RUBY_SIZEOF_CONTROL_FRAME as u64));
 
     // cfunc calls may corrupt types
     ctx.clear_local_types();
@@ -3710,116 +3706,63 @@ fn gen_send_cfunc(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: *
 
     // Jump (fall through) to the call continuation block
     // We do this to end the current block after the call
-    jump_to_next_insn(jit, ctx);
+    jump_to_next_insn(jit, ctx, cb, ocb);
     EndBlock
-    */
 }
 
-/*
-static void
-gen_return_branch(codeblock_t *cb, uint8_t *target0, uint8_t *target1, uint8_t shape)
+fn gen_return_branch(cb: &mut CodeBlock, target0: CodePtr, target1: Option<CodePtr>, shape: BranchShape)
 {
-    switch (shape) {
-      case SHAPE_NEXT0:
-      case SHAPE_NEXT1:
-        RUBY_ASSERT(false);
-        break;
-
-      case SHAPE_DEFAULT:
-        mov(cb, REG0, const_ptr_opnd(target0));
-        mov(cb, member_opnd(REG_CFP, rb_control_frame_t, jit_return), REG0);
-        break;
+    match shape {
+        BranchShape::Next0 | BranchShape::Next1 => unreachable!(),
+        BranchShape::Default => {
+            mov(cb, REG0, code_ptr_opnd(target0));
+            mov(cb, mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_JIT_RETURN), REG0);
+        }
     }
 }
 
-// Returns whether the iseq only needs positional (lead) argument setup.
-static bool
-iseq_lead_only_arg_setup_p(const rb_iseq_t *iseq)
+fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: * const rb_callinfo, cme: * const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32) -> CodegenStatus
 {
-    // When iseq->body->local_iseq == iseq, setup_parameters_complex()
-    // doesn't do anything to setup the block parameter.
-    bool takes_block = iseq->body->param.flags.has_block;
-    return (!takes_block || iseq->body->local_iseq == iseq) &&
-        iseq->body->param.flags.has_opt          == false &&
-        iseq->body->param.flags.has_rest         == false &&
-        iseq->body->param.flags.has_post         == false &&
-        iseq->body->param.flags.has_kw           == false &&
-        iseq->body->param.flags.has_kwrest       == false &&
-        iseq->body->param.flags.accepts_no_kwarg == false;
-}
-
-bool rb_iseq_only_optparam_p(const rb_iseq_t *iseq);
-bool rb_iseq_only_kwparam_p(const rb_iseq_t *iseq);
-
-// If true, the iseq is leaf and it can be replaced by a single C call.
-static bool
-rb_leaf_invokebuiltin_iseq_p(const rb_iseq_t *iseq)
-{
-    unsigned int invokebuiltin_len = insn_len(BIN(opt_invokebuiltin_delegate_leave));
-    unsigned int leave_len = insn_len(BIN(leave));
-
-    return (iseq->body->iseq_size == (invokebuiltin_len + leave_len) &&
-        rb_vm_insn_addr2opcode((void *)iseq->body->iseq_encoded[0]) == BIN(opt_invokebuiltin_delegate_leave) &&
-        rb_vm_insn_addr2opcode((void *)iseq->body->iseq_encoded[invokebuiltin_len]) == BIN(leave) &&
-        iseq->body->builtin_inline_p
-    );
- }
-
-// Return an rb_builtin_function if the iseq contains only that leaf builtin function.
-static const struct rb_builtin_function*
-rb_leaf_builtin_function(const rb_iseq_t *iseq)
-{
-    if (!rb_leaf_invokebuiltin_iseq_p(iseq))
-        return NULL;
-    return (const struct rb_builtin_function *)iseq->body->iseq_encoded[1];
-}
-*/
-
-fn gen_send_iseq(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: * const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32) -> CodegenStatus
-{
-    todo!();
-
-    /*
-    const rb_iseq_t *iseq = def_iseq_ptr(cme->def);
+    let iseq = unsafe { def_iseq_ptr(get_cme_def(cme)) };
 
     // When you have keyword arguments, there is an extra object that gets
     // placed on the stack the represents a bitmap of the keywords that were not
     // specified at the call site. We need to keep track of the fact that this
     // value is present on the stack in order to properly set up the callee's
     // stack pointer.
-    bool doing_kw_call = false;
+    let mut doing_kw_call = false;
 
-    if (vm_ci_flag(ci) & VM_CALL_TAILCALL) {
+    if unsafe{ vm_ci_flag(ci) } & VM_CALL_TAILCALL != 0 {
         // We can't handle tailcalls
         gen_counter_incr!(cb, send_iseq_tailcall);
         return CantCompile;
     }
 
     // Arity handling and optional parameter setup
-    int num_params = iseq->body->param.size;
-    uint32_t start_pc_offset = 0;
+    let mut num_params = unsafe { get_iseq_body_param_size(iseq) as i32 };
+    let mut start_pc_offset:u32 = 0;
 
-    if (iseq_lead_only_arg_setup_p(iseq)) {
+    if unsafe { iseq_needs_lead_args_only(iseq) } {
         // If we have keyword arguments being passed to a callee that only takes
         // positionals, then we need to allocate a hash. For now we're going to
         // call that too complex and bail.
-        if (vm_ci_flag(ci) & VM_CALL_KWARG) {
+        if unsafe { vm_ci_flag(ci) } & VM_CALL_KWARG != 0 {
             gen_counter_incr!(cb, send_iseq_complex_callee);
             return CantCompile;
         }
 
-        num_params = iseq->body->param.lead_num;
+        num_params = unsafe { get_iseq_body_param_lead_num(iseq) };
 
-        if (num_params != argc) {
+        if num_params != argc {
             gen_counter_incr!(cb, send_iseq_arity_error);
             return CantCompile;
         }
     }
-    else if (rb_iseq_only_optparam_p(iseq)) {
+    else if unsafe { rb_iseq_only_optparam_p(iseq) } {
         // If we have keyword arguments being passed to a callee that only takes
         // positionals and optionals, then we need to allocate a hash. For now
         // we're going to call that too complex and bail.
-        if (vm_ci_flag(ci) & VM_CALL_KWARG) {
+        if unsafe { vm_ci_flag(ci) } & VM_CALL_KWARG != 0 {
             gen_counter_incr!(cb, send_iseq_complex_callee);
             return CantCompile;
         }
@@ -3828,32 +3771,40 @@ fn gen_send_iseq(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: * 
         // or more optional parameters.
         // We follow the logic of vm_call_iseq_setup_normal_opt_start()
         // and these are the preconditions required for using that fast path.
-        RUBY_ASSERT(vm_ci_markable(ci) && ((vm_ci_flag(ci) &
-                        (VM_CALL_KW_SPLAT | VM_CALL_KWARG | VM_CALL_ARGS_SPLAT)) == 0));
+        //RUBY_ASSERT(vm_ci_markable(ci) && ((vm_ci_flag(ci) &
+        //                (VM_CALL_KW_SPLAT | VM_CALL_KWARG | VM_CALL_ARGS_SPLAT)) == 0));
 
-        const int required_num = iseq->body->param.lead_num;
-        const int opts_filled = argc - required_num;
-        const int opt_num = iseq->body->param.opt_num;
+        let required_num = unsafe { get_iseq_body_param_lead_num(iseq) };
+        let opts_filled = argc - required_num;
+        let opt_num = unsafe { get_iseq_body_param_opt_num(iseq) };
 
-        if (opts_filled < 0 || opts_filled > opt_num) {
+        if opts_filled < 0 || opts_filled > opt_num {
             gen_counter_incr!(cb, send_iseq_arity_error);
             return CantCompile;
         }
 
         num_params -= opt_num - opts_filled;
-        start_pc_offset = (uint32_t)iseq->body->param.opt_table[opts_filled];
+        unsafe {
+            let opt_table = get_iseq_body_param_opt_table(iseq);
+            start_pc_offset = (*opt_table.offset(opts_filled as isize)).as_u32();
+        }
     }
-    else if (rb_iseq_only_kwparam_p(iseq)) {
-        const int lead_num = iseq->body->param.lead_num;
+
+    else if unsafe { rb_iseq_only_kwparam_p(iseq) } {
+        let lead_num = unsafe { get_iseq_body_param_lead_num(iseq) };
 
         doing_kw_call = true;
 
         // Here we're calling a method with keyword arguments and specifying
         // keyword arguments at this call site.
 
+        todo!();
+
+        /*
         // This struct represents the metadata about the caller-specified
         // keyword arguments.
-        const struct rb_callinfo_kwarg *kw_arg = vm_ci_kwarg(ci);
+        //const struct rb_callinfo_kwarg *kw_arg = vm_ci_kwarg(ci);
+        let kw_arg = unsafe { vm_ci_kwarg(ci) };
 
         // This struct represents the metadata about the callee-specified
         // keyword parameters.
@@ -3867,9 +3818,9 @@ fn gen_send_iseq(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: * 
             return CantCompile;
         }
 
-        if (vm_ci_flag(ci) & VM_CALL_KWARG) {
+        if unsafe { vm_ci_flag(ci) } & VM_CALL_KWARG != 0 {
             // Check that the size of non-keyword arguments matches
-            if (lead_num != argc - kw_arg->keyword_len) {
+            if lead_num != argc - kw_arg->keyword_len {
                 gen_counter_incr!(cb, send_iseq_complex_callee);
                 return CantCompile;
             }
@@ -3925,6 +3876,7 @@ fn gen_send_iseq(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: * 
             gen_counter_incr!(cb, send_iseq_complex_callee);
             return CantCompile;
         }
+        */
     }
     else {
         // Only handle iseqs that have simple parameter setup.
@@ -3934,50 +3886,63 @@ fn gen_send_iseq(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: * 
     }
 
     // Number of locals that are not parameters
-    const int num_locals = iseq->body->local_table_size - num_params;
+    let num_locals = unsafe { get_iseq_body_local_table_size(iseq) as i32 } - num_params;
 
     // Create a side-exit to fall back to the interpreter
-    uint8_t *side_exit = get_side_exit(jit, ocb, ctx);
+    let side_exit = get_side_exit(jit, ocb, ctx);
 
     // Check for interrupts
     gen_check_ints(cb, side_exit);
 
-    const struct rb_builtin_function *leaf_builtin = rb_leaf_builtin_function(iseq);
+    let leaf_builtin_raw = unsafe { rb_leaf_builtin_function(iseq) };
+    let leaf_builtin: Option<*const rb_builtin_function> = if leaf_builtin_raw == (0 as *const rb_builtin_function) { None } else { Some(leaf_builtin_raw) };
+    match (block, leaf_builtin) {
+        (None, Some(builtin_info)) => {
+            let builtin_argc = unsafe { get_builtin_argc(builtin_info) };
+            if builtin_argc + 1 /* for self */ + 1 /* for ec */ <= (C_ARG_REGS.len() as i32) {
+                add_comment(cb, "inlined leaf builtin");
 
-    if (leaf_builtin && !block && leaf_builtin->argc + 1 /* for self */ + 1 /* for ec */ <= NUM_C_ARG_REGS) {
-        add_comment(cb, "inlined leaf builtin");
+                // Call the builtin func (ec, recv, arg1, arg2, ...)
+                mov(cb, C_ARG_REGS[0], REG_EC);
 
-        // Call the builtin func (ec, recv, arg1, arg2, ...)
-        mov(cb, C_ARG_REGS[0], REG_EC);
+                // Copy self and arguments
+                for i in 0..=builtin_argc {
+                    let stack_opnd = ctx.stack_opnd(builtin_argc - i);
+                    let idx:usize = (i + 1).try_into().unwrap();
+                    let c_arg_reg = C_ARG_REGS[idx];
+                    mov(cb, c_arg_reg, stack_opnd);
+                }
+                ctx.stack_pop((builtin_argc + 1).try_into().unwrap());
+                let builtin_func_ptr = unsafe { get_builtin_func_ptr(builtin_info) };
+                call_ptr(cb, REG0, builtin_func_ptr);
 
-        // Copy self and arguments
-        for (int32_t i = 0; i < leaf_builtin->argc + 1; i++) {
-            let stack_opnd = ctx.stack_opnd(leaf_builtin->argc - i);
-            let c_arg_reg = C_ARG_REGS[i + 1];
-            mov(cb, c_arg_reg, stack_opnd);
-        }
-        ctx.stack_pop(leaf_builtin->argc + 1);
-        call_ptr(cb, REG0, (void *)leaf_builtin->func_ptr);
+                // Push the return value
+                let stack_ret = ctx.stack_push(Type::Unknown);
+                mov(cb, stack_ret, RAX);
 
-        // Push the return value
-        let stack_ret = ctx.stack_push(Type::Unknown);
-        mov(cb, stack_ret, RAX);
+                // Note: assuming that the leaf builtin doesn't change local variables here.
+                // Seems like a safe assumption.
 
-        // Note: assuming that the leaf builtin doesn't change local variables here.
-        // Seems like a safe assumption.
-
-        KeepCompiling
+                return KeepCompiling
+            }
+        },
+        _ => (),
     }
 
     // Stack overflow check
     // Note that vm_push_frame checks it against a decremented cfp, hence the multiply by 2.
     // #define CHECK_VM_STACK_OVERFLOW0(cfp, sp, margin)
     add_comment(cb, "stack overflow check");
-    lea(cb, REG0, ctx.sp_opnd(SIZEOF_VALUE * (num_locals + iseq->body->stack_max) + 2 * sizeof(rb_control_frame_t)));
+    let stack_max:i32 = unsafe { get_iseq_body_stack_max(iseq) }.try_into().unwrap();
+    let locals_offs = (SIZEOF_VALUE as i32) * (num_locals + stack_max) + 2 * (RUBY_SIZEOF_CONTROL_FRAME as i32);
+    lea(cb, REG0, ctx.sp_opnd(locals_offs as isize));
     cmp(cb, REG_CFP, REG0);
     jle_ptr(cb, counted_exit!(ocb, side_exit, send_se_cf_overflow));
 
-    if (doing_kw_call) {
+    if doing_kw_call {
+        todo!()
+
+        /*
         // Here we're calling a method with keyword arguments and specifying
         // keyword arguments at this call site.
         const int lead_num = iseq->body->param.lead_num;
@@ -4086,6 +4051,7 @@ fn gen_send_iseq(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: * 
         // pushed onto the stack that represents the parameters that weren't
         // explicitly given a value and have a non-constant default.
         mov(cb, ctx.stack_opnd(-1), imm_opnd(INT2FIX(unspecified_bits)));
+        */
     }
 
     // Points to the receiver operand on the stack
@@ -4093,57 +4059,62 @@ fn gen_send_iseq(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: * 
 
     // Store the updated SP on the current frame (pop arguments and receiver)
     add_comment(cb, "store caller sp");
-    lea(cb, REG0, ctx.sp_opnd(SIZEOF_VALUE * -(argc + 1)));
-    mov(cb, member_opnd(REG_CFP, rb_control_frame_t, sp), REG0);
+    lea(cb, REG0, ctx.sp_opnd((SIZEOF_VALUE as isize) * -((argc as isize) + 1)));
+    mov(cb, mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_SP), REG0);
 
     // Store the next PC in the current frame
-    jit_save_pc(jit, REG0);
+    jit_save_pc(jit, cb, REG0);
 
-    if (block) {
+    if let Some(block_val) = block {
         // Change cfp->block_code in the current frame. See vm_caller_setup_arg_block().
         // VM_CFP_TO_CAPTURED_BLCOK does &cfp->self, rb_captured_block->code.iseq aliases
         // with cfp->block_code.
-        jit_mov_gc_ptr(jit, cb, REG0, (VALUE)block);
-        mov(cb, member_opnd(REG_CFP, rb_control_frame_t, block_code), REG0);
+        let gc_ptr = VALUE(block_val as usize);
+        jit_mov_gc_ptr(jit, cb, REG0, gc_ptr);
+        mov(cb, mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_BLOCK_CODE), REG0);
     }
 
     // Adjust the callee's stack pointer
-    lea(cb, REG0, ctx.sp_opnd(SIZEOF_VALUE * (3 + num_locals + doing_kw_call)));
+    let offs = (SIZEOF_VALUE as isize) * (3 + (num_locals as isize) + if doing_kw_call { 1 } else { 0 });
+    lea(cb, REG0, ctx.sp_opnd(offs));
 
     // Initialize local variables to Qnil
-    for (int i = 0; i < num_locals; i++) {
-        mov(cb, mem_opnd(64, REG0, SIZEOF_VALUE * (i - num_locals - 3)), imm_opnd(Qnil));
+    for i in 0..num_locals {
+        let offs = (SIZEOF_VALUE as i32) * (i - num_locals - 3);
+        mov(cb, mem_opnd(64, REG0, offs), uimm_opnd(Qnil.into()));
     }
 
     add_comment(cb, "push env");
     // Put compile time cme into REG1. It's assumed to be valid because we are notified when
-    // any cme we depend on become outdated. See rb_yjit_method_lookup_change().
-    jit_mov_gc_ptr(jit, cb, REG1, (VALUE)cme);
+    // any cme we depend on become outdated. See yjit_method_lookup_change().
+    jit_mov_gc_ptr(jit, cb, REG1, VALUE(cme as usize));
     // Write method entry at sp[-3]
     // sp[-3] = me;
     mov(cb, mem_opnd(64, REG0, 8 * -3), REG1);
 
     // Write block handler at sp[-2]
     // sp[-2] = block_handler;
-    if (block) {
-        // reg1 = VM_BH_FROM_ISEQ_BLOCK(VM_CFP_TO_CAPTURED_BLOCK(reg_cfp));
-        lea(cb, REG1, member_opnd(REG_CFP, rb_control_frame_t, self));
-        or(cb, REG1, imm_opnd(1));
-        mov(cb, mem_opnd(64, REG0, 8 * -2), REG1);
-    }
-    else {
-        mov(cb, mem_opnd(64, REG0, 8 * -2), imm_opnd(VM_BLOCK_HANDLER_NONE));
+    match block {
+        Some(_) => {
+            // reg1 = VM_BH_FROM_ISEQ_BLOCK(VM_CFP_TO_CAPTURED_BLOCK(reg_cfp));
+            lea(cb, REG1, mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_SELF));
+            or(cb, REG1, imm_opnd(1));
+            mov(cb, mem_opnd(64, REG0, 8 * -2), REG1);
+        },
+        None => {
+            mov(cb, mem_opnd(64, REG0, 8 * -2), uimm_opnd(VM_BLOCK_HANDLER_NONE.into()));
+        },
     }
 
     // Write env flags at sp[-1]
     // sp[-1] = frame_type;
-    uint64_t frame_type = VM_FRAME_MAGIC_METHOD | VM_ENV_FLAG_LOCAL;
-    mov(cb, mem_opnd(64, REG0, 8 * -1), imm_opnd(frame_type));
+    let frame_type = VM_FRAME_MAGIC_METHOD | VM_ENV_FLAG_LOCAL;
+    mov(cb, mem_opnd(64, REG0, 8 * -1), uimm_opnd(frame_type.into()));
 
     add_comment(cb, "push callee CFP");
     // Allocate a new CFP (ec->cfp--)
-    sub(cb, REG_CFP, imm_opnd(sizeof(rb_control_frame_t)));
-    mov(cb, member_opnd(REG_EC, rb_execution_context_t, cfp), REG_CFP);
+    sub(cb, REG_CFP, uimm_opnd(RUBY_SIZEOF_CONTROL_FRAME as u64));
+    mov(cb, mem_opnd(64, REG_EC, RUBY_OFFSET_EC_CFP), REG_CFP);
 
     // Setup the new frame
     // *cfp = (const struct rb_control_frame_struct) {
@@ -4156,15 +4127,15 @@ fn gen_send_iseq(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: * 
     //    .__bp__     = sp,
     // };
     mov(cb, REG1, recv);
-    mov(cb, member_opnd(REG_CFP, rb_control_frame_t, self), REG1);
+    mov(cb, mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_SELF), REG1);
     mov(cb, REG_SP, REG0); // Switch to the callee's REG_SP
-    mov(cb, member_opnd(REG_CFP, rb_control_frame_t, sp), REG0);
-    mov(cb, member_opnd(REG_CFP, rb_control_frame_t, __bp__), REG0);
-    sub(cb, REG0, imm_opnd(SIZEOF_VALUE));
-    mov(cb, member_opnd(REG_CFP, rb_control_frame_t, ep), REG0);
-    jit_mov_gc_ptr(jit, cb, REG0, (VALUE)iseq);
-    mov(cb, member_opnd(REG_CFP, rb_control_frame_t, iseq), REG0);
-    mov(cb, member_opnd(REG_CFP, rb_control_frame_t, block_code), imm_opnd(0));
+    mov(cb, mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_SP), REG0);
+    mov(cb, mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_BP), REG0);
+    sub(cb, REG0, uimm_opnd(SIZEOF_VALUE as u64));
+    mov(cb, mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_EP), REG0);
+    jit_mov_gc_ptr(jit, cb, REG0, VALUE(iseq as usize));
+    mov(cb, mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_ISEQ), REG0);
+    mov(cb, mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_BLOCK_CODE), imm_opnd(0));
 
     // No need to set cfp->pc since the callee sets it whenever calling into routines
     // that could look at it through jit_save_pc().
@@ -4172,18 +4143,20 @@ fn gen_send_iseq(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: * 
     // mov(cb, member_opnd(REG_CFP, rb_control_frame_t, pc), REG0);
 
     // Stub so we can return to JITted code
-    blockid_t return_block = { jit->iseq, jit_next_insn_idx(jit) };
+    let return_block = BlockId { iseq: jit.iseq, idx: jit_next_insn_idx(jit) };
 
     // Create a context for the callee
-    ctx_t callee_ctx = DEFAULT_CTX;
+    let mut callee_ctx = Context::new();  // Was DEFAULT_CTX
 
     // Set the argument types in the callee's context
-    for (int32_t arg_idx = 0; arg_idx < argc; ++arg_idx) {
-        val_type_t arg_type = ctx.get_opnd_type(StackOpnd(argc - arg_idx - 1));
-        ctx.set_local_type(&callee_ctx, arg_idx, arg_type);
+    for arg_idx in 0..argc {
+        let stack_offs:u16 = (argc - arg_idx - 1).try_into().unwrap();
+        let arg_type = ctx.get_opnd_type(StackOpnd(stack_offs));
+        callee_ctx.set_local_type( arg_idx.try_into().unwrap(), arg_type);
     }
-    val_type_t recv_type = ctx.get_opnd_type(StackOpnd(argc));
-    ctx.upgrade_opnd_type(&callee_ctx, OPND_SELF, recv_type);
+
+    let recv_type = ctx.get_opnd_type(StackOpnd(argc.try_into().unwrap()));
+    callee_ctx.upgrade_opnd_type(SelfOpnd, recv_type);
 
     // The callee might change locals through Kernel#binding and other means.
     ctx.clear_local_types();
@@ -4191,11 +4164,11 @@ fn gen_send_iseq(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: * 
     // Pop arguments and receiver in return context, push the return value
     // After the return, sp_offset will be 1. The codegen for leave writes
     // the return value in case of JIT-to-JIT return.
-    ctx_t return_ctx = *ctx;
-    ctx.stack_pop(&return_ctx, argc + 1);
-    ctx.stack_push(&return_ctx, Type::Unknown);
-    return_ctx.sp_offset = 1;
-    return_ctx.chain_depth = 0;
+    let mut return_ctx = ctx.clone();
+    return_ctx.stack_pop((argc + 1).try_into().unwrap());
+    return_ctx.stack_push(Type::Unknown);
+    return_ctx.set_sp_offset(1);
+    return_ctx.reset_chain_depth();
 
     // Write the JIT return address on the callee frame
     gen_branch(
@@ -4215,11 +4188,10 @@ fn gen_send_iseq(jit: &JITState, ctx: &Context, ci: * const rb_callinfo, cme: * 
     gen_direct_jump(
         jit,
         &callee_ctx,
-        (blockid_t){ iseq, start_pc_offset }
+        BlockId { iseq: iseq, idx: start_pc_offset }
     );
 
     EndBlock
-    */
 }
 
 /*
@@ -4390,14 +4362,14 @@ fn gen_send_general(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
         let def_type = unsafe { get_cme_def_type(cme) };
         match def_type {
             VM_METHOD_TYPE_ISEQ => {
-                return gen_send_iseq(jit, ctx, ci, cme, block, argc);
+                return gen_send_iseq(jit, ctx, cb, ocb, ci, cme, block, argc);
             },
             VM_METHOD_TYPE_CFUNC => {
                 if flags & VM_CALL_KWARG != 0 {
                     gen_counter_incr!(cb, send_cfunc_kwargs);
                     return CantCompile;
                 }
-                return gen_send_cfunc(jit, ctx, ci, cme, block, argc, &comptime_recv_klass);
+                return gen_send_cfunc(jit, ctx, cb, ocb, ci, cme, block, argc, &comptime_recv_klass);
             },
             VM_METHOD_TYPE_IVAR => {
                 if argc != 0 {
@@ -4423,8 +4395,7 @@ fn gen_send_general(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
                 mov(cb, REG0, recv);
                 let ivar_name = unsafe { get_cme_def_body_attr_id(cme) };
 
-                todo!();
-                //return gen_get_ivar(jit, ctx, SEND_MAX_DEPTH, comptime_recv, ivar_name, recv_opnd, side_exit);
+                return gen_get_ivar(jit, ctx, cb, ocb, SEND_MAX_DEPTH, comptime_recv, ivar_name, recv_opnd, side_exit);
             },
             VM_METHOD_TYPE_ATTRSET => {
                 if flags & VM_CALL_KWARG != 0 {
@@ -4443,8 +4414,7 @@ fn gen_send_general(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
                 }
                 else {
                     let ivar_name = unsafe { get_cme_def_body_attr_id(cme) };
-                    todo!();
-                    //return gen_set_ivar(jit, ctx, comptime_recv, comptime_recv_klass, ivar_name);
+                    return gen_set_ivar(jit, ctx, cb, comptime_recv, comptime_recv_klass, ivar_name);
                 }
             },
             // Block method, e.g. define_method(:foo) { :my_block }
@@ -4656,7 +4626,7 @@ fn gen_invokesuper(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
 
     switch (cme->def->type) {
       case VM_METHOD_TYPE_ISEQ:
-        return gen_send_iseq(jit, ctx, ci, cme, block, argc);
+        return gen_send_iseq(jit, ctx, cb, ocb, ci, cme, block, argc);
       case VM_METHOD_TYPE_CFUNC:
         return gen_send_cfunc(jit, ctx, ci, cme, block, argc, NULL);
       default:
@@ -5125,7 +5095,7 @@ fn gen_opt_invokebuiltin_delegate(jit: &mut JITState, ctx: &mut Context, cb: &mu
 
 
 /// Maps a YARV opcode to a code generation function (if supported)
-fn get_gen_fn(opcode: VALUE) -> Option<CodeGenFn>
+fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn>
 {
     let VALUE(opcode) = opcode;
     assert!(opcode < VM_INSTRUCTION_SIZE);
@@ -5268,10 +5238,8 @@ pub struct CodegenGlobals
     // Filled by gen_code_for_exit_from_stub().
     stub_exit_code: CodePtr,
 
-    /*
     // Code for full logic of returning from C method and exiting to the interpreter
-    static uint32_t outline_full_cfunc_return_pos;
-    */
+    outline_full_cfunc_return_pos: Option<CodePtr>,
 
     // For implementing global code invalidation
     global_inval_patches: Vec<CodepagePatch>,
@@ -5329,6 +5297,7 @@ impl CodegenGlobals {
                     leave_exit_code: leave_exit_code,
                     stub_exit_code: stub_exit_code,
                     global_inval_patches: Vec::new(),
+                    outline_full_cfunc_return_pos: None,
                 }
             )
         }
@@ -5358,5 +5327,13 @@ impl CodegenGlobals {
     pub fn push_global_inval_patch(i_pos: CodePtr, o_pos: CodePtr) {
         let patch = CodepagePatch { inline_patch_pos: i_pos, outlined_target_pos: o_pos };
         CodegenGlobals::get_instance().global_inval_patches.push(patch);
+    }
+
+    pub fn set_outline_full_cfunc_return_pos(val:CodePtr) {
+        CodegenGlobals::get_instance().outline_full_cfunc_return_pos = Some(val);
+    }
+
+    pub fn get_outline_full_cfunc_return_pos() -> CodePtr {
+        CodegenGlobals::get_instance().outline_full_cfunc_return_pos.unwrap()
     }
 }
