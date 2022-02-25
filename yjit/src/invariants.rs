@@ -4,7 +4,7 @@
 use crate::core::*;
 use crate::cruby::*;
 use crate::codegen::*;
-use crate::yjit::{is_yjit_enabled};
+use crate::yjit::{yjit_enabled_p};
 
 // Invariants to track:
 // assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_PLUS)
@@ -438,7 +438,7 @@ rb_yjit_before_ractor_spawn(void)
 #[no_mangle]
 pub extern "C" fn rb_yjit_tracing_invalidate_all()
 {
-    if !is_yjit_enabled() { return; }
+    if !yjit_enabled_p() { return; }
 
     todo!();
 /*

@@ -30,7 +30,7 @@ pub extern "C" fn rb_yjit_enabled_p() -> raw::c_int {
 }
 
 /// Like rb_yjit_enabled_p, but for Rust code.
-pub fn is_yjit_enabled() -> bool {
+pub fn yjit_enabled_p() -> bool {
     YJIT_ENABLED.load(Ordering::Acquire)
 }
 
