@@ -1,14 +1,9 @@
 use std::ffi::CStr;
 
-const YJIT_DEFAULT_CALL_THRESHOLD: usize = 10;
-
 // Command-line options
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(C)]
 pub struct Options {
-    // Enable compilation with YJIT
-    pub yjit_enabled: bool,
-
     // Size of the executable memory block to allocate in MiB
     pub exec_mem_size : usize,
 
@@ -30,12 +25,10 @@ pub struct Options {
     pub gen_stats : bool
 }
 
-// The mutable options can be initialized in a simple unsafe block
-// https://stackoverflow.com/questions/19605132/is-it-possible-to-use-global-variables-in-rust
+// Initialize the options to default values
 pub static mut OPTIONS: Options = Options {
-    yjit_enabled: false,
     exec_mem_size : 256,
-    call_threshold : YJIT_DEFAULT_CALL_THRESHOLD,
+    call_threshold : 10,
     greedy_versioning : false,
     no_type_prop : false,
     max_versions : 4,

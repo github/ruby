@@ -3,6 +3,7 @@
 
 use crate::cruby::*;
 use crate::options::*;
+use crate::yjit::{yjit_enabled_p};
 
 // TODO
 //extern const int rb_vm_max_insn_name_size;
@@ -143,7 +144,7 @@ make_counters!(
 #[no_mangle]
 pub extern "C" fn rb_yjit_get_yjit_stats(ec: EcPtr, ruby_self: VALUE) -> VALUE {
     // Return Qnil if YJIT isn't enabled
-    if !get_option!(yjit_enabled) {
+    if !yjit_enabled_p() {
         return Qnil;
     }
 
