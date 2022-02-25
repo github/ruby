@@ -61,6 +61,7 @@ def parse_args(argv = ARGV)
   opt.on('-n', '--dry-run') {$dryrun = true}
   opt.on('--dest-dir=DIR') {|dir| $destdir = dir}
   opt.on('--extout=DIR') {|dir| $extout = (dir unless dir.empty?)}
+  opt.on('--ext-build-dir=DIR') {|v| $ext_build_dir = v }
   opt.on('--make=COMMAND') {|make| $make = make}
   opt.on('--mantype=MAN') {|man| $mantype = man}
   opt.on('--make-flags=FLAGS', '--mflags', Shellwords) do |v|
@@ -151,6 +152,9 @@ def parse_args(argv = ARGV)
 
   $dir_mode ||= $prog_mode | 0700
   $script_mode ||= $prog_mode
+  if $ext_build_dir.nil?
+    raise OptionParser::MissingArgument.new("--ext-build-dir=DIR")
+  end
 end
 
 $install_procs = Hash.new {[]}
@@ -371,6 +375,11 @@ install?(:local, :arch, :bin, :'bin-arch') do
   install ruby_install_name+exeext, bindir, :mode => $prog_mode, :strip => $strip
   if rubyw_install_name and !rubyw_install_name.empty?
     install rubyw_install_name+exeext, bindir, :mode => $prog_mode, :strip => $strip
+  end
+  # emcc produces ruby and ruby.wasm, the first is a JavaScript file of runtime support
+  # to load and execute the second .wasm file. Both are required to execute ruby
+  if RUBY_PLATFORM =~ /emscripten/ and File.exist? ruby_install_name+".wasm"
+    install ruby_install_name+".wasm", bindir, :mode => $prog_mode, :strip => $strip
   end
   if File.exist? goruby_install_name+exeext
     install goruby_install_name+exeext, bindir, :mode => $prog_mode, :strip => $strip
@@ -729,6 +738,16 @@ module RbInstall
         (ruby_libraries + built_libraries).sort
       end
 
+      def skip_install?(files)
+        case type
+        when "ext"
+          # install ext only when it's configured
+          !File.exist?("#{$ext_build_dir}/#{relative_base}/Makefile")
+        when "lib"
+          files.empty?
+        end
+      end
+
       private
       def type
         /\/(ext|lib)?\/.*?\z/ =~ @base_dir
@@ -966,7 +985,9 @@ def install_default_gem(dir, srcdir, bindir)
     spec = load_gemspec(src)
     file_collector = RbInstall::Specs::FileCollector.new(src)
     files = file_collector.collect
-    next if files.empty?
+    if file_collector.skip_install?(files)
+      next
+    end
     spec.files = files
     spec
   }
@@ -1070,7 +1091,7 @@ install?(:ext, :comm, :gem, :'bundled-gems') do
     gems.each do |gem|
       package = Gem::Package.new(gem)
       inst = RbInstall::GemInstaller.new(package, options)
-      inst.spec.extension_dir = with_destdir(inst.spec.extension_dir)
+      inst.spec.extension_dir = "#{extensions_dir}/#{inst.spec.full_name}"
       begin
         Gem::DefaultUserInteraction.use_ui(silent) {inst.install}
       rescue Gem::InstallError

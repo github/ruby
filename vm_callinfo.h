@@ -179,7 +179,7 @@ vm_ci_dump(const struct rb_callinfo *ci)
 #define vm_ci_new(mid, flag, argc, kwarg) vm_ci_new_(mid, flag, argc, kwarg, __FILE__, __LINE__)
 #define vm_ci_new_runtime(mid, flag, argc, kwarg) vm_ci_new_runtime_(mid, flag, argc, kwarg, __FILE__, __LINE__)
 
-#/* This is passed to STATIC_ASSERT.  Cannot be an inline function. */
+/* This is passed to STATIC_ASSERT.  Cannot be an inline function. */
 #define VM_CI_EMBEDDABLE_P(mid, flag, argc, kwarg) \
     (((mid ) & ~CI_EMBED_ID_MASK)   ? false :      \
      ((flag) & ~CI_EMBED_FLAG_MASK) ? false :      \
@@ -353,7 +353,14 @@ static inline unsigned int
 vm_cc_attr_index(const struct rb_callcache *cc)
 {
     VM_ASSERT(IMEMO_TYPE_P(cc, imemo_callcache));
-    return cc->aux_.attr_index;
+    return cc->aux_.attr_index - 1;
+}
+
+static inline bool
+vm_cc_attr_index_p(const struct rb_callcache *cc)
+{
+    VM_ASSERT(IMEMO_TYPE_P(cc, imemo_callcache));
+    return cc->aux_.attr_index > 0;
 }
 
 static inline unsigned int
@@ -406,7 +413,15 @@ vm_cc_attr_index_set(const struct rb_callcache *cc, int index)
 {
     VM_ASSERT(IMEMO_TYPE_P(cc, imemo_callcache));
     VM_ASSERT(cc != vm_cc_empty());
-    *(int *)&cc->aux_.attr_index = index;
+    *(int *)&cc->aux_.attr_index = index + 1;
+}
+
+static inline void
+vm_cc_attr_index_initialize(const struct rb_callcache *cc)
+{
+    VM_ASSERT(IMEMO_TYPE_P(cc, imemo_callcache));
+    VM_ASSERT(cc != vm_cc_empty());
+    *(int *)&cc->aux_.attr_index = 0;
 }
 
 static inline void
@@ -449,6 +464,10 @@ struct rb_class_cc_entries {
 };
 
 #if VM_CHECK_MODE > 0
+
+const rb_callable_method_entry_t *rb_vm_lookup_overloaded_cme(const rb_callable_method_entry_t *cme);
+void rb_vm_dump_overloaded_cme_table(void);
+
 static inline bool
 vm_ccs_p(const struct rb_class_cc_entries *ccs)
 {
@@ -459,15 +478,17 @@ static inline bool
 vm_cc_check_cme(const struct rb_callcache *cc, const rb_callable_method_entry_t *cme)
 {
     if (vm_cc_cme(cc) == cme ||
-        (cme->def->iseq_overload && vm_cc_cme(cc) == cme->def->body.iseq.mandatory_only_cme)) {
+        (cme->def->iseq_overload && vm_cc_cme(cc) == rb_vm_lookup_overloaded_cme(cme))) {
         return true;
     }
     else {
 #if 1
-        fprintf(stderr, "iseq_overload:%d mandatory_only_cme:%p eq:%d\n",
-                (int)cme->def->iseq_overload,
-                (void *)cme->def->body.iseq.mandatory_only_cme,
-                vm_cc_cme(cc) == cme->def->body.iseq.mandatory_only_cme);
+        // debug print
+
+        fprintf(stderr, "iseq_overload:%d\n", (int)cme->def->iseq_overload);
+        rp(cme);
+        rp(vm_cc_cme(cc));
+        rb_vm_lookup_overloaded_cme(cme);
 #endif
         return false;
     }

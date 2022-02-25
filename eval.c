@@ -1129,12 +1129,16 @@ rb_mod_include(int argc, VALUE *argv, VALUE module)
     CONST_ID(id_included, "included");
 
     if (FL_TEST(module, RMODULE_IS_REFINEMENT)) {
-        rb_warn_deprecated_to_remove_at(3.2, "Refinement#include", NULL);
+        rb_raise(rb_eTypeError, "Refinement#include has been removed");
     }
 
     rb_check_arity(argc, 1, UNLIMITED_ARGUMENTS);
-    for (i = 0; i < argc; i++)
+    for (i = 0; i < argc; i++) {
 	Check_Type(argv[i], T_MODULE);
+        if (FL_TEST(argv[i], RMODULE_IS_REFINEMENT)) {
+            rb_raise(rb_eTypeError, "Cannot include refinement");
+        }
+    }
     while (argc--) {
 	rb_funcall(argv[argc], id_append_features, 1, module);
 	rb_funcall(argv[argc], id_included, 1, module);
@@ -1179,15 +1183,19 @@ rb_mod_prepend(int argc, VALUE *argv, VALUE module)
     ID id_prepend_features, id_prepended;
 
     if (FL_TEST(module, RMODULE_IS_REFINEMENT)) {
-        rb_warn_deprecated_to_remove_at(3.2, "Refinement#prepend", NULL);
+        rb_raise(rb_eTypeError, "Refinement#prepend has been removed");
     }
 
     CONST_ID(id_prepend_features, "prepend_features");
     CONST_ID(id_prepended, "prepended");
 
     rb_check_arity(argc, 1, UNLIMITED_ARGUMENTS);
-    for (i = 0; i < argc; i++)
+    for (i = 0; i < argc; i++) {
 	Check_Type(argv[i], T_MODULE);
+        if (FL_TEST(argv[i], RMODULE_IS_REFINEMENT)) {
+            rb_raise(rb_eTypeError, "Cannot prepend refinement");
+        }
+    }
     while (argc--) {
 	rb_funcall(argv[argc], id_prepend_features, 1, module);
 	rb_funcall(argv[argc], id_prepended, 1, module);
@@ -1322,7 +1330,12 @@ rb_using_module(const rb_cref_t *cref, VALUE module)
     rb_clear_method_cache_all();
 }
 
-/*! \private */
+/*
+ *  call-seq:
+ *     refined_class    -> class
+ *
+ *  Return the class refined by the receiver.
+ */
 VALUE
 rb_refinement_module_get_refined_class(VALUE module)
 {
@@ -1457,6 +1470,41 @@ mod_using(VALUE self, VALUE module)
     return self;
 }
 
+
+/*
+ *  call-seq:
+ *     refinements -> array
+ *
+ *  Returns an array of modules defined within the receiver.
+ *
+ *     module A
+ *       refine Integer do
+ *       end
+ *
+ *       refine String do
+ *       end
+ *     end
+ *
+ *     p A.refinements
+ *
+ *  <em>produces:</em>
+ *
+ *     [#<refinement:Integer@A>, #<refinement:String@A>]
+ */
+static VALUE
+mod_refinements(VALUE self)
+{
+    ID id_refinements;
+    VALUE refinements;
+
+    CONST_ID(id_refinements, "__refinements__");
+    refinements = rb_attr_get(self, id_refinements);
+    if (NIL_P(refinements)) {
+        return rb_ary_new();
+    }
+    return rb_hash_values(refinements);
+}
+
 static int
 used_modules_i(VALUE _, VALUE mod, VALUE ary)
 {
@@ -1510,6 +1558,57 @@ rb_mod_s_used_modules(VALUE _)
     return rb_funcall(ary, rb_intern("uniq"), 0);
 }
 
+static int
+used_refinements_i(VALUE _, VALUE mod, VALUE ary)
+{
+    while (FL_TEST(rb_class_of(mod), RMODULE_IS_REFINEMENT)) {
+        rb_ary_push(ary, rb_class_of(mod));
+	mod = RCLASS_SUPER(mod);
+    }
+    return ST_CONTINUE;
+}
+
+/*
+ *  call-seq:
+ *     used_refinements -> array
+ *
+ *  Returns an array of all modules used in the current scope. The ordering
+ *  of modules in the resulting array is not defined.
+ *
+ *     module A
+ *       refine Object do
+ *       end
+ *     end
+ *
+ *     module B
+ *       refine Object do
+ *       end
+ *     end
+ *
+ *     using A
+ *     using B
+ *     p Module.used_refinements
+ *
+ *  <em>produces:</em>
+ *
+ *     [#<refinement:Object@B>, #<refinement:Object@A>]
+ */
+static VALUE
+rb_mod_s_used_refinements(VALUE _)
+{
+    const rb_cref_t *cref = rb_vm_cref();
+    VALUE ary = rb_ary_new();
+
+    while (cref) {
+	if (!NIL_P(CREF_REFINEMENTS(cref))) {
+	    rb_hash_foreach(CREF_REFINEMENTS(cref), used_refinements_i, ary);
+	}
+	cref = CREF_NEXT(cref);
+    }
+
+    return ary;
+}
+
 struct refinement_import_methods_arg {
     rb_cref_t *cref;
     VALUE refinement;
@@ -1535,12 +1634,7 @@ refinement_import_methods_i(ID key, VALUE value, void *data)
 }
 
 /*
- *  call-seq:
- *     import_methods(module, ...)    -> self
- *
- *  Imports methods from modules. Unlike Module#include,
- *  Refinement#import_methods copies methods and adds them into the refinement,
- *  so the refinement is activated in the imported methods.
+ * Note: docs for the method are in class.c
  */
 
 static VALUE
@@ -1655,8 +1749,12 @@ rb_obj_extend(int argc, VALUE *argv, VALUE obj)
     CONST_ID(id_extended, "extended");
 
     rb_check_arity(argc, 1, UNLIMITED_ARGUMENTS);
-    for (i = 0; i < argc; i++)
+    for (i = 0; i < argc; i++) {
 	Check_Type(argv[i], T_MODULE);
+        if (FL_TEST(argv[i], RMODULE_IS_REFINEMENT)) {
+            rb_raise(rb_eTypeError, "Cannot extend object with refinement");
+        }
+    }
     while (argc--) {
 	rb_funcall(argv[argc], id_extend_object, 1, obj);
 	rb_funcall(argv[argc], id_extended, 1, obj);
@@ -1947,10 +2045,17 @@ Init_eval(void)
     rb_define_private_method(rb_cModule, "prepend_features", rb_mod_prepend_features, 1);
     rb_define_private_method(rb_cModule, "refine", rb_mod_refine, 1);
     rb_define_private_method(rb_cModule, "using", mod_using, 1);
+    rb_define_method(rb_cModule, "refinements", mod_refinements, 0);
     rb_define_singleton_method(rb_cModule, "used_modules",
 			       rb_mod_s_used_modules, 0);
+    rb_define_singleton_method(rb_cModule, "used_refinements",
+                               rb_mod_s_used_refinements, 0);
     rb_undef_method(rb_cClass, "refine");
     rb_define_private_method(rb_cRefinement, "import_methods", refinement_import_methods, -1);
+    rb_define_method(rb_cRefinement, "refined_class", rb_refinement_module_get_refined_class, 0);
+    rb_undef_method(rb_cRefinement, "append_features");
+    rb_undef_method(rb_cRefinement, "prepend_features");
+    rb_undef_method(rb_cRefinement, "extend_object");
 
     rb_undef_method(rb_cClass, "module_function");
 

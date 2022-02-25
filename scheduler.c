@@ -25,8 +25,8 @@ static ID id_timeout_after;
 static ID id_kernel_sleep;
 static ID id_process_wait;
 
-static ID id_io_read;
-static ID id_io_write;
+static ID id_io_read, id_io_pread;
+static ID id_io_write, id_io_pwrite;
 static ID id_io_wait;
 static ID id_io_close;
 
@@ -46,7 +46,10 @@ Init_Fiber_Scheduler(void)
     id_process_wait = rb_intern_const("process_wait");
 
     id_io_read = rb_intern_const("io_read");
+    id_io_pread = rb_intern_const("io_pread");
     id_io_write = rb_intern_const("io_write");
+    id_io_pwrite = rb_intern_const("io_pwrite");
+
     id_io_wait = rb_intern_const("io_wait");
     id_io_close = rb_intern_const("io_close");
 
@@ -239,6 +242,16 @@ rb_fiber_scheduler_io_read(VALUE scheduler, VALUE io, VALUE buffer, size_t lengt
 }
 
 VALUE
+rb_fiber_scheduler_io_pread(VALUE scheduler, VALUE io, VALUE buffer, size_t length, off_t offset)
+{
+    VALUE arguments[] = {
+        io, buffer, SIZET2NUM(length), OFFT2NUM(offset)
+    };
+
+    return rb_check_funcall(scheduler, id_io_pread, 4, arguments);
+}
+
+VALUE
 rb_fiber_scheduler_io_write(VALUE scheduler, VALUE io, VALUE buffer, size_t length)
 {
     VALUE arguments[] = {
@@ -249,12 +262,23 @@ rb_fiber_scheduler_io_write(VALUE scheduler, VALUE io, VALUE buffer, size_t leng
 }
 
 VALUE
+rb_fiber_scheduler_io_pwrite(VALUE scheduler, VALUE io, VALUE buffer, size_t length, off_t offset)
+{
+    VALUE arguments[] = {
+        io, buffer, SIZET2NUM(length), OFFT2NUM(offset)
+    };
+
+    return rb_check_funcall(scheduler, id_io_pwrite, 4, arguments);
+}
+
+VALUE
 rb_fiber_scheduler_io_read_memory(VALUE scheduler, VALUE io, void *base, size_t size, size_t length)
 {
     VALUE buffer = rb_io_buffer_new(base, size, RB_IO_BUFFER_LOCKED);
 
     VALUE result = rb_fiber_scheduler_io_read(scheduler, io, buffer, length);
 
+    rb_io_buffer_unlock(buffer);
     rb_io_buffer_free(buffer);
 
     return result;
@@ -263,10 +287,11 @@ rb_fiber_scheduler_io_read_memory(VALUE scheduler, VALUE io, void *base, size_t 
 VALUE
 rb_fiber_scheduler_io_write_memory(VALUE scheduler, VALUE io, const void *base, size_t size, size_t length)
 {
-    VALUE buffer = rb_io_buffer_new((void*)base, size, RB_IO_BUFFER_LOCKED|RB_IO_BUFFER_IMMUTABLE);
+    VALUE buffer = rb_io_buffer_new((void*)base, size, RB_IO_BUFFER_LOCKED|RB_IO_BUFFER_READONLY);
 
     VALUE result = rb_fiber_scheduler_io_write(scheduler, io, buffer, length);
 
+    rb_io_buffer_unlock(buffer);
     rb_io_buffer_free(buffer);
 
     return result;

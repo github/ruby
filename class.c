@@ -201,10 +201,16 @@ class_alloc(VALUE flags, VALUE klass)
     alloc_size += sizeof(rb_classext_t);
 #endif
 
-    RVARGC_NEWOBJ_OF(obj, struct RClass, klass, (flags & T_MASK) | FL_PROMOTED1 /* start from age == 2 */ | (RGENGC_WB_PROTECTED_CLASS ? FL_WB_PROTECTED : 0), alloc_size);
+    flags &= T_MASK;
+    flags |= FL_PROMOTED1 /* start from age == 2 */;
+    if (RGENGC_WB_PROTECTED_CLASS) flags |= FL_WB_PROTECTED;
+    RVARGC_NEWOBJ_OF(obj, struct RClass, klass, flags, alloc_size);
 
 #if USE_RVARGC
     memset(RCLASS_EXT(obj), 0, sizeof(rb_classext_t));
+# if SIZEOF_SERIAL_T != SIZEOF_VALUE
+    RCLASS(obj)->class_serial_ptr = ZALLOC(rb_serial_t);
+# endif
 #else
     obj->ptr = ZALLOC(rb_classext_t);
 #endif
@@ -251,6 +257,63 @@ rb_class_boot(VALUE super)
     RCLASS_M_TBL_INIT(klass);
 
     return (VALUE)klass;
+}
+
+void
+rb_class_remove_superclasses(VALUE klass)
+{
+    if (!RB_TYPE_P(klass, T_CLASS))
+        return;
+
+    if (RCLASS_SUPERCLASSES(klass))
+        xfree(RCLASS_SUPERCLASSES(klass));
+
+    RCLASS_SUPERCLASSES(klass) = NULL;
+    RCLASS_SUPERCLASS_DEPTH(klass) = 0;
+}
+
+void
+rb_class_update_superclasses(VALUE klass)
+{
+    VALUE super = RCLASS_SUPER(klass);
+
+    if (!RB_TYPE_P(klass, T_CLASS)) return;
+    if (super == Qundef) return;
+
+    // If the superclass array is already built
+    if (RCLASS_SUPERCLASSES(klass))
+        return;
+
+    // find the proper superclass
+    while (super != Qfalse && !RB_TYPE_P(super, T_CLASS)) {
+        super = RCLASS_SUPER(super);
+    }
+
+    // For BasicObject and uninitialized classes, depth=0 and ary=NULL
+    if (super == Qfalse)
+        return;
+
+    // Sometimes superclasses are set before the full ancestry tree is built
+    // This happens during metaclass construction
+    if (super != rb_cBasicObject && !RCLASS_SUPERCLASS_DEPTH(super)) {
+        rb_class_update_superclasses(super);
+
+        // If it is still unset we need to try later
+        if (!RCLASS_SUPERCLASS_DEPTH(super))
+            return;
+    }
+
+    size_t parent_num = RCLASS_SUPERCLASS_DEPTH(super);
+    size_t num = parent_num + 1;
+
+    VALUE *superclasses = xmalloc(sizeof(VALUE) * num);
+    superclasses[parent_num] = super;
+    if (parent_num > 0) {
+        memcpy(superclasses, RCLASS_SUPERCLASSES(super), sizeof(VALUE) * parent_num);
+    }
+
+    RCLASS_SUPERCLASSES(klass) = superclasses;
+    RCLASS_SUPERCLASS_DEPTH(klass) = num;
 }
 
 void
@@ -403,7 +466,6 @@ rb_module_check_initializable(VALUE mod)
     if (!RMODULE_UNINITIALIZED(mod)) {
         rb_raise(rb_eTypeError, "already initialized module");
     }
-    RB_OBJ_WRITE(mod, &RCLASS(mod)->super, 0);
 }
 
 /* :nodoc: */
@@ -431,7 +493,7 @@ rb_mod_init_copy(VALUE clone, VALUE orig)
 
     if (!FL_TEST(CLASS_OF(clone), FL_SINGLETON)) {
         RBASIC_SET_CLASS(clone, rb_singleton_class_clone(orig));
-        rb_singleton_class_attached(RBASIC(clone)->klass, (VALUE)clone);
+        rb_singleton_class_attached(METACLASS_OF(clone), (VALUE)clone);
     }
     RCLASS_ALLOCATOR(clone) = RCLASS_ALLOCATOR(orig);
     copy_tables(clone, orig);
@@ -464,7 +526,7 @@ rb_mod_init_copy(VALUE clone, VALUE orig)
             if (BUILTIN_TYPE(p) != T_ICLASS) {
                 rb_bug("non iclass between module/class and origin");
             }
-            clone_p = class_alloc(RBASIC(p)->flags, RBASIC(p)->klass);
+            clone_p = class_alloc(RBASIC(p)->flags, METACLASS_OF(p));
             RCLASS_SET_SUPER(prev_clone_p, clone_p);
             prev_clone_p = clone_p;
             RCLASS_M_TBL(clone_p) = RCLASS_M_TBL(p);
@@ -488,7 +550,7 @@ rb_mod_init_copy(VALUE clone, VALUE orig)
                 add_subclass = FALSE;
             }
             if (add_subclass) {
-                rb_module_add_to_subclasses_list(RBASIC(p)->klass, clone_p);
+                rb_module_add_to_subclasses_list(METACLASS_OF(p), clone_p);
             }
             p = RCLASS_SUPER(p);
         }
@@ -525,7 +587,7 @@ rb_singleton_class_clone(VALUE obj)
 VALUE
 rb_singleton_class_clone_and_attach(VALUE obj, VALUE attach)
 {
-    const VALUE klass = RBASIC(obj)->klass;
+    const VALUE klass = METACLASS_OF(obj);
 
     // Note that `rb_singleton_class()` can create situations where `klass` is
     // attached to an object other than `obj`. In which case `obj` does not have
@@ -574,7 +636,7 @@ rb_singleton_class_clone_and_attach(VALUE obj, VALUE attach)
 	    rb_id_table_foreach(RCLASS_M_TBL(klass), clone_method_i, &arg);
 	}
         if (klass_of_clone_is_new) {
-            rb_singleton_class_attached(RBASIC(clone)->klass, clone);
+            rb_singleton_class_attached(METACLASS_OF(clone), clone);
         }
 	FL_SET(clone, FL_SINGLETON);
 
@@ -662,6 +724,9 @@ make_metaclass(VALUE klass)
     while (RB_TYPE_P(super, T_ICLASS)) super = RCLASS_SUPER(super);
     RCLASS_SET_SUPER(metaclass, super ? ENSURE_EIGENCLASS(super) : rb_cClass);
 
+    // Full class ancestry may not have been filled until we reach here.
+    rb_class_update_superclasses(METACLASS_OF(metaclass));
+
     return metaclass;
 }
 
@@ -674,7 +739,7 @@ make_metaclass(VALUE klass)
 static inline VALUE
 make_singleton_class(VALUE obj)
 {
-    VALUE orig_class = RBASIC(obj)->klass;
+    VALUE orig_class = METACLASS_OF(obj);
     VALUE klass = rb_class_boot(orig_class);
 
     FL_SET(klass, FL_SINGLETON);
@@ -697,6 +762,58 @@ boot_defclass(const char *name, VALUE super)
     return obj;
 }
 
+/***********************************************************************
+ *
+ * Document-class: Refinement
+ *
+ *  Refinement is a class of the +self+ (current context) inside +refine+
+ *  statement. It allows to import methods from other modules, see #import_methods.
+ */
+
+#if 0 /* for RDoc */
+/*
+ * Document-method: Refinement#import_methods
+ *
+ *  call-seq:
+ *     import_methods(module, ...)    -> self
+ *
+ *  Imports methods from modules. Unlike Module#include,
+ *  Refinement#import_methods copies methods and adds them into the refinement,
+ *  so the refinement is activated in the imported methods.
+ *
+ *  Note that due to method copying, only methods defined in Ruby code can be imported.
+ *
+ *     module StrUtils
+ *       def indent(level)
+ *         ' ' * level + self
+ *       end
+ *     end
+ *
+ *     module M
+ *       refine String do
+ *         import_methods StrUtils
+ *       end
+ *     end
+ *
+ *     using M
+ *     "foo".indent(3)
+ *     #=> "   foo"
+ *
+ *     module M
+ *       refine String do
+ *         import_methods Enumerable
+ *         # Can't import method which is not defined with Ruby code: Enumerable#drop
+ *       end
+ *     end
+ *
+ */
+
+static VALUE
+refinement_import_methods(int argc, VALUE *argv, VALUE refinement)
+{
+}
+# endif
+
 void
 Init_class_hierarchy(void)
 {
@@ -710,6 +827,11 @@ Init_class_hierarchy(void)
     rb_cModule = boot_defclass("Module", rb_cObject);
     rb_cClass =  boot_defclass("Class",  rb_cModule);
     rb_cRefinement =  boot_defclass("Refinement",  rb_cModule);
+
+#if 0 /* for RDoc */
+    // we pretend it to be public, otherwise RDoc will ignore it
+    rb_define_method(rb_cRefinement, "import_methods", refinement_import_methods, -1);
+#endif
 
     rb_const_set(rb_cObject, rb_intern_const("BasicObject"), rb_cBasicObject);
     RBASIC_SET_CLASS(rb_cClass, rb_cClass);
@@ -750,7 +872,7 @@ rb_define_class_id(ID id, VALUE super)
 
     if (!super) super = rb_cObject;
     klass = rb_class_new(super);
-    rb_make_metaclass(klass, RBASIC(super)->klass);
+    rb_make_metaclass(klass, METACLASS_OF(super));
 
     return klass;
 }
@@ -946,7 +1068,7 @@ rb_include_class_new(VALUE module, VALUE super)
 
     RCLASS_SET_ORIGIN(klass, klass);
     if (BUILTIN_TYPE(module) == T_ICLASS) {
-	module = RBASIC(module)->klass;
+	module = METACLASS_OF(module);
     }
     RUBY_ASSERT(!RB_TYPE_P(module, T_ICLASS));
     if (!RCLASS_IV_TBL(module)) {
@@ -992,8 +1114,7 @@ rb_include_module(VALUE klass, VALUE module)
     if (RB_TYPE_P(klass, T_MODULE)) {
         rb_subclass_entry_t *iclass = RCLASS_SUBCLASSES(klass);
         // skip the placeholder subclass entry at the head of the list
-        if (iclass && iclass->next) {
-            RUBY_ASSERT(!iclass->klass);
+        if (iclass && !iclass->klass) {
             iclass = iclass->next;
         }
 
@@ -1002,7 +1123,7 @@ rb_include_module(VALUE klass, VALUE module)
             VALUE check_class = iclass->klass;
             while (check_class) {
                 if (RB_TYPE_P(check_class, T_ICLASS) &&
-                        (RBASIC(check_class)->klass == module)) {
+                        (METACLASS_OF(check_class) == module)) {
                     do_include = 0;
                 }
                 check_class = RCLASS_SUPER(check_class);
@@ -1129,7 +1250,7 @@ do_include_modules_at(const VALUE klass, VALUE c, VALUE module, int search_super
 
 	if (add_subclass) {
 	    VALUE m = module;
-            if (BUILTIN_TYPE(m) == T_ICLASS) m = RBASIC(m)->klass;
+            if (BUILTIN_TYPE(m) == T_ICLASS) m = METACLASS_OF(m);
             rb_module_add_to_subclasses_list(m, iclass);
 	}
 
@@ -1293,7 +1414,7 @@ rb_mod_included_modules(VALUE mod)
 
     for (p = RCLASS_SUPER(mod); p; p = RCLASS_SUPER(p)) {
         if (p != origin && RCLASS_ORIGIN(p) == p && BUILTIN_TYPE(p) == T_ICLASS) {
-	    VALUE m = RBASIC(p)->klass;
+	    VALUE m = METACLASS_OF(p);
 	    if (RB_TYPE_P(m, T_MODULE))
 		rb_ary_push(ary, m);
 	}
@@ -1328,7 +1449,7 @@ rb_mod_include_p(VALUE mod, VALUE mod2)
     Check_Type(mod2, T_MODULE);
     for (p = RCLASS_SUPER(mod); p; p = RCLASS_SUPER(p)) {
         if (BUILTIN_TYPE(p) == T_ICLASS && !FL_TEST(p, RICLASS_IS_ORIGIN)) {
-	    if (RBASIC(p)->klass == mod2) return Qtrue;
+	    if (METACLASS_OF(p) == mod2) return Qtrue;
 	}
     }
     return Qfalse;
@@ -1365,7 +1486,7 @@ rb_mod_ancestors(VALUE mod)
         if (p == refined_class) break;
         if (p != RCLASS_ORIGIN(p)) continue;
 	if (BUILTIN_TYPE(p) == T_ICLASS) {
-	    rb_ary_push(ary, RBASIC(p)->klass);
+	    rb_ary_push(ary, METACLASS_OF(p));
 	}
         else {
 	    rb_ary_push(ary, p);
@@ -1426,31 +1547,6 @@ class_descendants(VALUE klass, bool immediate_only)
 
     return data.buffer;
 }
-
-/*
- *  call-seq:
- *     descendants -> array
- *
- *  Returns an array of classes where the receiver is one of
- *  the ancestors of the class, excluding the receiver and
- *  singleton classes. The order of the returned array is not
- *  defined.
- *
- *     class A; end
- *     class B < A; end
- *     class C < B; end
- *
- *     A.descendants        #=> [B, C]
- *     B.descendants        #=> [C]
- *     C.descendants        #=> []
- */
-
-VALUE
-rb_class_descendants(VALUE klass)
-{
-    return class_descendants(klass, false);
-}
-
 
 /*
  *  call-seq:
@@ -1970,7 +2066,7 @@ singleton_class_of(VALUE obj)
         }
     }
 
-    klass = RBASIC(obj)->klass;
+    klass = METACLASS_OF(obj);
     if (!(FL_TEST(klass, FL_SINGLETON) &&
           rb_attr_get(klass, id_attached) == obj)) {
 	rb_serial_t serial = RCLASS_SERIAL(klass);
@@ -2011,7 +2107,7 @@ rb_singleton_class_get(VALUE obj)
     if (SPECIAL_CONST_P(obj)) {
 	return rb_special_singleton_class(obj);
     }
-    klass = RBASIC(obj)->klass;
+    klass = METACLASS_OF(obj);
     if (!FL_TEST(klass, FL_SINGLETON)) return Qnil;
     if (rb_attr_get(klass, id_attached) != obj) return Qnil;
     return klass;

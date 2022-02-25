@@ -141,7 +141,7 @@ module Bundler
       end
       return unless multiple_gemfiles
       message = "Multiple gemfiles (gems.rb and Gemfile) detected. " \
-                "Make sure you remove Gemfile and Gemfile.lock since bundler is ignoring them in favor of gems.rb and gems.rb.locked."
+                "Make sure you remove Gemfile and Gemfile.lock since bundler is ignoring them in favor of gems.rb and gems.locked."
       Bundler.ui.warn message
     end
 
@@ -239,7 +239,7 @@ module Bundler
       current  = File.expand_path(SharedHelpers.pwd).tap{|x| x.untaint if RUBY_VERSION < "2.7" }
 
       until !File.directory?(current) || current == previous
-        if ENV["BUNDLE_SPEC_RUN"]
+        if ENV["BUNDLER_SPEC_RUN"]
           # avoid stepping above the tmp directory when testing
           gemspec = if ENV["GEM_COMMAND"]
             # for Ruby Core

@@ -2,6 +2,7 @@
 require 'test/unit'
 require 'envutil'
 require 'tmpdir'
+require_relative '../lib/jit_support'
 
 return unless defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled?
 
@@ -21,6 +22,15 @@ class TestYJIT < Test::Unit::TestCase
       %w(--version --disable=yjit --yjit),
       %w(--version --disable=yjit --enable-yjit),
       %w(--version --disable=yjit --enable=yjit),
+      *([
+        %w(--version --jit),
+        %w(--version --disable-jit --jit),
+        %w(--version --disable-jit --enable-jit),
+        %w(--version --disable-jit --enable=jit),
+        %w(--version --disable=jit --yjit),
+        %w(--version --disable=jit --enable-jit),
+        %w(--version --disable=jit --enable=jit),
+      ] if JITSupport.yjit_supported?),
     ].each do |version_args|
       assert_in_out_err(version_args) do |stdout, stderr|
         assert_equal(RUBY_DESCRIPTION, stdout.first)
@@ -245,6 +255,11 @@ class TestYJIT < Test::Unit::TestCase
 
   def test_compile_regexp
     assert_no_exits('/#{true}/')
+  end
+
+  def test_compile_dynamic_symbol
+    assert_compiles(':"#{"foo"}"', insns: %i[intern])
+    assert_compiles('s = "bar"; :"foo#{s}"', insns: %i[intern])
   end
 
   def test_getlocal_with_level
@@ -495,6 +510,24 @@ class TestYJIT < Test::Unit::TestCase
 
       fib(9)
     RUBY
+  end
+
+  def test_optarg_and_kwarg
+    assert_no_exits(<<~'RUBY')
+      def opt_and_kwarg(a, b=nil, c: nil)
+      end
+
+      2.times do
+        opt_and_kwarg(1, 2, c: 3)
+      end
+    RUBY
+  end
+
+  def test_cfunc_kwarg
+    assert_no_exits('{}.store(:value, foo: 123)')
+    assert_no_exits('{}.store(:value, foo: 123, bar: 456, baz: 789)')
+    assert_no_exits('{}.merge(foo: 123)')
+    assert_no_exits('{}.merge(foo: 123, bar: 456, baz: 789)')
   end
 
   def test_ctx_different_mappings

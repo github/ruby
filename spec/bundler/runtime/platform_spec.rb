@@ -168,7 +168,7 @@ RSpec.describe "Bundler.setup with multi platform stuff" do
         nokogiri
 
       BUNDLED WITH
-        2.1.4
+        #{Bundler::VERSION}
     G
 
     bundle "install"
@@ -220,6 +220,20 @@ RSpec.describe "Bundler.setup with multi platform stuff" do
 
   it "allows specifying only-ruby-platform" do
     gemfile <<-G
+      source "#{file_uri_for(gem_repo1)}"
+      gem "nokogiri"
+      gem "platform_specific"
+    G
+
+    bundle "config set force_ruby_platform true"
+
+    bundle "install"
+
+    expect(the_bundle).to include_gems "nokogiri 1.4.2", "platform_specific 1.0 RUBY"
+  end
+
+  it "allows specifying only-ruby-platform even if the lockfile is locked to a specific compatible platform" do
+    install_gemfile <<-G
       source "#{file_uri_for(gem_repo1)}"
       gem "nokogiri"
       gem "platform_specific"

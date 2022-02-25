@@ -825,20 +825,20 @@ num_zero_p(VALUE num)
     return rb_equal(num, INT2FIX(0));
 }
 
-static VALUE
+static bool
 int_zero_p(VALUE num)
 {
     if (FIXNUM_P(num)) {
-        return RBOOL(FIXNUM_ZERO_P(num));
+        return FIXNUM_ZERO_P(num);
     }
     assert(RB_BIGNUM_TYPE_P(num));
-    return RBOOL(rb_bigzero_p(num));
+    return rb_bigzero_p(num);
 }
 
 VALUE
 rb_int_zero_p(VALUE num)
 {
-    return int_zero_p(num);
+    return RBOOL(int_zero_p(num));
 }
 
 /*
@@ -948,23 +948,23 @@ num_negative_p(VALUE num)
  *
  *  You can create a \Float object explicitly with:
  *
- *  - A {floating-point literal}[doc/syntax/literals_rdoc.html#label-Float+Literals].
+ *  - A {floating-point literal}[rdoc-ref:syntax/literals.rdoc@Float+Literals].
  *
  *  You can convert certain objects to Floats with:
  *
- *  - \Method {Float}[Kernel.html#method-i-Float].
+ *  - \Method #Float.
  *
  *  == What's Here
  *
  *  First, what's elsewhere. \Class \Float:
  *
- *  - Inherits from {class Numeric}[Numeric.html#class-Numeric-label-What-27s+Here].
+ *  - Inherits from {class Numeric}[rdoc-ref:Numeric@What-27s+Here].
  *
  *  Here, class \Float provides methods for:
  *
- *  - {Querying}[#class-Float-label-Querying]
- *  - {Comparing}[#class-Float-label-Comparing]
- *  - {Converting}[#class-Float-label-Converting]
+ *  - {Querying}[rdoc-ref:Float@Querying]
+ *  - {Comparing}[rdoc-ref:Float@Comparing]
+ *  - {Converting}[rdoc-ref:Float@Converting]
  *
  *  === Querying
  *
@@ -975,25 +975,24 @@ num_negative_p(VALUE num)
  *
  *  === Comparing
  *
- *  - {<}[#method-i-3C]:: Returns whether +self+ is less than the given value.
- *  - {<=}[#method-i-3C-3D]:: Returns whether +self+ is less than
- *                            or equal to the given value.
- *  - {<=>}[#method-i-3C-3D-3E]:: Returns a number indicating whether +self+ is less than,
- *                                equal to, or greater than the given value.
- *  - {==}[#method-i-3D-3D] (aliased as #=== and #eql>):: Returns whether +self+ is
- *                                                        equal to the given value.
- *  - {>}[#method-i-3E]:: Returns whether +self+ is greater than the given value.
- *  - {>=}[#method-i-3E-3D]:: Returns whether +self+ is greater than
- *                            or equal to the given value.
+ *  - #<:: Returns whether +self+ is less than the given value.
+ *  - #<=:: Returns whether +self+ is less than or equal to the given value.
+ *  - #<=>:: Returns a number indicating whether +self+ is less than, equal
+ *           to, or greater than the given value.
+ *  - #== (aliased as #=== and #eql?):: Returns whether +self+ is equal to
+ *                                      the given value.
+ *  - #>:: Returns whether +self+ is greater than the given value.
+ *  - #>=:: Returns whether +self+ is greater than or equal to the given
+ *          value.
  *
  *  === Converting
  *
  *  - #% (aliased as #modulo):: Returns +self+ modulo the given value.
  *  - #*:: Returns the product of +self+ and the given value.
- *  - {**}[#method-i-2A-2A]:: Returns the value of +self+ raised to the power of the given value.
+ *  - #**:: Returns the value of +self+ raised to the power of the given value.
  *  - #+:: Returns the sum of +self+ and the given value.
  *  - #-:: Returns the difference of +self+ and the given value.
- *  - {/}[#method-i-2F]:: Returns the quotient of +self+ and the given value.
+ *  - #/:: Returns the quotient of +self+ and the given value.
  *  - #ceil:: Returns the smallest number greater than or equal to +self+.
  *  - #coerce:: Returns a 2-element array containing the given value converted to a \Float
                 and +self+
@@ -3482,11 +3481,11 @@ rb_num2ull(VALUE val)
  *
  * You can create an \Integer object explicitly with:
  *
- * - An {integer literal}[doc/syntax/literals_rdoc.html#label-Integer+Literals].
+ * - An {integer literal}[rdoc-ref:syntax/literals.rdoc@Integer+Literals].
  *
  * You can convert certain objects to Integers with:
  *
- * - \Method {Integer}[Kernel.html#method-i-Integer].
+ * - \Method #Integer.
  *
  * An attempt to add a singleton method to an instance of this class
  * causes an exception to be raised.
@@ -3495,14 +3494,14 @@ rb_num2ull(VALUE val)
  *
  * First, what's elsewhere. \Class \Integer:
  *
- * - Inherits from {class Numeric}[Numeric.html#class-Numeric-label-What-27s+Here].
+ * - Inherits from {class Numeric}[rdoc-ref:Numeric@What-27s+Here].
  *
  * Here, class \Integer provides methods for:
  *
- * - {Querying}[#class-Integer-label-Querying]
- * - {Comparing}[#class-Integer-label-Comparing]
- * - {Converting}[#class-Integer-label-Converting]
- * - {Other}[#class-Integer-label-Other]
+ * - {Querying}[rdoc-ref:Integer@Querying]
+ * - {Comparing}[rdoc-ref:Integer@Comparing]
+ * - {Converting}[rdoc-ref:Integer@Converting]
+ * - {Other}[rdoc-ref:Integer@Other]
  *
  * === Querying
  *
@@ -3512,32 +3511,31 @@ rb_num2ull(VALUE val)
  *
  * === Comparing
  *
- * - {<}[#method-i-3C]:: Returns whether +self+ is less than the given value.
- * - {<=}[#method-i-3C-3D]:: Returns whether +self+ is less than
- *                           or equal to the given value.
- * - {<=>}[#method-i-3C-3D-3E]:: Returns a number indicating whether +self+ is less than,
- *                               equal to, or greater than the given value.
- * - {==}[#method-i-3D-3D] (aliased as #===):: Returns whether +self+ is
- *                                             equal to the given value.
- * - {>}[#method-i-3E]:: Returns whether +self+ is greater than the given value.
- * - {>=}[#method-i-3E-3D]:: Returns whether +self+ is greater than
- *                           or equal to the given value.
+ * - #<:: Returns whether +self+ is less than the given value.
+ * - #<=:: Returns whether +self+ is less than or equal to the given value.
+ * - #<=>:: Returns a number indicating whether +self+ is less than, equal
+ *          to, or greater than the given value.
+ * - #== (aliased as #===):: Returns whether +self+ is equal to the given
+ *                           value.
+ * - #>:: Returns whether +self+ is greater than the given value.
+ * - #>=:: Returns whether +self+ is greater than or equal to the given
+ *         value.
  *
  * === Converting
  *
  * - ::sqrt:: Returns the integer square root of the given value.
  * - ::try_convert:: Returns the given value converted to an \Integer.
  * - #% (aliased as #modulo):: Returns +self+ modulo the given value.
- * - {&}[#method-i-26]:: Returns the bitwise AND of +self+ and the given value.
+ * - #&:: Returns the bitwise AND of +self+ and the given value.
  * - #*:: Returns the product of +self+ and the given value.
- * - {**}[#method-i-2A-2A]:: Returns the value of +self+ raised to the power of the given value.
+ * - #**:: Returns the value of +self+ raised to the power of the given value.
  * - #+:: Returns the sum of +self+ and the given value.
  * - #-:: Returns the difference of +self+ and the given value.
- * - {/}[#method-i-2F]:: Returns the quotient of +self+ and the given value.
+ * - #/:: Returns the quotient of +self+ and the given value.
  * - #<<:: Returns the value of +self+ after a leftward bit-shift.
  * - #>>:: Returns the value of +self+ after a rightward bit-shift.
  * - #[]:: Returns a slice of bits from +self+.
- * - {^}[#method-i-5E]:: Returns the bitwise EXCLUSIVE OR of +self+ and the given value.
+ * - #^:: Returns the bitwise EXCLUSIVE OR of +self+ and the given value.
  * - #ceil:: Returns the smallest number greater than or equal to +self+.
  * - #chr:: Returns a 1-character string containing the character
  *          represented by the value of +self+.
@@ -3557,7 +3555,7 @@ rb_num2ull(VALUE val)
  * - #to_s (aliased as #inspect):: Returns a string containing the place-value
  *                                 representation of +self+ in the given radix.
  * - #truncate:: Returns +self+ truncated to the given precision.
- * - {/}[#method-i-7C]:: Returns the bitwise OR of +self+ and the given value.
+ * - #/:: Returns the bitwise OR of +self+ and the given value.
  *
  * === Other
  *
@@ -3657,7 +3655,7 @@ static VALUE
 int_anybits_p(VALUE num, VALUE mask)
 {
     mask = rb_to_int(mask);
-    return int_zero_p(rb_int_and(num, mask)) ? Qfalse : Qtrue;
+    return RBOOL(!int_zero_p(rb_int_and(num, mask)));
 }
 
 /*
@@ -3687,7 +3685,7 @@ static VALUE
 int_nobits_p(VALUE num, VALUE mask)
 {
     mask = rb_to_int(mask);
-    return int_zero_p(rb_int_and(num, mask));
+    return RBOOL(int_zero_p(rb_int_and(num, mask)));
 }
 
 /*
@@ -3777,7 +3775,7 @@ rb_enc_uint_chr(unsigned int code, rb_encoding *enc)
  *  represented by the value of +self+, according to the given +encoding+.
  *
  *    65.chr                   # => "A"
- *    0..chr                   # => "\x00"
+ *    0.chr                    # => "\x00"
  *    255.chr                  # => "\xFF"
  *    string = 255.chr(Encoding::UTF_8)
  *    string.encoding          # => Encoding::UTF_8
@@ -5073,6 +5071,7 @@ rb_fix_lshift(VALUE x, VALUE y)
     long val, width;
 
     val = NUM2LONG(x);
+    if (!val) return (rb_to_int(y), INT2FIX(0));
     if (!FIXNUM_P(y))
 	return rb_big_lshift(rb_int2big(val), y);
     width = FIX2LONG(y);
@@ -5127,6 +5126,7 @@ rb_fix_rshift(VALUE x, VALUE y)
     long i, val;
 
     val = FIX2LONG(x);
+    if (!val) return (rb_to_int(y), INT2FIX(0));
     if (!FIXNUM_P(y))
 	return rb_big_rshift(rb_int2big(val), y);
     i = FIX2LONG(y);
@@ -5238,7 +5238,7 @@ int_aref1(VALUE num, VALUE arg)
             if (!RTEST(num_negative_p(end))) {
                 if (!excl) end = rb_int_plus(end, INT2FIX(1));
                 VALUE mask = generate_mask(end);
-                if (RTEST(int_zero_p(rb_int_and(num, mask)))) {
+                if (int_zero_p(rb_int_and(num, mask))) {
                     return INT2FIX(0);
                 }
                 else {
@@ -6097,15 +6097,15 @@ int_s_try_convert(VALUE self, VALUE num)
  *
  * First, what's elsewhere. \Class \Numeric:
  *
- * - Inherits from {class Object}[Object.html#class-Object-label-What-27s+Here].
- * - Includes {module Comparable}[Comparable.html#module-Comparable-label-What-27s+Here].
+ * - Inherits from {class Object}[rdoc-ref:Object@What-27s+Here].
+ * - Includes {module Comparable}[rdoc-ref:Comparable@What-27s+Here].
  *
  * Here, class \Numeric provides methods for:
  *
- * - {Querying}[#class-Numeric-label-Querying]
- * - {Comparing}[#class-Numeric-label-Comparing]
- * - {Converting}[#class-Numeric-label-Converting]
- * - {Other}[#class-Numeric-label-Other]
+ * - {Querying}[rdoc-ref:Numeric@Querying]
+ * - {Comparing}[rdoc-ref:Numeric@Comparing]
+ * - {Converting}[rdoc-ref:Numeric@Converting]
+ * - {Other}[rdoc-ref:Numeric@Other]
  *
  * === Querying
  *
@@ -6121,7 +6121,7 @@ int_s_try_convert(VALUE self, VALUE num)
  *
  * === Comparing
  *
- * - {<=>}[#method-i-3C-3D-3E]:: Returns:
+ * - #<=>:: Returns:
  *   - -1 if  +self+ is less than the given value.
  *   - 0 if +self+ is equal to the given value.
  *   - 1 if +self+ is greater than the given value.
@@ -6289,10 +6289,6 @@ Init_Numeric(void)
     for(int i = 0; i < 10; i++) {
         rb_gc_register_mark_object(rb_fix_to_s_static[i]);
     }
-
-    /* An obsolete class, use Integer */
-    rb_define_const(rb_cObject, "Fixnum", rb_cInteger);
-    rb_deprecate_constant(rb_cObject, "Fixnum");
 
     rb_cFloat  = rb_define_class("Float", rb_cNumeric);
 

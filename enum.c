@@ -1224,7 +1224,7 @@ enum_tally(int argc, VALUE *argv, VALUE obj)
 {
     VALUE hash;
     if (rb_check_arity(argc, 0, 1)) {
-        hash = rb_convert_type(argv[0], T_HASH, "Hash", "to_hash");
+        hash = rb_to_hash_type(argv[0]);
         rb_check_frozen(hash);
     }
     else {
@@ -4650,12 +4650,12 @@ enum_compact(VALUE obj)
  * == What's Here
  *
  * \Module \Enumerable provides methods that are useful to a collection class for:
- * - {Querying}[#module-Enumerable-label-Methods+for+Querying]
- * - {Fetching}[#module-Enumerable-label-Methods+for+Fetching]
- * - {Searching}[#module-Enumerable-label-Methods+for+Searching]
- * - {Sorting}[#module-Enumerable-label-Methods+for+Sorting]
- * - {Iterating}[#module-Enumerable-label-Methods+for+Iterating]
- * - {And more....}[#module-Enumerable-label-Other+Methods]
+ * - {Querying}[rdoc-ref:Enumerable@Methods+for+Querying]
+ * - {Fetching}[rdoc-ref:Enumerable@Methods+for+Fetching]
+ * - {Searching}[rdoc-ref:Enumerable@Methods+for+Searching]
+ * - {Sorting}[rdoc-ref:Enumerable@Methods+for+Sorting]
+ * - {Iterating}[rdoc-ref:Enumerable@Methods+for+Iterating]
+ * - {And more....}[rdoc-ref:Enumerable@Other+Methods]
  *
  * === Methods for Querying
  *
@@ -4777,26 +4777,42 @@ enum_compact(VALUE obj)
  *   [1, 2]
  *   nil
  *
- * == \Enumerable in Ruby Core Classes
- * Some Ruby classes include \Enumerable:
+ * == \Enumerable in Ruby Classes
+ *
+ * These Ruby core classes include (or extend) \Enumerable:
+ *
+ * - ARGF
  * - Array
  * - Dir
+ * - Enumerator
+ * - ENV (extends)
  * - Hash
  * - IO
  * - Range
- * - Set
  * - Struct
+ *
+ * These Ruby standard library classes include \Enumerable:
+ *
+ * - CSV
+ * - CSV::Table
+ * - CSV::Row
+ * - Set
+ *
  * Virtually all methods in \Enumerable call method +#each+ in the including class:
+ *
  * - <tt>Hash#each</tt> yields the next key-value pair as a 2-element \Array.
  * - <tt>Struct#each</tt> yields the next name-value pair as a 2-element \Array.
  * - For the other classes above, +#each+ yields the next object from the collection.
  *
  * == About the Examples
+ *
  * The example code snippets for the \Enumerable methods:
+ *
  * - Always show the use of one or more \Array-like classes (often \Array itself).
  * - Sometimes show the use of a \Hash-like class.
  *   For some methods, though, the usage would not make sense,
  *   and so it is not shown.  Example: #tally would find exactly one of each \Hash entry.
+ *
  */
 
 void

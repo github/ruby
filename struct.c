@@ -187,6 +187,17 @@ struct_member_pos(VALUE s, VALUE name)
     }
 }
 
+/*
+ *  call-seq:
+ *    StructClass::members -> array_of_symbols
+ *
+ *  Returns the member names of the Struct descendant as an array:
+ *
+ *     Customer = Struct.new(:name, :address, :zip)
+ *     Customer.members # => [:name, :address, :zip]
+ *
+ */
+
 static VALUE
 rb_struct_s_members_m(VALUE klass)
 {
@@ -285,12 +296,14 @@ rb_struct_s_inspect(VALUE klass)
     return inspect;
 }
 
+#if 0 /* for RDoc */
+
 /*
  * call-seq:
- *   StructClass.keyword_init? -> true or false
+ *   StructClass::keyword_init? -> true or falsy value
  *
- * Returns true if the class was initialized with +keyword_init: true+.
- * Otherwise returns false.
+ * Returns +true+ if the class was initialized with <tt>keyword_init: true</tt>.
+ * Otherwise returns +nil+ or +false+.
  *
  * Examples:
  *   Foo = Struct.new(:a)
@@ -300,6 +313,11 @@ rb_struct_s_inspect(VALUE klass)
  *   Baz = Struct.new(:a, keyword_init: false)
  *   Baz.keyword_init? # => false
  */
+static VALUE
+rb_struct_s_keyword_init_p(VALUE obj)
+{
+}
+#endif
 
 #define rb_struct_s_keyword_init_p rb_struct_s_keyword_init
 
@@ -667,12 +685,25 @@ rb_struct_initialize_m(int argc, const VALUE *argv, VALUE self)
         return Qnil;
     }
 
-    VALUE keyword_init = rb_struct_s_keyword_init(klass);
-    if (RTEST(keyword_init)) {
-	struct struct_hash_set_arg arg;
+    bool keyword_init = false;
+    switch (rb_struct_s_keyword_init(klass)) {
+      default:
 	if (argc > 1 || !RB_TYPE_P(argv[0], T_HASH)) {
 	    rb_raise(rb_eArgError, "wrong number of arguments (given %d, expected 0)", argc);
 	}
+	keyword_init = true;
+	break;
+      case Qfalse:
+        break;
+      case Qnil:
+	if (argc > 1 || !RB_TYPE_P(argv[0], T_HASH)) {
+            break;
+        }
+	keyword_init = rb_keyword_given_p();
+        break;
+    }
+    if (keyword_init) {
+	struct struct_hash_set_arg arg;
 	rb_mem_clear((VALUE *)RSTRUCT_CONST_PTR(self), n);
 	arg.self = self;
 	arg.unknown_keywords = Qnil;
@@ -686,10 +717,6 @@ rb_struct_initialize_m(int argc, const VALUE *argv, VALUE self)
 	if (n < argc) {
 	    rb_raise(rb_eArgError, "struct size differs");
 	}
-        if (NIL_P(keyword_init) && argc == 1 && RB_TYPE_P(argv[0], T_HASH) && rb_keyword_given_p()) {
-            rb_warn("Passing only keyword arguments to Struct#initialize will behave differently from Ruby 3.2. "\
-                    "Please use a Hash literal like .new({k: v}) instead of .new(k: v).");
-        }
         for (long i=0; i<argc; i++) {
 	    RSTRUCT_SET(self, i, argv[i]);
 	}
@@ -1142,7 +1169,7 @@ invalid_struct_pos(VALUE s, VALUE idx)
  *
  *  With integer argument +n+ given, returns <tt>self.values[n]</tt>
  *  if +n+ is in range;
- *  see {Array Indexes}[Array.html#class-Array-label-Array+Indexes]:
+ *  see Array@Array+Indexes:
  *
  *    joe[2]  # => 12345
  *    joe[-2] # => "123 Maple, Anytown NC"
@@ -1178,7 +1205,7 @@ rb_struct_aref(VALUE s, VALUE idx)
  *
  *  With integer argument +n+ given, assigns the given +value+
  *  to the +n+-th member if +n+ is in range;
- *  see {Array Indexes}[Array.html#class-Array-label-Array+Indexes]:
+ *  see Array@Array+Indexes:
  *
  *    joe = Customer.new("Joe Smith", "123 Maple, Anytown NC", 12345)
  *    joe[2] = 54321           # => 54321
@@ -1240,7 +1267,7 @@ struct_entry(VALUE s, long n)
  *    joe.values_at(0, -3)   # => ["Joe Smith", "Joe Smith"]
  *
  *  Raises IndexError if any of +integers+ is out of range;
- *  see {Array Indexes}[Array.html#class-Array-label-Array+Indexes].
+ *  see Array@Array+Indexes.
  *
  *  With integer range argument +integer_range+ given,
  *  returns an array containing each value given by the elements of the range;
@@ -1253,7 +1280,7 @@ struct_entry(VALUE s, long n)
  *    joe.values_at(1..4) # => ["123 Maple, Anytown NC", 12345, nil, nil]
  *
  *  Raises RangeError if any element of the range is negative and out of range;
- *  see {Array Indexes}[Array.html#class-Array-label-Array+Indexes].
+ *  see Array@Array+Indexes.
  *
  */
 
@@ -1535,19 +1562,19 @@ rb_struct_dig(int argc, VALUE *argv, VALUE self)
  *
  *  First, what's elsewhere. \Class \Struct:
  *
- *  - Inherits from {class Object}[Object.html#class-Object-label-What-27s+Here].
- *  - Includes {module Enumerable}[Enumerable.html#module-Enumerable-label-What-27s+Here],
+ *  - Inherits from {class Object}[rdoc-ref:Object@What-27s+Here].
+ *  - Includes {module Enumerable}[rdoc-ref:Enumerable@What-27s+Here],
  *    which provides dozens of additional methods.
  *
  *  Here, class \Struct provides methods that are useful for:
  *
- *  - {Creating a Struct Subclass}[#class-Struct-label-Methods+for+Creating+a+Struct+Subclass]
- *  - {Querying}[#class-Struct-label-Methods+for+Querying]
- *  - {Comparing}[#class-Struct-label-Methods+for+Comparing]
- *  - {Fetching}[#class-Struct-label-Methods+for+Fetching]
- *  - {Assigning}[#class-Struct-label-Methods+for+Assigning]
- *  - {Iterating}[#class-Struct-label-Methods+for+Iterating]
- *  - {Converting}[#class-Struct-label-Methods+for+Converting]
+ *  - {Creating a Struct Subclass}[rdoc-ref:Struct@Methods+for+Creating+a+Struct+Subclass]
+ *  - {Querying}[rdoc-ref:Struct@Methods+for+Querying]
+ *  - {Comparing}[rdoc-ref:Struct@Methods+for+Comparing]
+ *  - {Fetching}[rdoc-ref:Struct@Methods+for+Fetching]
+ *  - {Assigning}[rdoc-ref:Struct@Methods+for+Assigning]
+ *  - {Iterating}[rdoc-ref:Struct@Methods+for+Iterating]
+ *  - {Converting}[rdoc-ref:Struct@Methods+for+Converting]
  *
  *  === Methods for Creating a Struct Subclass
  *
@@ -1560,8 +1587,8 @@ rb_struct_dig(int argc, VALUE *argv, VALUE self)
  *
  *  === Methods for Comparing
  *
- *  {#==}[#method-i-3D-3D]:: Returns whether a given object is equal to +self+,
- *                           using <tt>==</tt> to compare member values.
+ *  #==:: Returns whether a given object is equal to +self+, using <tt>==</tt>
+ *        to compare member values.
  *  #eql?:: Returns whether a given object is equal to +self+,
  *          using <tt>eql?</tt> to compare member values.
  *
@@ -1601,6 +1628,10 @@ InitVM_Struct(void)
 
     rb_undef_alloc_func(rb_cStruct);
     rb_define_singleton_method(rb_cStruct, "new", rb_struct_s_def, -1);
+#if 0 /* for RDoc */
+    rb_define_singleton_method(rb_cStruct, "keyword_init?", rb_struct_s_keyword_init_p, 0);
+    rb_define_singleton_method(rb_cStruct, "members", rb_struct_s_members_m, 0);
+#endif
 
     rb_define_method(rb_cStruct, "initialize", rb_struct_initialize_m, -1);
     rb_define_method(rb_cStruct, "initialize_copy", rb_struct_init_copy, 1);

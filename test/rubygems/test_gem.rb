@@ -354,41 +354,6 @@ class TestGem < Gem::TestCase
     assert status.success?, output
   end
 
-  def test_activate_bin_path_gives_proper_error_for_bundler
-    bundler = util_spec 'bundler', '2' do |s|
-      s.executables = ['bundle']
-    end
-
-    install_specs bundler
-
-    File.open("Gemfile.lock", "w") do |f|
-      f.write <<-L.gsub(/ {8}/, "")
-        GEM
-          remote: https://rubygems.org/
-          specs:
-
-        PLATFORMS
-          ruby
-
-        DEPENDENCIES
-
-        BUNDLED WITH
-          9999
-      L
-    end
-
-    File.open("Gemfile", "w") {|f| f.puts('source "https://rubygems.org"') }
-
-    e = assert_raise Gem::GemNotFoundException do
-      load Gem.activate_bin_path("bundler", "bundle", ">= 0.a")
-    end
-
-    assert_includes e.message, "Could not find 'bundler' (9999) required by your #{File.expand_path("Gemfile.lock")}."
-    assert_includes e.message, "To update to the latest version installed on your system, run `bundle update --bundler`."
-    assert_includes e.message, "To install the missing version, run `gem install bundler:9999`"
-    refute_includes e.message, "can't find gem bundler (>= 0.a) with executable bundle"
-  end
-
   def test_activate_bin_path_selects_exact_bundler_version_if_present
     bundler_latest = util_spec 'bundler', '2.0.1' do |s|
       s.executables = ['bundle']
@@ -888,6 +853,27 @@ class TestGem < Gem::TestCase
     assert_equal gems['a-2'], spec
   end
 
+  def test_self_latest_spec_for_multiple_sources
+    uri = 'https://example.sample.com/'
+    source = Gem::Source.new(uri)
+    source_list = Gem::SourceList.new
+    source_list << Gem::Source.new(@uri)
+    source_list << source
+    Gem.sources.replace source_list
+
+    spec_fetcher(uri) do |fetcher|
+      fetcher.spec 'a', 1.1
+    end
+
+    gems = spec_fetcher do |fetcher|
+      fetcher.spec 'a', 1
+      fetcher.spec 'a', '3.a'
+      fetcher.spec 'a', 2
+    end
+    spec = Gem.latest_spec_for 'a'
+    assert_equal gems['a-2'], spec
+  end
+
   def test_self_latest_rubygems_version
     spec_fetcher do |fetcher|
       fetcher.spec 'rubygems-update', '1.8.23'
@@ -901,6 +887,29 @@ class TestGem < Gem::TestCase
   end
 
   def test_self_latest_version_for
+    spec_fetcher do |fetcher|
+      fetcher.spec 'a', 1
+      fetcher.spec 'a', 2
+      fetcher.spec 'a', '3.a'
+    end
+
+    version = Gem.latest_version_for 'a'
+
+    assert_equal Gem::Version.new(2), version
+  end
+
+  def test_self_latest_version_for_multiple_sources
+    uri = 'https://example.sample.com/'
+    source = Gem::Source.new(uri)
+    source_list = Gem::SourceList.new
+    source_list << Gem::Source.new(@uri)
+    source_list << source
+    Gem.sources.replace source_list
+
+    spec_fetcher(uri) do |fetcher|
+      fetcher.spec 'a', 1.1
+    end
+
     spec_fetcher do |fetcher|
       fetcher.spec 'a', 1
       fetcher.spec 'a', 2
@@ -2012,6 +2021,8 @@ You may need to `bundle install` to install missing gems
   ensure
     ENV['SOURCE_DATE_EPOCH'] = old_epoch
   end
+
+  private
 
   def ruby_install_name(name)
     with_clean_path_to_ruby do

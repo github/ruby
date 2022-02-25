@@ -195,15 +195,16 @@ script_lines(VALUE path)
 static VALUE
 ast_s_of(rb_execution_context_t *ec, VALUE module, VALUE body, VALUE keep_script_lines)
 {
-    VALUE path, node, lines = Qnil;
+    VALUE node, lines = Qnil;
+    const rb_iseq_t *iseq;
     int node_id;
 
     if (rb_frame_info_p(body)) {
-        rb_frame_info_get(body, &path, &lines, &node_id);
-        if (NIL_P(path) && NIL_P(lines)) return Qnil;
+        iseq = rb_get_iseq_from_frame_info(body);
+        node_id = rb_get_node_id_from_frame_info(body);
     }
     else {
-        const rb_iseq_t *iseq = NULL;
+        iseq = NULL;
 
         if (rb_obj_is_proc(body)) {
             iseq = vm_proc_iseq(body);
@@ -213,21 +214,27 @@ ast_s_of(rb_execution_context_t *ec, VALUE module, VALUE body, VALUE keep_script
         else {
             iseq = rb_method_iseq(body);
         }
-        if (!iseq) {
-            return Qnil;
+        if (iseq) {
+            node_id = iseq->body->location.node_id;
         }
-        if (rb_iseq_from_eval_p(iseq)) {
-            rb_raise(rb_eArgError, "cannot get AST for method defined in eval");
-        }
-        path = rb_iseq_path(iseq);
-        lines = iseq->body->variable.script_lines;
-        node_id = iseq->body->location.node_id;
+    }
+
+    if (!iseq) {
+        return Qnil;
+    }
+    lines = iseq->body->variable.script_lines;
+
+    VALUE path = rb_iseq_path(iseq);
+    int e_option = RSTRING_LEN(path) == 2 && memcmp(RSTRING_PTR(path), "-e", 2) == 0;
+
+    if (NIL_P(lines) && rb_iseq_from_eval_p(iseq) && !e_option) {
+        rb_raise(rb_eArgError, "cannot get AST for method defined in eval");
     }
 
     if (!NIL_P(lines) || !NIL_P(lines = script_lines(path))) {
         node = rb_ast_parse_array(lines, keep_script_lines);
     }
-    else if (RSTRING_LEN(path) == 2 && memcmp(RSTRING_PTR(path), "-e", 2) == 0) {
+    else if (e_option) {
         node = rb_ast_parse_str(rb_e_script, keep_script_lines);
     }
     else {
@@ -417,7 +424,6 @@ node_children(rb_ast_t *ast, const NODE *node)
         }
       case NODE_LASGN:
       case NODE_DASGN:
-      case NODE_DASGN_CURR:
       case NODE_IASGN:
       case NODE_CVASGN:
       case NODE_GASGN:

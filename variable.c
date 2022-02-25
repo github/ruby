@@ -1499,7 +1499,7 @@ rb_init_iv_list(VALUE obj)
     init_iv_list(obj, len, newsize, index_tbl);
 }
 
-// Retreive or create the id-to-index mapping for a given object and an
+// Retrieve or create the id-to-index mapping for a given object and an
 // instance variable name.
 static struct ivar_update
 obj_ensure_iv_index_mapping(VALUE obj, ID id)
@@ -2553,6 +2553,10 @@ rb_autoload_load(VALUE mod, ID id)
     src = rb_sourcefile();
     if (src && loading && strcmp(src, loading) == 0) return Qfalse;
 
+    if (UNLIKELY(!rb_ractor_main_p())) {
+        rb_raise(rb_eRactorUnsafeError, "require by autoload on non-main Ractor is not supported (%s)", rb_id2name(id));
+    }
+
     if ((ce = rb_const_lookup(mod, id))) {
         flag = ce->flag & (CONST_DEPRECATED | CONST_VISIBILITY_MASK);
     }
@@ -3098,6 +3102,15 @@ set_namespace_path(VALUE named_namespace, VALUE namespace_path)
     RB_VM_LOCK_LEAVE();
 }
 
+static void
+const_added(VALUE klass, ID const_name)
+{
+    if (GET_VM()->running) {
+        VALUE name = ID2SYM(const_name);
+        rb_funcallv(klass, idConst_added, 1, &name);
+    }
+}
+
 void
 rb_const_set(VALUE klass, ID id, VALUE val)
 {
@@ -3162,6 +3175,7 @@ rb_const_set(VALUE klass, ID id, VALUE val)
 	    }
 	}
     }
+    const_added(klass, id);
 }
 
 static struct autoload_data_i *

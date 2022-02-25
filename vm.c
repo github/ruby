@@ -994,7 +994,7 @@ rb_proc_dup(VALUE self)
     rb_proc_t *src;
 
     GetProcPtr(self, src);
-    procval = proc_create(rb_cProc, &src->block, src->is_from_method, src->is_lambda);
+    procval = proc_create(rb_obj_class(self), &src->block, src->is_from_method, src->is_lambda);
     if (RB_OBJ_SHAREABLE_P(self)) FL_SET_RAW(procval, RUBY_FL_SHAREABLE);
     RB_GC_GUARD(self); /* for: body = rb_proc_dup(body) */
     return procval;
@@ -1182,7 +1182,9 @@ rb_proc_ractor_make_shareable(VALUE self)
         if (proc->block.type != block_type_iseq) rb_raise(rb_eRuntimeError, "not supported yet");
 
         if (!rb_ractor_shareable_p(vm_block_self(&proc->block))) {
-            rb_raise(rb_eRactorIsolationError, "Proc's self is not shareable");
+            rb_raise(rb_eRactorIsolationError,
+                     "Proc's self is not shareable: %" PRIsVALUE,
+                     self);
         }
 
         VALUE read_only_variables = Qfalse;
@@ -1863,8 +1865,13 @@ rb_vm_check_optimizable_mid(VALUE mid)
 }
 
 static int
-vm_redefinition_check_method_type(const rb_method_definition_t *def)
+vm_redefinition_check_method_type(const rb_method_entry_t *me)
 {
+    if (me->called_id != me->def->original_id) {
+        return FALSE;
+    }
+
+    const rb_method_definition_t *def = me->def;
     switch (def->type) {
       case VM_METHOD_TYPE_CFUNC:
       case VM_METHOD_TYPE_OPTIMIZED:
@@ -1882,12 +1889,14 @@ rb_vm_check_redefinition_opt_method(const rb_method_entry_t *me, VALUE klass)
             RB_TYPE_P(RBASIC_CLASS(klass), T_CLASS)) {
        klass = RBASIC_CLASS(klass);
     }
-    if (vm_redefinition_check_method_type(me->def)) {
+    if (vm_redefinition_check_method_type(me)) {
         if (st_lookup(vm_opt_method_def_table, (st_data_t)me->def, &bop)) {
             int flag = vm_redefinition_check_flag(klass);
-            rb_yjit_bop_redefined(klass, me, (enum ruby_basic_operators)bop);
-	    ruby_vm_redefined_flag[bop] |= flag;
-	}
+            if (flag != 0) {
+                rb_yjit_bop_redefined(klass, me, (enum ruby_basic_operators)bop);
+                ruby_vm_redefined_flag[bop] |= flag;
+            }
+        }
     }
 }
 
@@ -1915,7 +1924,7 @@ add_opt_method(VALUE klass, ID mid, VALUE bop)
 {
     const rb_method_entry_t *me = rb_method_entry_at(klass, mid);
 
-    if (me && vm_redefinition_check_method_type(me->def)) {
+    if (me && vm_redefinition_check_method_type(me)) {
 	st_insert(vm_opt_method_def_table, (st_data_t)me->def, (st_data_t)bop);
 	st_insert(vm_opt_mid_table, (st_data_t)mid, (st_data_t)Qtrue);
     }
@@ -2187,6 +2196,85 @@ static inline VALUE
 vm_exec_handle_exception(rb_execution_context_t *ec, enum ruby_tag_type state,
                          VALUE errinfo, VALUE *initial);
 
+// for non-Emscripten Wasm build, use vm_exec with optimized setjmp for runtime performance
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+
+struct rb_vm_exec_context {
+    rb_execution_context_t *ec;
+    struct rb_vm_tag *tag;
+    VALUE initial;
+    VALUE result;
+    enum ruby_tag_type state;
+    bool mjit_enable_p;
+};
+
+static void
+vm_exec_enter_vm_loop(rb_execution_context_t *ec, struct rb_vm_exec_context *ctx,
+                      struct rb_vm_tag *_tag, bool skip_first_ex_handle) {
+    if (skip_first_ex_handle) {
+        goto vm_loop_start;
+    }
+
+    ctx->result = ec->errinfo;
+    rb_ec_raised_reset(ec, RAISED_STACKOVERFLOW | RAISED_NOMEMORY);
+    while ((ctx->result = vm_exec_handle_exception(ec, ctx->state, ctx->result, &ctx->initial)) == Qundef) {
+        /* caught a jump, exec the handler */
+        ctx->result = vm_exec_core(ec, ctx->initial);
+    vm_loop_start:
+        VM_ASSERT(ec->tag == _tag);
+        /* when caught `throw`, `tag.state` is set. */
+        if ((ctx->state = _tag->state) == TAG_NONE) break;
+        _tag->state = TAG_NONE;
+    }
+}
+
+static void
+vm_exec_bottom_main(void *context)
+{
+    struct rb_vm_exec_context *ctx = (struct rb_vm_exec_context *)context;
+
+    ctx->state = TAG_NONE;
+    if (!ctx->mjit_enable_p || (ctx->result = mjit_exec(ctx->ec)) == Qundef) {
+        ctx->result = vm_exec_core(ctx->ec, ctx->initial);
+    }
+    vm_exec_enter_vm_loop(ctx->ec, ctx, ctx->tag, true);
+}
+
+static void
+vm_exec_bottom_rescue(void *context)
+{
+    struct rb_vm_exec_context *ctx = (struct rb_vm_exec_context *)context;
+    ctx->state = rb_ec_tag_state(ctx->ec);
+    vm_exec_enter_vm_loop(ctx->ec, ctx, ctx->tag, false);
+}
+
+VALUE
+vm_exec(rb_execution_context_t *ec, bool mjit_enable_p)
+{
+    struct rb_vm_exec_context ctx = {
+        .ec = ec,
+        .initial = 0, .result = Qundef,
+        .mjit_enable_p = mjit_enable_p,
+    };
+    struct rb_wasm_try_catch try_catch;
+
+    EC_PUSH_TAG(ec);
+
+    _tag.retval = Qnil;
+    ctx.tag = &_tag;
+
+    EC_REPUSH_TAG();
+
+    rb_wasm_try_catch_init(&try_catch, vm_exec_bottom_main, vm_exec_bottom_rescue, &ctx);
+
+    rb_wasm_try_catch_loop_run(&try_catch, &_tag.buf);
+
+    EC_POP_TAG();
+    return ctx.result;
+}
+
+#else
+
 VALUE
 vm_exec(rb_execution_context_t *ec, bool mjit_enable_p)
 {
@@ -2219,6 +2307,7 @@ vm_exec(rb_execution_context_t *ec, bool mjit_enable_p)
     EC_POP_TAG();
     return result;
 }
+#endif
 
 static inline VALUE
 vm_exec_handle_exception(rb_execution_context_t *ec, enum ruby_tag_type state,
@@ -2533,6 +2622,8 @@ rb_vm_update_references(void *ptr)
         vm->top_self = rb_gc_location(vm->top_self);
         vm->orig_progname = rb_gc_location(vm->orig_progname);
 
+        rb_gc_update_tbl_refs(vm->overloaded_cme_table);
+
         if (vm->coverages) {
             vm->coverages = rb_gc_location(vm->coverages);
             vm->me2counter = rb_gc_location(vm->me2counter);
@@ -2630,9 +2721,10 @@ rb_vm_mark(void *ptr)
 	    rb_mark_tbl(vm->loading_table);
 	}
 
-	rb_gc_mark_values(RUBY_NSIG, vm->trap_list.cmd);
+        rb_gc_mark_values(RUBY_NSIG, vm->trap_list.cmd);
 
         rb_id_table_foreach_values(vm->negative_cme_table, vm_mark_negative_cme, NULL);
+        rb_mark_tbl_no_pin(vm->overloaded_cme_table);
         for (i=0; i<VM_GLOBAL_CC_CACHE_TABLE_SIZE; i++) {
             const struct rb_callcache *cc = vm->global_cc_cache_table[i];
 
@@ -2719,15 +2811,63 @@ ruby_vm_destruct(rb_vm_t *vm)
     return 0;
 }
 
+size_t rb_vm_memsize_waiting_list(struct list_head *waiting_list); // process.c
+size_t rb_vm_memsize_waiting_fds(struct list_head *waiting_fds); // thread.c
+size_t rb_vm_memsize_postponed_job_buffer(void); // vm_trace.c
+size_t rb_vm_memsize_workqueue(struct list_head *workqueue); // vm_trace.c
+
+// Used for VM memsize reporting. Returns the size of the at_exit list by
+// looping through the linked list and adding up the size of the structs.
+static size_t
+vm_memsize_at_exit_list(rb_at_exit_list *at_exit)
+{
+    size_t size = 0;
+
+    while (at_exit) {
+        size += sizeof(rb_at_exit_list);
+        at_exit = at_exit->next;
+    }
+
+    return size;
+}
+
+// Used for VM memsize reporting. Returns the size of the builtin function
+// table if it has been defined.
+static size_t
+vm_memsize_builtin_function_table(const struct rb_builtin_function *builtin_function_table)
+{
+    return builtin_function_table == NULL ? 0 : sizeof(struct rb_builtin_function);
+}
+
+// Reports the memsize of the VM struct object and the structs that are
+// associated with it.
 static size_t
 vm_memsize(const void *ptr)
 {
-    size_t size = sizeof(rb_vm_t);
+    rb_vm_t *vm = GET_VM();
+
+    return (
+        sizeof(rb_vm_t) +
+        rb_vm_memsize_waiting_list(&vm->waiting_pids) +
+        rb_vm_memsize_waiting_list(&vm->waiting_grps) +
+        rb_vm_memsize_waiting_fds(&vm->waiting_fds) +
+        rb_st_memsize(vm->loaded_features_index) +
+        rb_st_memsize(vm->loading_table) +
+        rb_st_memsize(vm->ensure_rollback_table) +
+        rb_vm_memsize_postponed_job_buffer() +
+        rb_vm_memsize_workqueue(&vm->workqueue) +
+        rb_st_memsize(vm->defined_module_hash) +
+        vm_memsize_at_exit_list(vm->at_exit) +
+        rb_st_memsize(vm->frozen_strings) +
+        vm_memsize_builtin_function_table(vm->builtin_function_table) +
+        rb_id_table_memsize(vm->negative_cme_table) +
+        rb_st_memsize(vm->overloaded_cme_table)
+    );
 
     // TODO
-    // size += vmobj->ractor_num * sizeof(rb_ractor_t);
-
-    return size;
+    // struct { struct list_head set; } ractor;
+    // void *main_altstack; #ifdef USE_SIGALTSTACK
+    // struct rb_objspace *objspace;
 }
 
 static const rb_data_type_t vm_data_type = {
@@ -3261,13 +3401,13 @@ core_hash_merge_kwd(VALUE hash, VALUE kw)
 
 /* Returns true if JIT is enabled */
 static VALUE
-jit_enabled_p(VALUE _)
+mjit_enabled_p(VALUE _)
 {
     return RBOOL(mjit_enabled);
 }
 
 static VALUE
-jit_pause_m(int argc, VALUE *argv, RB_UNUSED_VAR(VALUE self))
+mjit_pause_m(int argc, VALUE *argv, RB_UNUSED_VAR(VALUE self))
 {
     VALUE options = Qnil;
     VALUE wait = Qtrue;
@@ -3284,7 +3424,7 @@ jit_pause_m(int argc, VALUE *argv, RB_UNUSED_VAR(VALUE self))
 }
 
 static VALUE
-jit_resume_m(VALUE _)
+mjit_resume_m(VALUE _)
 {
     return mjit_resume();
 }
@@ -3421,7 +3561,6 @@ Init_VM(void)
     VALUE opts;
     VALUE klass;
     VALUE fcore;
-    VALUE jit;
 
     /*
      * Document-class: RubyVM
@@ -3470,17 +3609,14 @@ Init_VM(void)
     rb_gc_register_mark_object(fcore);
     rb_mRubyVMFrozenCore = fcore;
 
-    /* ::RubyVM::JIT
+    /* ::RubyVM::MJIT
      * Provides access to the Method JIT compiler of MRI.
      * Of course, this module is MRI specific.
      */
-    jit = rb_define_module_under(rb_cRubyVM, "JIT");
-    rb_define_singleton_method(jit, "enabled?", jit_enabled_p, 0);
-    rb_define_singleton_method(jit, "pause", jit_pause_m, -1);
-    rb_define_singleton_method(jit, "resume", jit_resume_m, 0);
-    /* RubyVM::MJIT for short-term backward compatibility */
-    rb_const_set(rb_cRubyVM, rb_intern("MJIT"), jit);
-    rb_deprecate_constant(rb_cRubyVM, "MJIT");
+    VALUE mjit = rb_define_module_under(rb_cRubyVM, "MJIT");
+    rb_define_singleton_method(mjit, "enabled?", mjit_enabled_p, 0);
+    rb_define_singleton_method(mjit, "pause", mjit_pause_m, -1);
+    rb_define_singleton_method(mjit, "resume", mjit_resume_m, 0);
 
     /*
      * Document-class: Thread
@@ -3798,6 +3934,7 @@ Init_BareVM(void)
     vm->objspace = rb_objspace_alloc();
     ruby_current_vm_ptr = vm;
     vm->negative_cme_table = rb_id_table_create(16);
+    vm->overloaded_cme_table = st_init_numtable();
 
     Init_native_thread(th);
     th->vm = vm;

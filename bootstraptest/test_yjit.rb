@@ -1,3 +1,49 @@
+assert_equal '2022', %q{
+ def contrivance(hash, key)
+    # Expect this to compile to an `opt_aref`.
+    hash[key]
+
+    # The [] call above tracks that the `hash` local has a VALUE that
+    # is a heap pointer and the guard for the Kernel#itself call below
+    # doesn't check that it's a heap pointer VALUE.
+    #
+    # As you can see from the crash, the call to rb_hash_aref() can set the
+    # `hash` local, making eliding the heap object guard unsound.
+    hash.itself
+  end
+
+  # This is similar to ->(recv, mid) { send(recv, mid).local_variable_set(...) }.
+  # By composing we avoid creating new Ruby frames and so sending :binding
+  # captures the environment of the frame that does the missing key lookup.
+  # We use it to capture the environment inside of `contrivance`.
+  cap_then_set =
+    Kernel.instance_method(:send).method(:bind_call).to_proc >>
+      ->(binding) { binding.local_variable_set(:hash, 2022) }
+  special_missing = Hash.new(&cap_then_set)
+
+  # Make YJIT speculate that it's a hash and generate code
+  # that calls rb_hash_aref().
+  contrivance({}, :warmup)
+  contrivance({}, :warmup)
+
+  contrivance(special_missing, :binding)
+}
+
+assert_equal '18374962167983112447', %q{
+  # regression test for incorrectly discarding 32 bits of a pointer when it
+  # comes to default values.
+  def large_literal_default(n: 0xff00_fabcafe0_00ff)
+    n
+  end
+
+  def call_graph_root
+    large_literal_default
+  end
+
+  call_graph_root
+  call_graph_root
+}
+
 assert_normal_exit %q{
   # regression test for a leak caught by an asert on --yjit-call-threshold=2
   Foo = 1
@@ -2211,6 +2257,22 @@ assert_equal '[1]', %q{
   5.times.map { kwargs(value: 1) }.uniq
 }
 
+assert_equal '[:ok]', %q{
+  def kwargs(value:)
+    value
+  end
+
+  5.times.map { kwargs() rescue :ok }.uniq
+}
+
+assert_equal '[:ok]', %q{
+  def kwargs(a:, b: nil)
+    value
+  end
+
+  5.times.map { kwargs(b: 123) rescue :ok }.uniq
+}
+
 assert_equal '[[1, 2]]', %q{
   def kwargs(left:, right:)
     [left, right]
@@ -2230,6 +2292,40 @@ assert_equal '[[1, 2]]', %q{
   end
 
   5.times.map { kwargs(1, kwarg: 2) }.uniq
+}
+
+# optional and keyword args
+assert_equal '[[1, 2, 3]]', %q{
+  def opt_and_kwargs(a, b=2, c: nil)
+    [a,b,c]
+  end
+
+  5.times.map { opt_and_kwargs(1, c: 3) }.uniq
+}
+
+assert_equal '[[1, 2, 3]]', %q{
+  def opt_and_kwargs(a, b=nil, c: nil)
+    [a,b,c]
+  end
+
+  5.times.map { opt_and_kwargs(1, 2, c: 3) }.uniq
+}
+
+# Bug #18453
+assert_equal '[[1, nil, 2]]', %q{
+  def opt_and_kwargs(a = {}, b: nil, c: nil)
+    [a, b, c]
+  end
+
+  5.times.map { opt_and_kwargs(1, c: 2) }.uniq
+}
+
+assert_equal '[[{}, nil, 1]]', %q{
+  def opt_and_kwargs(a = {}, b: nil, c: nil)
+    [a, b, c]
+  end
+
+  5.times.map { opt_and_kwargs(c: 1) }.uniq
 }
 
 # leading and keyword arguments are swapped into the right order
@@ -2364,6 +2460,57 @@ assert_equal '[[1, 2, 3, 4]]', %q{
   end
 
   5.times.map { foo(specified: 2, required: 1) }.uniq
+}
+
+# cfunc kwargs
+assert_equal '{:foo=>123}', %q{
+  def foo(bar)
+    bar.store(:value, foo: 123)
+    bar[:value]
+  end
+
+  foo({})
+  foo({})
+}
+
+# cfunc kwargs
+assert_equal '{:foo=>123}', %q{
+  def foo(bar)
+    bar.replace(foo: 123)
+  end
+
+  foo({})
+  foo({})
+}
+
+# cfunc kwargs
+assert_equal '{:foo=>123, :bar=>456}', %q{
+  def foo(bar)
+    bar.replace(foo: 123, bar: 456)
+  end
+
+  foo({})
+  foo({})
+}
+
+# variadic cfunc kwargs
+assert_equal '{:foo=>123}', %q{
+  def foo(bar)
+    bar.merge(foo: 123)
+  end
+
+  foo({})
+  foo({})
+}
+
+# optimized cfunc kwargs
+assert_equal 'false', %q{
+  def foo
+    :foo.eql?(foo: :foo)
+  end
+
+  foo
+  foo
 }
 
 # attr_reader on frozen object
@@ -2669,4 +2816,24 @@ assert_equal 'ok', %q{
   end
   foo(s) rescue :ok
   foo(s) rescue :ok
+}
+
+# File.join is a cfunc accepting variable arguments as a Ruby array (argc = -2)
+assert_equal 'foo/bar', %q{
+  def foo
+    File.join("foo", "bar")
+  end
+
+  foo
+  foo
+}
+
+# File.join is a cfunc accepting variable arguments as a Ruby array (argc = -2)
+assert_equal '', %q{
+  def foo
+    File.join()
+  end
+
+  foo
+  foo
 }

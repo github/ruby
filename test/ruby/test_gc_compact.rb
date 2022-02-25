@@ -4,20 +4,21 @@ require 'fiddle'
 require 'etc'
 
 if RUBY_PLATFORM =~ /s390x/
-  puts "Currently, it is known that the compaction does not work well on s390x; contribution is welcome https://github.com/ruby/ruby/pull/5077"
+  warn "Currently, it is known that the compaction does not work well on s390x; contribution is welcome https://github.com/ruby/ruby/pull/5077"
   return
 end
 
 class TestGCCompact < Test::Unit::TestCase
   module SupportsCompact
     def setup
-      skip "autocompact not supported on this platform" unless supports_auto_compact?
+      omit "autocompact not supported on this platform" unless supports_auto_compact?
       super
     end
 
     private
 
     def supports_auto_compact?
+      return false if /wasm/ =~ RUBY_PLATFORM
       return true unless defined?(Etc::SC_PAGE_SIZE)
 
       begin
@@ -78,7 +79,7 @@ class TestGCCompact < Test::Unit::TestCase
       n.times do
         break if count < GC.stat(:compact_count)
         list2 << Object.new
-      end and skip "implicit compaction didn't happen within #{n} objects"
+      end and omit "implicit compaction didn't happen within #{n} objects"
       compact_stats = GC.latest_compact_info
       refute_predicate compact_stats[:considered], :empty?
       refute_predicate compact_stats[:moved], :empty?
@@ -92,7 +93,7 @@ class TestGCCompact < Test::Unit::TestCase
   end
 
   def setup
-    skip "autocompact not supported on this platform" unless supports_auto_compact?
+    omit "autocompact not supported on this platform" unless supports_auto_compact?
     super
   end
 

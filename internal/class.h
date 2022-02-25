@@ -47,6 +47,8 @@ struct rb_classext_struct {
     struct rb_id_table *callable_m_tbl;
     struct rb_id_table *cc_tbl; /* ID -> [[ci, cc1], cc2, ...] */
     struct rb_id_table *cvc_tbl;
+    size_t superclass_depth;
+    VALUE *superclasses;
     struct rb_subclass_entry *subclasses;
     struct rb_subclass_entry *subclass_entry;
     /**
@@ -55,7 +57,7 @@ struct rb_classext_struct {
      * included. Hopefully that makes sense.
      */
     struct rb_subclass_entry *module_subclass_entry;
-#if SIZEOF_SERIAL_T != SIZEOF_VALUE /* otherwise class_serial is in struct RClass */
+#if SIZEOF_SERIAL_T != SIZEOF_VALUE && !USE_RVARGC /* otherwise class_serial is in struct RClass */
     rb_serial_t class_serial;
 #endif
     const VALUE origin_;
@@ -76,6 +78,9 @@ struct RClass {
 #else
     /* Class serial does not fit into struct RClass. Place m_tbl instead. */
     struct rb_id_table *m_tbl;
+# if USE_RVARGC
+    rb_serial_t *class_serial_ptr;
+# endif
 #endif
 };
 
@@ -83,7 +88,7 @@ typedef struct rb_subclass_entry rb_subclass_entry_t;
 typedef struct rb_classext_struct rb_classext_t;
 
 #if USE_RVARGC
-#  define RCLASS_EXT(c) ((rb_classext_t *)((char *)c + sizeof(struct RClass)))
+#  define RCLASS_EXT(c) ((rb_classext_t *)((char *)(c) + sizeof(struct RClass)))
 #else
 #  define RCLASS_EXT(c) (RCLASS(c)->ptr)
 #endif
@@ -103,13 +108,19 @@ typedef struct rb_classext_struct rb_classext_t;
 #if SIZEOF_SERIAL_T == SIZEOF_VALUE
 # define RCLASS_SERIAL(c) (RCLASS(c)->class_serial)
 #else
-# define RCLASS_SERIAL(c) (RCLASS_EXT(c)->class_serial)
+# if USE_RVARGC
+#  define RCLASS_SERIAL(c) (*RCLASS(c)->class_serial_ptr)
+# else
+#  define RCLASS_SERIAL(c) (RCLASS_EXT(c)->class_serial)
+# endif
 #endif
 #define RCLASS_INCLUDER(c) (RCLASS_EXT(c)->includer)
 #define RCLASS_SUBCLASS_ENTRY(c) (RCLASS_EXT(c)->subclass_entry)
 #define RCLASS_MODULE_SUBCLASS_ENTRY(c) (RCLASS_EXT(c)->module_subclass_entry)
 #define RCLASS_ALLOCATOR(c) (RCLASS_EXT(c)->allocator)
 #define RCLASS_SUBCLASSES(c) (RCLASS_EXT(c)->subclasses)
+#define RCLASS_SUPERCLASS_DEPTH(c) (RCLASS_EXT(c)->superclass_depth)
+#define RCLASS_SUPERCLASSES(c) (RCLASS_EXT(c)->superclasses)
 
 #define RICLASS_IS_ORIGIN FL_USER5
 #define RCLASS_CLONED     FL_USER6
@@ -118,6 +129,8 @@ typedef struct rb_classext_struct rb_classext_t;
 /* class.c */
 void rb_class_subclass_add(VALUE super, VALUE klass);
 void rb_class_remove_from_super_subclasses(VALUE);
+void rb_class_update_superclasses(VALUE);
+void rb_class_remove_superclasses(VALUE);
 void rb_class_remove_subclass_head(VALUE);
 int rb_singleton_class_internal_p(VALUE sklass);
 VALUE rb_class_boot(VALUE);
@@ -190,6 +203,7 @@ RCLASS_SET_SUPER(VALUE klass, VALUE super)
         rb_class_subclass_add(super, klass);
     }
     RB_OBJ_WRITE(klass, &RCLASS(klass)->super, super);
+    rb_class_update_superclasses(klass);
     return super;
 }
 

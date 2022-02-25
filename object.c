@@ -204,7 +204,7 @@ VALUE rb_obj_hash(VALUE obj);
 MJIT_FUNC_EXPORTED VALUE
 rb_obj_not(VALUE obj)
 {
-    return RTEST(obj) ? Qfalse : Qtrue;
+    return RBOOL(!RTEST(obj));
 }
 
 /**
@@ -221,7 +221,7 @@ MJIT_FUNC_EXPORTED VALUE
 rb_obj_not_equal(VALUE obj1, VALUE obj2)
 {
     VALUE result = rb_funcall(obj1, id_eq, 1, obj2);
-    return RTEST(result) ? Qfalse : Qtrue;
+    return rb_obj_not(result);
 }
 
 VALUE
@@ -757,6 +757,26 @@ rb_obj_is_instance_of(VALUE obj, VALUE c)
     return RBOOL(rb_obj_class(obj) == c);
 }
 
+// Returns whether c is a proper (c != cl) subclass of cl
+// Both c and cl must be T_CLASS
+static VALUE
+class_search_class_ancestor(VALUE cl, VALUE c)
+{
+    RUBY_ASSERT(RB_TYPE_P(c, T_CLASS));
+    RUBY_ASSERT(RB_TYPE_P(cl, T_CLASS));
+
+    size_t c_depth = RCLASS_SUPERCLASS_DEPTH(c);
+    size_t cl_depth = RCLASS_SUPERCLASS_DEPTH(cl);
+    VALUE *classes = RCLASS_SUPERCLASSES(cl);
+
+    // If c's inheritance chain is longer, it cannot be an ancestor
+    // We are checking for a proper subclass so don't check if they are equal
+    if (cl_depth <= c_depth)
+        return Qfalse;
+
+    // Otherwise check that c is in cl's inheritance chain
+    return RBOOL(classes[c_depth] == c);
+}
 
 /*
  *  call-seq:
@@ -791,19 +811,34 @@ rb_obj_is_kind_of(VALUE obj, VALUE c)
 {
     VALUE cl = CLASS_OF(obj);
 
+    RUBY_ASSERT(RB_TYPE_P(cl, T_CLASS));
+
+    // Fastest path: If the object's class is an exact match we know `c` is a
+    // class without checking type and can return immediately.
+    if (cl == c) return Qtrue;
+
+    // Fast path: Both are T_CLASS
+    if (LIKELY(RB_TYPE_P(c, T_CLASS))) {
+        return class_search_class_ancestor(cl, c);
+    }
+
     // Note: YJIT needs this function to never allocate and never raise when
     // `c` is a class or a module.
     c = class_or_module_required(c);
-    return RBOOL(class_search_ancestor(cl, RCLASS_ORIGIN(c)));
+    c = RCLASS_ORIGIN(c);
+
+    // Slow path: check each ancestor in the linked list and its method table
+    return RBOOL(class_search_ancestor(cl, c));
 }
+
 
 static VALUE
 class_search_ancestor(VALUE cl, VALUE c)
 {
     while (cl) {
-	if (cl == c || RCLASS_M_TBL(cl) == RCLASS_M_TBL(c))
-	    return cl;
-	cl = RCLASS_SUPER(cl);
+        if (cl == c || RCLASS_M_TBL(cl) == RCLASS_M_TBL(c))
+            return cl;
+        cl = RCLASS_SUPER(cl);
     }
     return 0;
 }
@@ -1005,6 +1040,28 @@ rb_class_search_ancestor(VALUE cl, VALUE c)
  */
 #define rb_obj_singleton_method_undefined rb_obj_dummy1
 
+/* Document-method: const_added
+ *
+ * call-seq:
+ *   const_added(const_name)
+ *
+ * Invoked as a callback whenever a constant is assigned on the receiver
+ *
+ *   module Chatty
+ *     def self.const_added(const_name)
+ *       super
+ *       puts "Added #{const_name.inspect}"
+ *     end
+ *     FOO = 1
+ *   end
+ *
+ * <em>produces:</em>
+ *
+ *   Added :FOO
+ *
+ */
+#define rb_obj_mod_const_added rb_obj_dummy1
+
 /*
  * Document-method: extended
  *
@@ -1098,98 +1155,6 @@ static VALUE
 rb_obj_dummy1(VALUE _x, VALUE _y)
 {
     return rb_obj_dummy();
-}
-
-/*
- *  call-seq:
- *     obj.tainted?    -> false
- *
- *  Returns false.  This method is deprecated and will be removed in Ruby 3.2.
- */
-
-VALUE
-rb_obj_tainted(VALUE obj)
-{
-    rb_warn_deprecated_to_remove_at(3.2, "Object#tainted?", NULL);
-    return Qfalse;
-}
-
-/*
- *  call-seq:
- *     obj.taint -> obj
- *
- *  Returns object. This method is deprecated and will be removed in Ruby 3.2.
- */
-
-VALUE
-rb_obj_taint(VALUE obj)
-{
-    rb_warn_deprecated_to_remove_at(3.2, "Object#taint", NULL);
-    return obj;
-}
-
-
-/*
- *  call-seq:
- *     obj.untaint    -> obj
- *
- *  Returns object. This method is deprecated and will be removed in Ruby 3.2.
- */
-
-VALUE
-rb_obj_untaint(VALUE obj)
-{
-    rb_warn_deprecated_to_remove_at(3.2, "Object#untaint", NULL);
-    return obj;
-}
-
-/*
- *  call-seq:
- *     obj.untrusted?    -> false
- *
- *  Returns false.  This method is deprecated and will be removed in Ruby 3.2.
- */
-
-VALUE
-rb_obj_untrusted(VALUE obj)
-{
-    rb_warn_deprecated_to_remove_at(3.2, "Object#untrusted?", NULL);
-    return Qfalse;
-}
-
-/*
- *  call-seq:
- *     obj.untrust -> obj
- *
- *  Returns object. This method is deprecated and will be removed in Ruby 3.2.
- */
-
-VALUE
-rb_obj_untrust(VALUE obj)
-{
-    rb_warn_deprecated_to_remove_at(3.2, "Object#untrust", NULL);
-    return obj;
-}
-
-
-/*
- *  call-seq:
- *     obj.trust    -> obj
- *
- *  Returns object. This method is deprecated and will be removed in Ruby 3.2.
- */
-
-VALUE
-rb_obj_trust(VALUE obj)
-{
-    rb_warn_deprecated_to_remove_at(3.2, "Object#trust", NULL);
-    return obj;
-}
-
-void
-rb_obj_infect(VALUE victim, VALUE carrier)
-{
-    rb_warn_deprecated_to_remove_at(3.2, "rb_obj_infect", NULL);
 }
 
 /*
@@ -1306,6 +1271,8 @@ nil_inspect(VALUE obj)
  *     nil =~ other  -> nil
  *
  *  Dummy pattern matching -- always returns nil.
+ *
+ *  This method makes it possible to `while gets =~ /re/ do`.
  */
 
 static VALUE
@@ -1387,7 +1354,7 @@ true_or(VALUE obj, VALUE obj2)
 static VALUE
 true_xor(VALUE obj, VALUE obj2)
 {
-    return RTEST(obj2)?Qfalse:Qtrue;
+    return rb_obj_not(obj2);
 }
 
 
@@ -1485,27 +1452,6 @@ rb_false(VALUE obj)
     return Qfalse;
 }
 
-
-/*
- *  call-seq:
- *     obj =~ other  -> nil
- *
- * This method is deprecated.
- *
- * This is not only useless but also troublesome because it may hide a
- * type error.
- */
-
-static VALUE
-rb_obj_match(VALUE obj1, VALUE obj2)
-{
-    if (rb_warning_category_enabled_p(RB_WARN_CATEGORY_DEPRECATED)) {
-        rb_category_warn(RB_WARN_CATEGORY_DEPRECATED, "deprecated Object#=~ is called on %"PRIsVALUE
-                "; it always returns nil", rb_obj_class(obj1));
-    }
-    return Qnil;
-}
-
 /*
  *  call-seq:
  *     obj !~ other  -> true or false
@@ -1518,7 +1464,7 @@ static VALUE
 rb_obj_not_match(VALUE obj1, VALUE obj2)
 {
     VALUE result = rb_funcall(obj1, id_match, 1, obj2);
-    return RTEST(result) ? Qfalse : Qtrue;
+    return rb_obj_not(result);
 }
 
 
@@ -1800,7 +1746,6 @@ static VALUE rb_mod_initialize_exec(VALUE module);
 static VALUE
 rb_mod_initialize(VALUE module)
 {
-    rb_module_check_initializable(module);
     return rb_mod_initialize_exec(module);
 }
 
@@ -4209,11 +4154,9 @@ f_sprintf(int c, const VALUE *v, VALUE _)
  *  These are the methods defined for \BasicObject:
  *
  *  - ::new:: Returns a new \BasicObject instance.
- *  - {!}[#method-i-21]:: Returns the boolean negation of +self+: +true+ or +false+.
- *  - {!=}[#method-i-21-3D]:: Returns whether +self+ and the given object
- *                            are _not_ equal.
- *  - {==}[#method-i-3D-3D]:: Returns whether +self+ and the given object
- *                            are equivalent.
+ *  - #!:: Returns the boolean negation of +self+: +true+ or +false+.
+ *  - #!=:: Returns whether +self+ and the given object are _not_ equal.
+ *  - #==:: Returns whether +self+ and the given object are equivalent.
  *  - {__id__}[#method-i-__id__]:: Returns the integer object identifier for +self+.
  *  - {__send__}[#method-i-__send__]:: Calls the method identified by the given symbol.
  *  - #equal?:: Returns whether +self+ and the given object are the same object.
@@ -4252,22 +4195,21 @@ f_sprintf(int c, const VALUE *v, VALUE _)
  *
  *  First, what's elsewhere. \Class \Object:
  *
- *  - Inherits from {class BasicObject}[BasicObject.html#class-BasicObject-label-What-27s+Here].
- *  - Includes {module Kernel}[Kernel.html#module-Kernel-label-What-27s+Here].
+ *  - Inherits from {class BasicObject}[rdoc-ref:BasicObject@What-27s+Here].
+ *  - Includes {module Kernel}[rdoc-ref:Kernel@What-27s+Here].
  *
  *  Here, class \Object provides methods for:
  *
- *  - {Querying}[#class-Object-label-Querying]
- *  - {Instance Variables}[#class-Object-label-Instance+Variables]
- *  - {Other}[#class-Object-label-Other]
+ *  - {Querying}[rdoc-ref:Object@Querying]
+ *  - {Instance Variables}[rdoc-ref:Object@Instance+Variables]
+ *  - {Other}[rdoc-ref:Object@Other]
  *
  *  === Querying
  *
- *  - {!~}[#method-i-21~]:: Returns +true+ if +self+ does not match the given object,
- *                          otherwise +false+.
- *  - {<=>}[#method-i-3C-3D-3E]:: Returns 0 if +self+ and the given object +object+
- *                                are the same object, or if
- *                                <tt>self == object</tt>; otherwise returns +nil+.
+ *  - #!~:: Returns +true+ if +self+ does not match the given object,
+ *          otherwise +false+.
+ *  - #<=>:: Returns 0 if +self+ and the given object +object+ are the same
+ *           object, or if <tt>self == object</tt>; otherwise returns +nil+.
  *  - #===:: Implements case equality, effectively the same as calling #==.
  *  - #eql?:: Implements hash equality, effectively the same as calling #==.
  *  - #kind_of? (aliased as #is_a?):: Returns whether given argument is an ancestor
@@ -4394,29 +4336,28 @@ InitVM_Object(void)
      *
      * \Module \Kernel provides methods that are useful for:
      *
-     * - {Converting}[#module-Kernel-label-Converting]
-     * - {Querying}[#module-Kernel-label-Querying]
-     * - {Exiting}[#module-Kernel-label-Exiting]
-     * - {Exceptions}[#module-Kernel-label-Exceptions]
-     * - {IO}[#module-Kernel-label-IO]
-     * - {Procs}[#module-Kernel-label-Procs]
-     * - {Tracing}[#module-Kernel-label-Tracing]
-     * - {Subprocesses}[#module-Kernel-label-Subprocesses]
-     * - {Loading}[#module-Kernel-label-Loading]
-     * - {Yielding}[#module-Kernel-label-Yielding]
-     * - {Random Values}[#module-Kernel-label-Random+Values]
-     * - {Other}[#module-Kernel-label-Other]
+     * - {Converting}[rdoc-ref:Kernel@Converting]
+     * - {Querying}[rdoc-ref:Kernel@Querying]
+     * - {Exiting}[rdoc-ref:Kernel@Exiting]
+     * - {Exceptions}[rdoc-ref:Kernel@Exceptions]
+     * - {IO}[rdoc-ref:Kernel@IO]
+     * - {Procs}[rdoc-ref:Kernel@Procs]
+     * - {Tracing}[rdoc-ref:Kernel@Tracing]
+     * - {Subprocesses}[rdoc-ref:Kernel@Subprocesses]
+     * - {Loading}[rdoc-ref:Kernel@Loading]
+     * - {Yielding}[rdoc-ref:Kernel@Yielding]
+     * - {Random Values}[rdoc-ref:Kernel@Random+Values]
+     * - {Other}[rdoc-ref:Kernel@Other]
      *
      * === Converting
      *
-     * - {#Array}[#method-i-Array]:: Returns an Array based on the given argument.
-     * - {#Complex}[#method-i-Complex]:: Returns a Complex based on the given arguments.
-     * - {#Float}[#method-i-Float]:: Returns a Float based on the given arguments.
-     * - {#Hash}[#method-i-Hash]:: Returns a Hash based on the given argument.
-     * - {#Integer}[#method-i-Integer]:: Returns an Integer based on the given arguments.
-     * - {#Rational}[#method-i-Rational]:: Returns a Rational
-     *                                     based on the given arguments.
-     * - {#String}[#method-i-String]:: Returns a String based on the given argument.
+     * - #Array:: Returns an Array based on the given argument.
+     * - #Complex:: Returns a Complex based on the given arguments.
+     * - #Float:: Returns a Float based on the given arguments.
+     * - #Hash:: Returns a Hash based on the given argument.
+     * - #Integer:: Returns an Integer based on the given arguments.
+     * - #Rational:: Returns a Rational based on the given arguments.
+     * - #String:: Returns a String based on the given argument.
      *
      * === Querying
      *
@@ -4483,7 +4424,7 @@ InitVM_Object(void)
      *
      * === Subprocesses
      *
-     * - #`cmd`:: Returns the standard output of running +cmd+ in a subshell.
+     * - #`command`:: Returns the standard output of running +command+ in a subshell.
      * - #exec:: Replaces current process with a new process.
      * - #fork:: Forks the current process into two processes.
      * - #spawn:: Executes the given command and returns its pid without waiting
@@ -4531,12 +4472,12 @@ InitVM_Object(void)
     rb_define_private_method(rb_cModule, "extended", rb_obj_mod_extended, 1);
     rb_define_private_method(rb_cModule, "prepended", rb_obj_mod_prepended, 1);
     rb_define_private_method(rb_cModule, "method_added", rb_obj_mod_method_added, 1);
+    rb_define_private_method(rb_cModule, "const_added", rb_obj_mod_const_added, 1);
     rb_define_private_method(rb_cModule, "method_removed", rb_obj_mod_method_removed, 1);
     rb_define_private_method(rb_cModule, "method_undefined", rb_obj_mod_method_undefined, 1);
 
     rb_define_method(rb_mKernel, "nil?", rb_false, 0);
     rb_define_method(rb_mKernel, "===", case_equal, 1);
-    rb_define_method(rb_mKernel, "=~", rb_obj_match, 1);
     rb_define_method(rb_mKernel, "!~", rb_obj_not_match, 1);
     rb_define_method(rb_mKernel, "eql?", rb_obj_equal, 1);
     rb_define_method(rb_mKernel, "hash", rb_obj_hash, 0); /* in hash.c */
@@ -4549,12 +4490,6 @@ InitVM_Object(void)
     rb_define_method(rb_mKernel, "initialize_dup", rb_obj_init_dup_clone, 1);
     rb_define_method(rb_mKernel, "initialize_clone", rb_obj_init_clone, -1);
 
-    rb_define_method(rb_mKernel, "taint", rb_obj_taint, 0);
-    rb_define_method(rb_mKernel, "tainted?", rb_obj_tainted, 0);
-    rb_define_method(rb_mKernel, "untaint", rb_obj_untaint, 0);
-    rb_define_method(rb_mKernel, "untrust", rb_obj_untrust, 0);
-    rb_define_method(rb_mKernel, "untrusted?", rb_obj_untrusted, 0);
-    rb_define_method(rb_mKernel, "trust", rb_obj_trust, 0);
     rb_define_method(rb_mKernel, "freeze", rb_obj_freeze, 0);
 
     rb_define_method(rb_mKernel, "to_s", rb_any_to_s, 0);
@@ -4660,7 +4595,6 @@ InitVM_Object(void)
     rb_define_method(rb_cClass, "new", rb_class_new_instance_pass_kw, -1);
     rb_define_method(rb_cClass, "initialize", rb_class_initialize, -1);
     rb_define_method(rb_cClass, "superclass", rb_class_superclass, 0);
-    rb_define_method(rb_cClass, "descendants", rb_class_descendants, 0); /* in class.c */
     rb_define_method(rb_cClass, "subclasses", rb_class_subclasses, 0); /* in class.c */
     rb_define_alloc_func(rb_cClass, rb_class_s_alloc);
     rb_undef_method(rb_cClass, "extend_object");

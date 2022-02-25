@@ -475,6 +475,15 @@ class TestModule < Test::Unit::TestCase
     assert_not_include(mod.ancestor_list, BasicObject)
   end
 
+  def test_module_collected_extended_object
+    m1 = labeled_module("m1")
+    m2 = labeled_module("m2")
+    Object.new.extend(m1)
+    GC.start
+    m1.include(m2)
+    assert_equal([m1, m2], m1.ancestors)
+  end
+
   def test_dup
     OtherSetup.call
 
@@ -517,6 +526,16 @@ class TestModule < Test::Unit::TestCase
 
   def test_include_with_no_args
     assert_raise(ArgumentError) { Module.new { include } }
+  end
+
+  def test_include_before_initialize
+    m = Class.new(Module) do
+      def initialize(...)
+        include Enumerable
+        super
+      end
+    end.new
+    assert_operator(m, :<, Enumerable)
   end
 
   def test_prepend_self
@@ -1663,6 +1682,45 @@ class TestModule < Test::Unit::TestCase
     assert_equal("TestModule::C\u{df}", c.name, '[ruby-core:24600]')
     c = Module.new.module_eval("class X\u{df} < Module; self; end")
     assert_match(/::X\u{df}:/, c.new.to_s)
+  end
+
+
+  def test_const_added
+    eval(<<~RUBY)
+      module TestConstAdded
+        @memo = []
+        class << self
+          attr_accessor :memo
+
+          def const_added(sym)
+            memo << sym
+          end
+        end
+        CONST = 1
+        module SubModule
+        end
+
+        class SubClass
+        end
+      end
+      TestConstAdded::OUTSIDE_CONST = 2
+      module TestConstAdded::OutsideSubModule; end
+      class TestConstAdded::OutsideSubClass; end
+    RUBY
+    TestConstAdded.const_set(:CONST_SET, 3)
+    assert_equal [
+      :CONST,
+      :SubModule,
+      :SubClass,
+      :OUTSIDE_CONST,
+      :OutsideSubModule,
+      :OutsideSubClass,
+      :CONST_SET,
+    ], TestConstAdded.memo
+  ensure
+    if self.class.const_defined? :TestConstAdded
+      self.class.send(:remove_const, :TestConstAdded)
+    end
   end
 
   def test_method_added

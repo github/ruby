@@ -55,6 +55,7 @@ jobs:
       RUN_OPTS: ${{ matrix.yjit_opts }}
       RUBY_DEBUG: ci
     runs-on: ${{ matrix.os }}
+    if: ${{ !startsWith(github.event.head_commit.message, '[DOC]') && !contains(github.event.pull_request.labels.*.name, 'Documentation') }}
     steps:
       - run: mkdir build
         working-directory:
@@ -104,6 +105,7 @@ jobs:
         env:
           RUBY_TESTOPTS: "-q --tty=no"
           TEST_BUNDLED_GEMS_ALLOW_FAILURES: ""
+          PRECHECK_BUNDLED_GEMS: "no"
       - uses: k0kubun/action-slack@v2.0.0
         with:
           payload: |

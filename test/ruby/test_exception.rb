@@ -252,6 +252,27 @@ class TestException < Test::Unit::TestCase
     }
   end
 
+  def test_catch_throw_in_require_cant_be_rescued
+    bug18562 = '[ruby-core:107403]'
+    Tempfile.create(["dep", ".rb"]) {|t|
+      t.puts("throw :extdep, 42")
+      t.close
+
+      rescue_all = Class.new(Exception)
+      def rescue_all.===(_)
+        raise "should not reach here"
+      end
+
+      v = assert_throw(:extdep, bug18562) do
+        require t.path
+      rescue rescue_all
+        assert(false, "should not reach here")
+      end
+
+      assert_equal(42, v, bug18562)
+    }
+  end
+
   def test_throw_false
     bug12743 = '[ruby-core:77229] [Bug #12743]'
     Thread.start {
@@ -423,7 +444,7 @@ class TestException < Test::Unit::TestCase
   end
 
   def test_thread_signal_location
-    skip
+    # pend('TODO: a known bug [Bug #14474]')
     _, stderr, _ = EnvUtil.invoke_ruby(%w"--disable-gems -d", <<-RUBY, false, true)
 Thread.start do
   Thread.current.report_on_exception = false
@@ -561,7 +582,7 @@ end.join
   end
 
   def test_ensure_after_nomemoryerror
-    skip "Forcing NoMemoryError causes problems in some environments"
+    omit "Forcing NoMemoryError causes problems in some environments"
     assert_separately([], "$_ = 'a' * 1_000_000_000_000_000_000")
   rescue NoMemoryError
     assert_raise(NoMemoryError) do
@@ -970,11 +991,12 @@ $stderr = $stdout; raise "\x82\xa0"') do |outs, errs, status|
     end
     assert_not_nil(e)
     assert_include(e.message, "\0")
-    assert_in_out_err([], src, [], [], *args, **opts) do |_, err,|
-      err.each do |e|
-        assert_not_include(e, "\0")
-      end
-    end
+    # Disabled by [Feature #18367]
+    #assert_in_out_err([], src, [], [], *args, **opts) do |_, err,|
+    #  err.each do |e|
+    #    assert_not_include(e, "\0")
+    #  end
+    #end
     e
   end
 
@@ -1064,25 +1086,17 @@ $stderr = $stdout; raise "\x82\xa0"') do |outs, errs, status|
   end
 
   def test_warn_deprecated_backwards_compatibility_category
-    warning = capture_warning_warn { Dir.exists?("non-existent") }
+    omit "no method to test"
+
+    warning = capture_warning_warn { }
 
     assert_match(/deprecated/, warning[0])
   end
 
   def test_warn_deprecated_category
-    warning = capture_warning_warn(category: true) { Dir.exists?("non-existent") }
+    omit "no method to test"
 
-    assert_equal :deprecated, warning[0][1]
-  end
-
-  def test_warn_deprecated_to_remove_backwards_compatibility_category
-    warning = capture_warning_warn { Object.new.tainted? }
-
-    assert_match(/deprecated/, warning[0])
-  end
-
-  def test_warn_deprecated_to_remove_category
-    warning = capture_warning_warn(category: true) { Object.new.tainted? }
+    warning = capture_warning_warn(category: true) { }
 
     assert_equal :deprecated, warning[0][1]
   end
@@ -1198,6 +1212,14 @@ $stderr = $stdout; raise "\x82\xa0"') do |outs, errs, status|
       Warning[:experimental] = experimental
     end
     assert_empty warning
+  end
+
+  def test_undef_Warning_warn
+    assert_separately([], "#{<<-"begin;"}\n#{<<-"end;"}")
+    begin;
+      Warning.undef_method(:warn)
+      assert_raise(NoMethodError) { warn "" }
+    end;
   end
 
   def test_undefined_backtrace
@@ -1398,5 +1420,34 @@ $stderr = $stdout; raise "\x82\xa0"') do |outs, errs, status|
         Object.new.foo
       end
     end;
+  end
+
+  def test_detailed_message
+    e = RuntimeError.new("message")
+    assert_equal("message (RuntimeError)", e.detailed_message)
+    assert_equal("\e[1mmessage (\e[1;4mRuntimeError\e[m\e[1m)\e[m", e.detailed_message(highlight: true))
+
+    e = RuntimeError.new("foo\nbar\nbaz")
+    assert_equal("foo (RuntimeError)\nbar\nbaz", e.detailed_message)
+    assert_equal("\e[1mfoo (\e[1;4mRuntimeError\e[m\e[1m)\e[m\n\e[1mbar\e[m\n\e[1mbaz\e[m", e.detailed_message(highlight: true))
+
+    e = RuntimeError.new("")
+    assert_equal("unhandled exception", e.detailed_message)
+    assert_equal("\e[1;4munhandled exception\e[m", e.detailed_message(highlight: true))
+
+    e = RuntimeError.new
+    assert_equal("RuntimeError (RuntimeError)", e.detailed_message)
+    assert_equal("\e[1mRuntimeError (\e[1;4mRuntimeError\e[m\e[1m)\e[m", e.detailed_message(highlight: true))
+  end
+
+  def test_full_message_with_custom_detailed_message
+    e = RuntimeError.new("message")
+    opt_ = nil
+    e.define_singleton_method(:detailed_message) do |**opt|
+      opt_ = opt
+      "BOO!"
+    end
+    assert_match("BOO!", e.full_message.lines.first)
+    assert_equal({ highlight: Exception.to_tty? }, opt_)
   end
 end

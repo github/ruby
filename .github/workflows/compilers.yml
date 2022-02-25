@@ -20,7 +20,7 @@ concurrency:
 # environment variables (plus the "echo $GITHUB_ENV" hack) is to reroute that
 # restriction.
 env:
-  default_cc: clang-14
+  default_cc: clang-15
   append_cc: ''
   crosshost: ''
 
@@ -75,6 +75,7 @@ jobs:
             container: gcc-11
             shared: '--disable-shared'
             # check: true
+          - { key: default_cc, name: clang-15,  value: clang-15,  container: clang-15 }
           - { key: default_cc, name: clang-14,  value: clang-14,  container: clang-14 }
           - { key: default_cc, name: clang-13,  value: clang-13,  container: clang-13 }
           - { key: default_cc, name: clang-12,  value: clang-12,  container: clang-12 }
@@ -156,6 +157,8 @@ jobs:
 #         - { key: cppflags, name: USE_THREAD_CACHE=0,             value: '-DUSE_THREAD_CACHE=0' }
 #         - { key: cppflags, name: USE_TRANSIENT_HEAP=0,           value: '-DUSE_TRANSIENT_HEAP=0' }
 #         - { key: cppflags, name: USE_RUBY_DEBUG_LOG=1,           value: '-DUSE_RUBY_DEBUG_LOG=1' }
+          - { key: cppflags, name: USE_RVARGC=0,                   value: '-DUSE_RVARGC=0' }
+#         - { key: cppflags, name: USE_RVARGC=1,                   value: '-DUSE_RVARGC=1' }
 
           - { key: cppflags, name: DEBUG_FIND_TIME_NUMGUESS,       value: '-DDEBUG_FIND_TIME_NUMGUESS' }
           - { key: cppflags, name: DEBUG_INTEGER_PACK,             value: '-DDEBUG_INTEGER_PACK' }
@@ -186,8 +189,9 @@ jobs:
     name: ${{ matrix.entry.name }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/ruby/ruby-ci-image:${{ matrix.entry.container || 'clang-14' }}
+      image: ghcr.io/ruby/ruby-ci-image:${{ matrix.entry.container || 'clang-15' }}
       options: --user root
+    if: ${{ !startsWith(github.event.head_commit.message, '[DOC]') && !contains(github.event.pull_request.labels.*.name, 'Documentation') }}
     steps:
       - run: id
         working-directory:
