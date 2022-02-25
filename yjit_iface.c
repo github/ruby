@@ -34,8 +34,6 @@ static int64_t exit_op_count[VM_INSTRUCTION_SIZE] = { 0 };
 // Hash table of encoded instructions
 extern st_table *rb_encoded_insn_data;
 
-struct rb_yjit_options rb_yjit_opts;
-
 static const rb_data_type_t yjit_block_type = {
     "YJIT/Block",
     {0, 0, 0, },
@@ -551,7 +549,8 @@ comments_for(rb_execution_context_t *ec, VALUE self, VALUE start_address, VALUE 
 static VALUE
 yjit_stats_enabled_p(rb_execution_context_t *ec, VALUE self)
 {
-    return RBOOL(YJIT_STATS && rb_yjit_opts.gen_stats);
+    // FIXME: moved to Rust
+    return Qfalse;
 }
 
 // Primitive called in yjit.rb. Export all YJIT statistics as a Ruby hash.
@@ -850,7 +849,7 @@ outgoing_ids(VALUE self)
 
 // Can raise RuntimeError
 void
-rb_yjit_init(struct rb_yjit_options *options)
+rb_yjit_init()
 {
     if (!PLATFORM_SUPPORTED_P || !JIT_ENABLED) {
         return;

@@ -32,40 +32,12 @@
 # define YJIT_BUILD 0
 #endif
 
-// We generate x86 assembly
-#if (defined(__x86_64__) && !defined(_WIN32)) || (defined(_WIN32) && defined(_M_AMD64)) // x64 platforms without mingw/msys
+// We support x86-64 platforms without mingw/msys
+#if (defined(__x86_64__) && !defined(_WIN32)) || (defined(_WIN32) && defined(_M_AMD64))
 # define YJIT_SUPPORTED_P 1
 #else
 # define YJIT_SUPPORTED_P 0
 #endif
-
-struct rb_yjit_options {
-    // Enable compilation with YJIT
-    bool yjit_enabled;
-
-    // Size of the executable memory block to allocate in MiB
-    unsigned exec_mem_size;
-
-    // Number of method calls after which to start generating code
-    // Threshold==1 means compile on first execution
-    unsigned call_threshold;
-
-    // Generate versions greedily until the limit is hit
-    bool greedy_versioning;
-
-    // Disable the propagation of type information
-    bool no_type_prop;
-
-    // Maximum number of versions per block
-    // 1 means always create generic versions
-    unsigned max_versions;
-
-    // Capture and print out stats
-    bool gen_stats;
-
-    // Run backend tests
-    bool test_backend;
-};
 
 #if YJIT_BUILD
 
@@ -80,7 +52,7 @@ void rb_yjit_collect_vm_usage_insn(int insn);
 void rb_yjit_collect_binding_alloc(void);
 void rb_yjit_collect_binding_set(void);
 bool rb_yjit_compile_iseq(const rb_iseq_t *iseq, rb_execution_context_t *ec);
-void rb_yjit_init(struct rb_yjit_options *options);
+void rb_yjit_init();
 void rb_yjit_bop_redefined(VALUE klass, const rb_method_entry_t *me, enum ruby_basic_operators bop);
 void rb_yjit_constant_state_changed(void);
 void rb_yjit_iseq_mark(const struct rb_iseq_constant_body *body);
@@ -103,7 +75,7 @@ static inline void rb_yjit_collect_vm_usage_insn(int insn) {}
 static inline void rb_yjit_collect_binding_alloc(void) {}
 static inline void rb_yjit_collect_binding_set(void) {}
 static inline bool rb_yjit_compile_iseq(const rb_iseq_t *iseq, rb_execution_context_t *ec) { return false; }
-static inline void rb_yjit_init(struct rb_yjit_options *options) {}
+static inline void rb_yjit_init(void) {}
 static inline void rb_yjit_bop_redefined(VALUE klass, const rb_method_entry_t *me, enum ruby_basic_operators bop) {}
 static inline void rb_yjit_constant_state_changed(void) {}
 static inline void rb_yjit_iseq_mark(const struct rb_iseq_constant_body *body) {}

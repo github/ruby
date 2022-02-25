@@ -51,10 +51,48 @@ pub fn parse_option(str_ptr: *const std::os::raw::c_char) -> bool
 {
     let c_str: &CStr = unsafe { CStr::from_ptr(str_ptr) };
     let str_slice: &str = c_str.to_str().unwrap();
-    //let str_buf: String = str_slice.to_owned();
+    let opt_str: String = str_slice.to_owned();
+    //println!("{}", opt_str);
 
+    // Split the option name and value strings
+    // Note that some options do not contain an assignment
+    let parts = opt_str.split_once("=");
+    let opt_name = if parts.is_some() { parts.unwrap().0 } else { &opt_str };
+    let opt_val = if parts.is_some() { parts.unwrap().1 } else { "" };
 
+    // Match on the option name and value strings
+    match (opt_name, opt_val) {
+        ("exec-mem-size", _) => {
+            match opt_val.parse::<usize>() {
+                Ok(n) => { unsafe { OPTIONS.exec_mem_size = n }}
+                Err(e) => { return false; }
+            }
+        },
 
+        ("call-threshold", _) => {
+            match opt_val.parse::<usize>() {
+                Ok(n) => { unsafe { OPTIONS.call_threshold = n }}
+                Err(e) => { return false; }
+            }
+        },
 
-    return false;
+        ("max-versions", _) => {
+            match opt_val.parse::<usize>() {
+                Ok(n) => { unsafe { OPTIONS.max_versions = n }}
+                Err(e) => { return false; }
+            }
+        },
+
+        ("greedy-versioning", "") => { unsafe { OPTIONS.greedy_versioning = true }},
+        ("no-type-prop", "") => { unsafe { OPTIONS.no_type_prop = true }},
+        ("stats", "") => { unsafe { OPTIONS.gen_stats = true }},
+
+        // Option name not recognized
+        _ => {
+            return false;
+        }
+    }
+
+    // Option successfully parsed
+    return true;
 }
