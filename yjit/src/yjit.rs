@@ -16,7 +16,7 @@ static YJIT_ENABLED: AtomicBool = AtomicBool::new(false);
 #[no_mangle]
 pub extern "C" fn rb_yjit_parse_option(str_ptr: *const raw::c_char) -> bool
 {
-    return parse_option(str_ptr);
+    return parse_option(str_ptr).is_some();
 }
 
 /// Is YJIT on? The interpreter uses this function to decide whether to increment
