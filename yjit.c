@@ -379,7 +379,7 @@ rb_get_iseq_body_param_opt_num(rb_iseq_t* iseq) {
     return iseq->body->param.opt_num;
 }
 
-VALUE*
+const VALUE*
 rb_get_iseq_body_param_opt_table(rb_iseq_t* iseq) {
     return iseq->body->param.opt_table;
 }

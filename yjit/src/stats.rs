@@ -5,9 +5,6 @@ use crate::cruby::*;
 use crate::options::*;
 use crate::yjit::{yjit_enabled_p};
 
-// TODO
-//extern const int rb_vm_max_insn_name_size;
-
 // YJIT exit counts for each instruction type
 static mut EXIT_OP_COUNT: [u64; VM_INSTRUCTION_SIZE] = [0; VM_INSTRUCTION_SIZE];
 
@@ -139,10 +136,24 @@ make_counters!(
 
 //===========================================================================
 
-/// Primitive called in yjit.rb. Export all YJIT statistics as a Ruby hash.
-/// This should be wrapped on the C side with RB_VM_LOCK_ENTER()
+/// Primitive called in yjit.rb
+/// Check if stats generation is enabled
 #[no_mangle]
-pub extern "C" fn rb_yjit_get_yjit_stats(ec: EcPtr, ruby_self: VALUE) -> VALUE {
+pub extern "C" fn rb_yjit_stats_enabled_p(ec: EcPtr, ruby_self: VALUE) -> VALUE {
+    #[cfg(feature = "stats")]
+    if get_option!(gen_stats) {
+        return Qtrue
+    }
+
+    return Qfalse;
+}
+
+/// Primitive called in yjit.rb.
+/// Export all YJIT statistics as a Ruby hash.
+/// This needs to be wrapped on the C side with RB_VM_LOCK_ENTER()
+#[no_mangle]
+pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
+
     // Return Qnil if YJIT isn't enabled
     if !yjit_enabled_p() {
         return Qnil;
@@ -150,8 +161,6 @@ pub extern "C" fn rb_yjit_get_yjit_stats(ec: EcPtr, ruby_self: VALUE) -> VALUE {
 
     unsafe {
         let hash = rb_hash_new();
-
-        //RB_VM_LOCK_ENTER();
 
         /*
         {
@@ -220,8 +229,6 @@ pub extern "C" fn rb_yjit_get_yjit_stats(ec: EcPtr, ruby_self: VALUE) -> VALUE {
             }
             */
         }
-
-        //RB_VM_LOCK_LEAVE();
 
         return hash;
     }

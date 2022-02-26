@@ -44,7 +44,6 @@
 // Expose these as declarations since we are building YJIT.
 bool rb_yjit_enabled_p(void);
 unsigned rb_yjit_call_threshold(void);
-
 void rb_yjit_invalidate_all_method_lookup_assumptions(void);
 void rb_yjit_method_lookup_change(VALUE klass, ID mid);
 void rb_yjit_cme_invalidate(VALUE cme);
@@ -52,7 +51,7 @@ void rb_yjit_collect_vm_usage_insn(int insn);
 void rb_yjit_collect_binding_alloc(void);
 void rb_yjit_collect_binding_set(void);
 bool rb_yjit_compile_iseq(const rb_iseq_t *iseq, rb_execution_context_t *ec);
-void rb_yjit_init();
+void rb_yjit_init(void);
 void rb_yjit_bop_redefined(VALUE klass, const rb_method_entry_t *me, enum ruby_basic_operators bop);
 void rb_yjit_constant_state_changed(void);
 void rb_yjit_iseq_mark(const struct rb_iseq_constant_body *body);

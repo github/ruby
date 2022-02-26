@@ -134,18 +134,16 @@ module RubyVM::YJIT
   # Return a hash for statistics generated for the --yjit-stats command line option.
   # Return nil when option is not passed or unavailable.
   def self.runtime_stats
-    # defined in yjit_iface.c
-    Primitive.get_yjit_stats
+    Primitive.rb_yjit_get_stats
   end
 
   # Discard statistics collected for --yjit-stats.
   def self.reset_stats!
-    # defined in yjit_iface.c
-    Primitive.reset_stats_bang
+    Primitive.rb_yjit_reset_stats_bang
   end
 
   def self.stats_enabled?
-    Primitive.yjit_stats_enabled_p
+    Primitive.rb_yjit_stats_enabled_p
   end
 
   def self.enabled?
@@ -157,7 +155,7 @@ module RubyVM::YJIT
   end
 
   # Avoid calling a method here to not interfere with compilation tests
-  if Primitive.yjit_stats_enabled_p
+  if Primitive.rb_yjit_stats_enabled_p
     at_exit { _print_stats }
   end
 

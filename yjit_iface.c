@@ -546,108 +546,18 @@ comments_for(rb_execution_context_t *ec, VALUE self, VALUE start_address, VALUE 
     return comment_array;
 }
 
-static VALUE
-yjit_stats_enabled_p(rb_execution_context_t *ec, VALUE self)
+// Primitive called in yjit.rb.
+// Export all YJIT statistics as a Ruby hash.
+VALUE
+rb_yjit_get_stats(rb_execution_context_t *ec, VALUE self)
 {
-    // FIXME: moved to Rust
-    return Qfalse;
-}
-
-// Primitive called in yjit.rb. Export all YJIT statistics as a Ruby hash.
-static VALUE
-get_yjit_stats(rb_execution_context_t *ec, VALUE self)
-{
-    // TODO: take VM lock and call into Rust code
-    return Qnil;
-
-    /*
-    // Return Qnil if YJIT isn't enabled
-    if (cb == NULL) {
-        return Qnil;
-    }
-
-    VALUE hash = rb_hash_new();
-
+    VALUE stats_hash;
     RB_VM_LOCK_ENTER();
-
-    {
-        VALUE key = ID2SYM(rb_intern("inline_code_size"));
-        VALUE value = LL2NUM((long long)cb->write_pos);
-        rb_hash_aset(hash, key, value);
-
-        key = ID2SYM(rb_intern("outlined_code_size"));
-        value = LL2NUM((long long)ocb->write_pos);
-        rb_hash_aset(hash, key, value);
-    }
-
-#if YJIT_STATS
-    if (rb_yjit_opts.gen_stats) {
-        // Indicate that the complete set of stats is available
-        rb_hash_aset(hash, ID2SYM(rb_intern("all_stats")), Qtrue);
-
-        int64_t *counter_reader = (int64_t *)&yjit_runtime_counters;
-        int64_t *counter_reader_end = &yjit_runtime_counters.last_member;
-
-        // For each counter in yjit_counter_names, add that counter as
-        // a key/value pair.
-
-        // Iterate through comma separated counter name list
-        char *name_reader = yjit_counter_names;
-        char *counter_name_end = yjit_counter_names + sizeof(yjit_counter_names);
-        while (name_reader < counter_name_end && counter_reader < counter_reader_end) {
-            if (*name_reader == ',' || *name_reader == ' ') {
-                name_reader++;
-                continue;
-            }
-
-            // Compute length of counter name
-            int name_len;
-            char *name_end;
-            {
-                name_end = strchr(name_reader, ',');
-                if (name_end == NULL) break;
-                name_len = (int)(name_end - name_reader);
-            }
-
-            // Put counter into hash
-            VALUE key = ID2SYM(rb_intern2(name_reader, name_len));
-            VALUE value = LL2NUM((long long)*counter_reader);
-            rb_hash_aset(hash, key, value);
-
-            counter_reader++;
-            name_reader = name_end;
-        }
-
-        // For each entry in exit_op_count, add a stats entry with key "exit_INSTRUCTION_NAME"
-        // and the value is the count of side exits for that instruction.
-
-        char key_string[rb_vm_max_insn_name_size + 6]; // Leave room for "exit_" and a final NUL
-        for (int i = 0; i < VM_INSTRUCTION_SIZE; i++) {
-            const char *i_name = insn_name(i); // Look up Ruby's NUL-terminated insn name string
-            snprintf(key_string, rb_vm_max_insn_name_size + 6, "%s%s", "exit_", i_name);
-
-            VALUE key = ID2SYM(rb_intern(key_string));
-            VALUE value = LL2NUM((long long)exit_op_count[i]);
-            rb_hash_aset(hash, key, value);
-        }
-    }
-#endif
-
+    VALUE rb_yjit_gen_stats_dict(rb_execution_context_t *ec, VALUE self);
+    stats_hash = rb_yjit_gen_stats_dict(ec, self);
     RB_VM_LOCK_LEAVE();
 
-    return hash;
-    */
-}
-
-// Primitive called in yjit.rb. Zero out all the counters.
-static VALUE
-reset_stats_bang(rb_execution_context_t *ec, VALUE self)
-{
-#if YJIT_STATS
-    memset(&exit_op_count, 0, sizeof(exit_op_count));
-    memset(&yjit_runtime_counters, 0, sizeof(yjit_runtime_counters));
-#endif // if YJIT_STATS
-    return Qnil;
+    return stats_hash;
 }
 
 // Primitive for yjit.rb. For testing running out of executable memory
@@ -662,6 +572,12 @@ simulate_oom_bang(rb_execution_context_t *ec, VALUE self)
     return Qnil;
 }
 
+// Primitives used by yjit.rb
+VALUE rb_yjit_stats_enabled_p(rb_execution_context_t *ec, VALUE self);
+VALUE rb_yjit_get_stats(rb_execution_context_t *ec, VALUE self);
+VALUE rb_yjit_reset_stats_bang(rb_execution_context_t *ec, VALUE self);
+
+// Preprocessed yjit.rb generated during build
 #include "yjit.rbinc"
 
 #if YJIT_STATS
@@ -849,7 +765,7 @@ outgoing_ids(VALUE self)
 
 // Can raise RuntimeError
 void
-rb_yjit_init()
+rb_yjit_init(void)
 {
     if (!PLATFORM_SUPPORTED_P || !JIT_ENABLED) {
         return;

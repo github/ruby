@@ -3961,6 +3961,11 @@ Init_vm_objects(void)
     vm->frozen_strings = st_init_table_with_size(&rb_fstring_hash_type, 10000);
 }
 
+/* Stub for builtin function when not building YJIT units*/
+#if !YJIT_BUILD
+void Init_builtin_yjit(void) {}
+#endif
+
 /* top self */
 
 static VALUE
