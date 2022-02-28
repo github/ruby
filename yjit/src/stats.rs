@@ -154,17 +154,23 @@ pub extern "C" fn rb_yjit_stats_enabled_p(ec: EcPtr, ruby_self: VALUE) -> VALUE 
 #[no_mangle]
 pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
 
-    // Return Qnil if YJIT isn't enabled
+    // If YJIT is not enabled, return Qnil
     if !yjit_enabled_p() {
         return Qnil;
     }
 
-    // If we're not generating stats, return an empty hash
+    // If we're not generating stats, return Qnil
     if !get_option!(gen_stats) {
-        return unsafe { rb_hash_new() };
+        return Qnil;
     }
 
-    // If the stats feature is enabled and we're generating stats
+    // If the stats feature is disabled, return Qnil
+    #[cfg(not(feature = "stats"))]
+    {
+        return Qnil;
+    }
+
+    // If the stats feature is enabled
     #[cfg(feature = "stats")]
     unsafe {
         let hash = rb_hash_new();
