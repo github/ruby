@@ -27,7 +27,9 @@ jobs:
       #- run: cargo test --offline
       - run: RUST_BACKTRACE=1 cargo test
         working-directory: yjit
-      # TODO: run cargo test with all featured enabled as well
+      # Also compile and test with all features enabled
+      - run: RUST_BACKTRACE=1 cargo test --all-features
+        working-directory: yjit
   make:
     strategy:
       matrix:
