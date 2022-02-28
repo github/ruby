@@ -389,7 +389,7 @@ fn test_xor() {
 
 #[test]
 #[cfg(feature = "disassembly")]
-fn basic_capstone_usage() -> Result<(), capstone::Error> {
+fn basic_capstone_usage() -> std::result::Result<(), capstone::Error> {
     // Test drive Capstone with simple input
     extern crate capstone;
     use capstone::prelude::*;

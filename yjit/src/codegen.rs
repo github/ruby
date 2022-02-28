@@ -261,12 +261,13 @@ macro_rules! gen_counter_incr {
 macro_rules! gen_counter_incr {
     ($cb:tt, $counter_name:ident) => {
         if (get_option!(gen_stats)) {
-            let ptr = ptr_to_counter!(counter_name);
+            // Get a pointer to the counter variable
+            let ptr = ptr_to_counter!($counter_name);
 
             // Use REG1 because there might be return value in REG0
-            mov(cb, REG1, const_ptr_opnd(ptr));
-            cb.write_lock_prefix(); // for ractors.
-            add(cb, mem_opnd(64, REG1, 0), imm_opnd(1));
+            mov($cb, REG1, const_ptr_opnd(ptr as *const u8));
+            write_lock_prefix($cb); // for ractors.
+            add($cb, mem_opnd(64, REG1, 0), imm_opnd(1));
         }
     };
 }
@@ -287,13 +288,14 @@ macro_rules! counted_exit {
         }
         else
         {
+            let ocb = $ocb.unwrap();
             let code_ptr = ocb.get_write_ptr();
 
             // Increment the counter
             gen_counter_incr!(ocb, $counter_name);
 
             // Jump to the existing side exit
-            jmp_ptr(cb, existing_side_exit);
+            jmp_ptr(ocb, $existing_side_exit);
 
             // Pointer to the side-exit code
             code_ptr
@@ -440,7 +442,7 @@ fn gen_exit(exit_pc: *mut VALUE, ctx: &Context, cb: &mut CodeBlock) -> CodePtr
     // Accumulate stats about interpreter exits
     #[cfg(feature = "stats")]
     if get_option!(gen_stats) {
-        mov(cb, RDI, const_ptr_opnd(exit_pc));
+        mov(cb, RDI, const_ptr_opnd(exit_pc as *const u8));
         call_ptr(cb, RSI, yjit_count_side_exit_op as *const u8);
     }
 
@@ -463,7 +465,7 @@ fn gen_code_for_exit_from_stub(ocb: &mut OutlinedCb) -> CodePtr
     let ocb = ocb.unwrap();
     let code_ptr = ocb.get_write_ptr();
 
-    gen_counter_incr!(cb, exit_from_branch_stub);
+    gen_counter_incr!(ocb, exit_from_branch_stub);
 
     pop(ocb, REG_SP);
     pop(ocb, REG_EC);
@@ -3305,7 +3307,7 @@ fn jit_guard_known_klass(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlo
 
 // Generate ancestry guard for protected callee.
 // Calls to protected callees only go through when self.is_a?(klass_that_defines_the_callee).
-fn jit_protected_callee_ancestry_guard(jit: &mut JITState, cb: &mut CodeBlock, cme: *const rb_callable_method_entry_t, side_exit: CodePtr)
+fn jit_protected_callee_ancestry_guard(jit: &mut JITState, cb: &mut CodeBlock, ocb: &mut OutlinedCb, cme: *const rb_callable_method_entry_t, side_exit: CodePtr)
 {
     // See vm_call_method().
     mov(cb, C_ARG_REGS[0], mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_SELF));
@@ -4346,7 +4348,7 @@ fn gen_send_general(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
             }
         },
         METHOD_VISI_PROTECTED => {
-            jit_protected_callee_ancestry_guard(jit, cb, cme, side_exit);
+            jit_protected_callee_ancestry_guard(jit, cb, ocb, cme, side_exit);
         },
         _ => {
             panic!("cmes should always have a visibility!");

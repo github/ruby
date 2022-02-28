@@ -39,8 +39,8 @@ pub(crate) use incr_counter;
 macro_rules! ptr_to_counter {
     ($counter_name:ident) => {
         unsafe {
-            let ptr: *mut u64 = &COUNTERS.$counter_name;
-            ptr;
+            let ctr_ptr = std::ptr::addr_of_mut!(COUNTERS.$counter_name);
+            ctr_ptr
         }
     };
 }
@@ -159,6 +159,13 @@ pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
         return Qnil;
     }
 
+    // If we're not generating stats, return an empty hash
+    if !get_option!(gen_stats) {
+        return unsafe { rb_hash_new() };
+    }
+
+    // If the stats feature is enabled and we're generating stats
+    #[cfg(feature = "stats")]
     unsafe {
         let hash = rb_hash_new();
 
@@ -174,61 +181,56 @@ pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
         }
         */
 
-        // If the stats feature is enabled and we're generating stats
-        #[cfg(feature = "stats")]
-        if get_option!(gen_stats) {
+        /*
+        // Indicate that the complete set of stats is available
+        rb_hash_aset(hash, ID2SYM(rb_intern("all_stats")), Qtrue);
 
-            /*
-            // Indicate that the complete set of stats is available
-            rb_hash_aset(hash, ID2SYM(rb_intern("all_stats")), Qtrue);
+        int64_t *counter_reader = (int64_t *)&yjit_runtime_counters;
+        int64_t *counter_reader_end = &yjit_runtime_counters.last_member;
 
-            int64_t *counter_reader = (int64_t *)&yjit_runtime_counters;
-            int64_t *counter_reader_end = &yjit_runtime_counters.last_member;
+        // For each counter in yjit_counter_names, add that counter as
+        // a key/value pair.
 
-            // For each counter in yjit_counter_names, add that counter as
-            // a key/value pair.
-
-            // Iterate through comma separated counter name list
-            char *name_reader = yjit_counter_names;
-            char *counter_name_end = yjit_counter_names + sizeof(yjit_counter_names);
-            while (name_reader < counter_name_end && counter_reader < counter_reader_end) {
-                if (*name_reader == ',' || *name_reader == ' ') {
-                    name_reader++;
-                    continue;
-                }
-
-                // Compute length of counter name
-                int name_len;
-                char *name_end;
-                {
-                    name_end = strchr(name_reader, ',');
-                    if (name_end == NULL) break;
-                    name_len = (int)(name_end - name_reader);
-                }
-
-                // Put counter into hash
-                VALUE key = ID2SYM(rb_intern2(name_reader, name_len));
-                VALUE value = LL2NUM((long long)*counter_reader);
-                rb_hash_aset(hash, key, value);
-
-                counter_reader++;
-                name_reader = name_end;
+        // Iterate through comma separated counter name list
+        char *name_reader = yjit_counter_names;
+        char *counter_name_end = yjit_counter_names + sizeof(yjit_counter_names);
+        while (name_reader < counter_name_end && counter_reader < counter_reader_end) {
+            if (*name_reader == ',' || *name_reader == ' ') {
+                name_reader++;
+                continue;
             }
 
-            // For each entry in exit_op_count, add a stats entry with key "exit_INSTRUCTION_NAME"
-            // and the value is the count of side exits for that instruction.
-
-            char key_string[rb_vm_max_insn_name_size + 6]; // Leave room for "exit_" and a final NUL
-            for (int i = 0; i < VM_INSTRUCTION_SIZE; i++) {
-                const char *i_name = insn_name(i); // Look up Ruby's NUL-terminated insn name string
-                snprintf(key_string, rb_vm_max_insn_name_size + 6, "%s%s", "exit_", i_name);
-
-                VALUE key = ID2SYM(rb_intern(key_string));
-                VALUE value = LL2NUM((long long)exit_op_count[i]);
-                rb_hash_aset(hash, key, value);
+            // Compute length of counter name
+            int name_len;
+            char *name_end;
+            {
+                name_end = strchr(name_reader, ',');
+                if (name_end == NULL) break;
+                name_len = (int)(name_end - name_reader);
             }
-            */
+
+            // Put counter into hash
+            VALUE key = ID2SYM(rb_intern2(name_reader, name_len));
+            VALUE value = LL2NUM((long long)*counter_reader);
+            rb_hash_aset(hash, key, value);
+
+            counter_reader++;
+            name_reader = name_end;
         }
+
+        // For each entry in exit_op_count, add a stats entry with key "exit_INSTRUCTION_NAME"
+        // and the value is the count of side exits for that instruction.
+
+        char key_string[rb_vm_max_insn_name_size + 6]; // Leave room for "exit_" and a final NUL
+        for (int i = 0; i < VM_INSTRUCTION_SIZE; i++) {
+            const char *i_name = insn_name(i); // Look up Ruby's NUL-terminated insn name string
+            snprintf(key_string, rb_vm_max_insn_name_size + 6, "%s%s", "exit_", i_name);
+
+            VALUE key = ID2SYM(rb_intern(key_string));
+            VALUE value = LL2NUM((long long)exit_op_count[i]);
+            rb_hash_aset(hash, key, value);
+        }
+        */
 
         return hash;
     }
