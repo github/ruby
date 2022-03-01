@@ -34,11 +34,10 @@ pub fn yjit_enabled_p() -> bool {
     YJIT_ENABLED.load(Ordering::Acquire)
 }
 
-/// On which invocation of the ISEQ to invoke YJIT?
+/// After how many calls YJIT starts compiling a method
 #[no_mangle]
 pub extern "C" fn rb_yjit_call_threshold() -> raw::c_uint {
-    // TODO: read this from command line arg
-    10
+    get_option!(call_threshold) as raw::c_uint
 }
 
 /// This function is called from C code
