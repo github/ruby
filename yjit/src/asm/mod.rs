@@ -87,6 +87,9 @@ pub struct CodeBlock
     // References to labels
     label_refs: Vec<LabelRef>,
 
+    // Comments for assembly instructions, if that feature is enabled
+    asm_comments: Vec<(usize, String)>,
+
     // Keep track of the current aligned write position.
     // Used for changing protection when writing to the JIT buffer
     current_aligned_write_pos: usize,
@@ -116,6 +119,7 @@ impl CodeBlock
             label_addrs: Vec::new(),
             label_names: Vec::new(),
             label_refs: Vec::new(),
+            asm_comments: Vec::new(),
             current_aligned_write_pos: ALIGNED_WRITE_POSITION_NONE,
             page_size: 4096,
             dropped_bytes: false
@@ -131,6 +135,7 @@ impl CodeBlock
             label_addrs: Vec::new(),
             label_names: Vec::new(),
             label_refs: Vec::new(),
+            asm_comments: Vec::new(),
             current_aligned_write_pos: ALIGNED_WRITE_POSITION_NONE,
             page_size,
             dropped_bytes: false
@@ -140,6 +145,34 @@ impl CodeBlock
     // Check if this code block has sufficient remaining capacity
     pub fn has_capacity(&self, num_bytes: usize) -> bool {
         self.write_pos + num_bytes < self.mem_size
+    }
+
+    /// Add an assembly comment if the feature is on.
+    /// If not, this becomes an inline no-op.
+    #[inline]
+    pub fn add_comment(&mut self, comment: &str) {
+        #[cfg(feature="asm_comments")]
+        {
+            let is_dup = if let Some((last_pos, last_comment)) = self.asm_comments.last() {
+                *last_pos == self.write_pos && *last_comment == comment
+            } else { false };
+            if !is_dup {
+                self.asm_comments.push((self.write_pos, String::from(comment)));
+            }
+        }
+    }
+
+    /// Add an assembly comment at a specific byte offset if the feature is on.
+    /// If not, this becomes an inline no-op.
+    #[inline]
+    pub fn add_comment_at(&mut self, pos:usize, comment: &str) {
+        #[cfg(feature="asm_comments")]
+        self.asm_comments.push((pos, String::from(comment)));
+    }
+
+    /// Get a slice (readonly ref) of assembly comments - if the feature is off, this will be empty.
+    pub fn get_comments(&self) -> &[(usize, String)] {
+        return self.asm_comments.as_slice();
     }
 
     pub fn get_write_pos(&self) -> usize {
