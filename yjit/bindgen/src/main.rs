@@ -34,6 +34,7 @@ fn main() {
 
         // Block for stability since output is different on Darwin and Linux
         .blocklist_type("size_t")
+        .blocklist_type("fpos_t")
 
         // Prune these types since they are system dependant and we don't use them
         .blocklist_type("__.*")
@@ -92,6 +93,7 @@ fn main() {
 
         // From include/ruby/internal/symbol.h
         .allowlist_function("rb_intern")
+        .allowlist_function("rb_id2sym")
 
         // From internal/string.h
         .allowlist_function("rb_ec_str_resurrect")

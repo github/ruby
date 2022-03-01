@@ -97,6 +97,9 @@ extern "C" {
     pub fn rb_hash_bulk_insert(argc: ::std::os::raw::c_long, argv: *const VALUE, hash: VALUE);
 }
 extern "C" {
+    pub fn rb_id2sym(id: ID) -> VALUE;
+}
+extern "C" {
     pub fn rb_intern(name: *const ::std::os::raw::c_char) -> ID;
 }
 extern "C" {
