@@ -55,6 +55,12 @@ pub type ruby_value_type = u32;
 pub type st_data_t = ::std::os::raw::c_ulong;
 pub type st_index_t = st_data_t;
 extern "C" {
+    pub static mut rb_mKernel: VALUE;
+}
+extern "C" {
+    pub static mut rb_cBasicObject: VALUE;
+}
+extern "C" {
     pub static mut rb_cFalseClass: VALUE;
 }
 extern "C" {
@@ -62,6 +68,9 @@ extern "C" {
 }
 extern "C" {
     pub static mut rb_cInteger: VALUE;
+}
+extern "C" {
+    pub static mut rb_cModule: VALUE;
 }
 extern "C" {
     pub static mut rb_cNilClass: VALUE;
@@ -86,6 +95,9 @@ extern "C" {
 }
 extern "C" {
     pub fn rb_hash_bulk_insert(argc: ::std::os::raw::c_long, argv: *const VALUE, hash: VALUE);
+}
+extern "C" {
+    pub fn rb_intern(name: *const ::std::os::raw::c_char) -> ID;
 }
 extern "C" {
     pub fn rb_obj_is_kind_of(obj: VALUE, klass: VALUE) -> VALUE;
@@ -343,6 +355,24 @@ pub const METHOD_VISI_PRIVATE: rb_method_visibility_t = 2;
 pub const METHOD_VISI_PROTECTED: rb_method_visibility_t = 3;
 pub const METHOD_VISI_MASK: rb_method_visibility_t = 3;
 pub type rb_method_visibility_t = u32;
+#[repr(C)]
+pub struct rb_method_entry_struct {
+    pub flags: VALUE,
+    pub defined_class: VALUE,
+    pub def: *mut rb_method_definition_struct,
+    pub called_id: ID,
+    pub owner: VALUE,
+}
+pub type rb_method_entry_t = rb_method_entry_struct;
+#[repr(C)]
+pub struct rb_callable_method_entry_struct {
+    pub flags: VALUE,
+    pub defined_class: VALUE,
+    pub def: *mut rb_method_definition_struct,
+    pub called_id: ID,
+    pub owner: VALUE,
+}
+pub type rb_callable_method_entry_t = rb_callable_method_entry_struct;
 pub const VM_METHOD_TYPE_ISEQ: rb_method_type_t = 0;
 pub const VM_METHOD_TYPE_CFUNC: rb_method_type_t = 1;
 pub const VM_METHOD_TYPE_ATTRSET: rb_method_type_t = 2;
@@ -363,6 +393,9 @@ pub const OPTIMIZED_METHOD_TYPE_STRUCT_AREF: method_optimized_type = 3;
 pub const OPTIMIZED_METHOD_TYPE_STRUCT_ASET: method_optimized_type = 4;
 pub const OPTIMIZED_METHOD_TYPE__MAX: method_optimized_type = 5;
 pub type method_optimized_type = u32;
+extern "C" {
+    pub fn rb_method_entry_at(obj: VALUE, id: ID) -> *const rb_method_entry_t;
+}
 extern "C" {
     pub fn rb_callable_method_entry(klass: VALUE, id: ID) -> *const rb_callable_method_entry_t;
 }

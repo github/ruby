@@ -281,21 +281,10 @@ rb_METHOD_ENTRY_VISI(rb_callable_method_entry_t *me) {
     return METHOD_ENTRY_VISI(me);
 }
 
-VALUE
-rb_get_cme_defined_class(rb_callable_method_entry_t* cme) {
-    return cme->defined_class;
-}
-
 rb_method_type_t
 rb_get_cme_def_type(rb_callable_method_entry_t* cme)
 {
     return cme->def->type;
-}
-
-rb_method_definition_t *
-rb_get_cme_def(rb_callable_method_entry_t* cme)
-{
-    return cme->def;
 }
 
 ID
@@ -316,6 +305,12 @@ rb_get_cme_def_body_cfunc(rb_callable_method_entry_t* cme)
     return UNALIGNED_MEMBER_PTR(cme->def, body.cfunc);
 }
 
+uintptr_t
+rb_get_def_method_serial(rb_method_definition_t *def)
+{
+    return def->method_serial;
+}
+
 int
 rb_get_mct_argc(rb_method_cfunc_t *mct)
 {
@@ -329,7 +324,7 @@ rb_get_mct_func(rb_method_cfunc_t *mct)
 }
 
 const rb_iseq_t*
-rb_def_iseq_ptr(rb_method_definition_t *def)
+rb_get_def_iseq_ptr(rb_method_definition_t *def)
 {
     return def_iseq_ptr(def);
 }

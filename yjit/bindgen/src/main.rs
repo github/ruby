@@ -19,7 +19,7 @@ fn main() {
         .clang_args(filtered_clang_args)
         .header("internal.h")
         .header("include/ruby/ruby.h")
-        .header("vm_core.h")  // includes method.h
+        .header("vm_core.h")
         .header("vm_callinfo.h")
 
         // Some C functions that were expressly for Rust YJIT in this
@@ -63,7 +63,9 @@ fn main() {
         .allowlist_function("rb_ec_ary_new_from_values")
 
         // VALUE variables for Ruby class objects
-        // From ruby/internal/globals.h
+        // From include/ruby/internal/globals.h
+        .allowlist_var("rb_cBasicObject")
+        .allowlist_var("rb_cModule")
         .allowlist_var("rb_cNilClass")
         .allowlist_var("rb_cTrueClass")
         .allowlist_var("rb_cFalseClass")
@@ -71,6 +73,9 @@ fn main() {
         .allowlist_var("rb_cSymbol")
         .allowlist_var("rb_cFloat")
         .allowlist_var("rb_cString")
+
+        // From ruby/internal/globals.h
+        .allowlist_var("rb_mKernel")
 
         // From vm_callinfo.h
         .allowlist_type("VM_CALL.*") // This doesn't work, possibly due to the odd structure of the #defines
@@ -84,6 +89,9 @@ fn main() {
 
         // From include/ruby/internal/intern/range.h
         .allowlist_function("rb_range_new")
+
+        // From include/ruby/internal/symbol.h
+        .allowlist_function("rb_intern")
 
         // From internal/string.h
         .allowlist_function("rb_ec_str_resurrect")
@@ -113,6 +121,10 @@ fn main() {
         .allowlist_type("rb_method_visibility_t")
         .allowlist_type("rb_method_type_t")
         .allowlist_type("method_optimized_type")
+        .allowlist_type("rb_callable_method_entry_t")
+        .allowlist_type("rb_callable_method_entry_struct")
+        .allowlist_function("rb_method_entry_at")
+        .allowlist_type("rb_method_entry_t")
 
         // Opaque types from method.h
         .blocklist_type("rb_method_cfunc_t")
@@ -123,15 +135,15 @@ fn main() {
         .allowlist_type("rb_num_t")
         .allowlist_function("rb_callable_method_entry")
         .allowlist_type("IVC") // pointer to iseq_inline_iv_cache_entry
-        .allowlist_type("iseq_inline_inv_cache_entry")
+        .allowlist_type("iseq_inline_iv_cache_entry")
         .allowlist_type("ICVARC") // pointer to iseq_inline_cvar_cache_entry
         .allowlist_type("iseq_inline_cvar_cache_entry")
+        .blocklist_type("rb_method_definition_.*")
+        .opaque_type("rb_method_definition_.*")
 
         // Opaque types from vm_core.h
         .blocklist_type("rb_execution_context_.*")
         .opaque_type("rb_execution_context_.*")
-        .blocklist_type("rb_callable_method_entry_t")
-        .opaque_type("rb_callable_method_entry_t")
 
         // From yjit.c
         .allowlist_function("rb_iseq_(get|set)_yjit_payload")

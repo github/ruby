@@ -13,6 +13,7 @@ use std::rc::Rc;
 use std::mem::size_of;
 use std::os::raw::{c_uint};
 use std::slice;
+use std::collections::{HashMap};
 
 // Callee-saved registers
 pub const REG_CFP: X86Opnd = R13;
@@ -3311,7 +3312,7 @@ fn jit_protected_callee_ancestry_guard(jit: &mut JITState, cb: &mut CodeBlock, o
 {
     // See vm_call_method().
     mov(cb, C_ARG_REGS[0], mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_SELF));
-    let def_class = unsafe { get_cme_defined_class(cme) };
+    let def_class = unsafe { (*cme).defined_class };
     jit_mov_gc_ptr(jit, cb, C_ARG_REGS[1], def_class);
     // Note: PC isn't written to current control frame as rb_is_kind_of() shouldn't raise.
     // VALUE rb_obj_is_kind_of(VALUE obj, VALUE klass);
@@ -3326,35 +3327,37 @@ fn jit_protected_callee_ancestry_guard(jit: &mut JITState, cb: &mut CodeBlock, o
 // See yjit_reg_method().
 type MethodGenFn = fn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool;
 
-/*
-
 // Register a specialized codegen function for a particular method. Note that
 // the if the function returns true, the code it generates runs without a
 // control frame and without interrupt checks. To avoid creating observable
 // behavior changes, the codegen function should only target simple code paths
 // that do not allocate and do not make method calls.
-static void
-yjit_reg_method(VALUE klass, const char *mid_str, MethodGenFn gen_fn)
+fn yjit_reg_method(klass: VALUE, mid_str: &str, gen_fn: MethodGenFn)
 {
-    ID mid = rb_intern(mid_str);
-    const rb_method_entry_t *me = rb_method_entry_at(klass, mid);
+    let id_string = std::ffi::CString::new(mid_str).expect("couldn't convert to CString!");
+    let mid = unsafe { rb_intern(id_string.as_ptr()) };
+    let me = unsafe { rb_method_entry_at(klass, mid )};
 
-    if (!me) {
-        rb_bug("undefined optimized method: %s", rb_id2name(mid));
+    if me.is_null() {
+        panic!("undefined optimized method!");
     }
 
     // For now, only cfuncs are supported
-    RUBY_ASSERT(me && me->def);
-    RUBY_ASSERT(me->def->type == VM_METHOD_TYPE_CFUNC);
+    //RUBY_ASSERT(me && me->def);
+    //RUBY_ASSERT(me->def->type == VM_METHOD_TYPE_CFUNC);
 
-    st_insert(yjit_method_codegen_table, (st_data_t)me->def->method_serial, (st_data_t)gen_fn);
+    let method_serial = unsafe {
+        let def = (*me).def;
+        get_def_method_serial(def)
+    };
+    CodegenGlobals::register_codegen_method(method_serial, gen_fn);
 }
 
+/*
 // Codegen for rb_obj_not().
 // Note, caller is responsible for generating all the right guards, including
 // arity guards.
-static bool
-jit_rb_obj_not(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const rb_callable_method_entry_t *cme, rb_iseq_t *block, const int32_t argc, VALUE *known_recv_klass)
+fn jit_rb_obj_not(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
 {
     const val_type_t recv_opnd = ctx.get_opnd_type(StackOpnd(0));
 
@@ -3377,35 +3380,33 @@ jit_rb_obj_not(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const 
         // rare if not unreachable.
         return false;
     }
-    return true;
+    true
 }
+*/
 
 // Codegen for rb_true()
-static bool
-jit_rb_true(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const rb_callable_method_entry_t *cme, rb_iseq_t *block, const int32_t argc, VALUE *known_recv_klass)
+fn jit_rb_true(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
 {
     add_comment(cb, "nil? == true");
     ctx.stack_pop(1);
     let stack_ret = ctx.stack_push(Type::True);
-    mov(cb, stack_ret, imm_opnd(Qtrue));
-    return true;
+    mov(cb, stack_ret, uimm_opnd(Qtrue.into()));
+    true
 }
 
 // Codegen for rb_false()
-static bool
-jit_rb_false(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const rb_callable_method_entry_t *cme, rb_iseq_t *block, const int32_t argc, VALUE *known_recv_klass)
+fn jit_rb_false(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
 {
     add_comment(cb, "nil? == false");
     ctx.stack_pop(1);
     let stack_ret = ctx.stack_push(Type::False);
-    mov(cb, stack_ret, imm_opnd(Qfalse));
-    return true;
+    mov(cb, stack_ret, uimm_opnd(Qfalse.into()));
+    true
 }
 
 // Codegen for rb_obj_equal()
 // object identity comparison
-static bool
-jit_rb_obj_equal(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const rb_callable_method_entry_t *cme, rb_iseq_t *block, const int32_t argc, VALUE *known_recv_klass)
+fn jit_rb_obj_equal(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
 {
     add_comment(cb, "equal?");
     let obj1 = ctx.stack_pop(1);
@@ -3413,23 +3414,23 @@ jit_rb_obj_equal(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, cons
 
     mov(cb, REG0, obj1);
     cmp(cb, REG0, obj2);
-    mov(cb, REG0, imm_opnd(Qtrue));
-    mov(cb, REG1, imm_opnd(Qfalse));
+    mov(cb, REG0, uimm_opnd(Qtrue.into()));
+    mov(cb, REG1, uimm_opnd(Qfalse.into()));
     cmovne(cb, REG0, REG1);
 
     let stack_ret = ctx.stack_push(Type::UnknownImm);
     mov(cb, stack_ret, REG0);
-    return true;
+    true
 }
 
+/*
 static VALUE
 yjit_str_bytesize(VALUE str)
 {
     return LONG2NUM(RSTRING_LEN(str));
 }
 
-static bool
-jit_rb_str_bytesize(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const rb_callable_method_entry_t *cme, rb_iseq_t *block, const int32_t argc, VALUE *known_recv_klass)
+fn jit_rb_str_bytesize(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
 {
     add_comment(cb, "String#bytesize");
 
@@ -3440,15 +3441,14 @@ jit_rb_str_bytesize(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, c
     let out_opnd = ctx.stack_push(Type::Fixnum);
     mov(cb, out_opnd, RAX);
 
-    return true;
+    true
 }
 
 // Codegen for rb_str_to_s()
 // When String#to_s is called on a String instance, the method returns self and
 // most of the overhead comes from setting up the method call. We observed that
 // this situation happens a lot in some workloads.
-static bool
-jit_rb_str_to_s(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const rb_callable_method_entry_t *cme, rb_iseq_t *block, const int32_t argc, VALUE *recv_known_klass)
+fn jit_rb_str_to_s(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
 {
     if (recv_known_klass && *recv_known_klass == rb_cString) {
         add_comment(cb, "to_s on plain string");
@@ -3456,11 +3456,10 @@ jit_rb_str_to_s(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const
         // No stack movement.
         return true;
     }
-    return false;
+    false
 }
 
-static bool
-jit_thread_s_current(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const rb_callable_method_entry_t *cme, rb_iseq_t *block, const int32_t argc, VALUE *recv_known_klass)
+fn jit_thread_s_current(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
 {
     add_comment(cb, "Thread.current");
     ctx.stack_pop(1);
@@ -3473,20 +3472,15 @@ jit_thread_s_current(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, 
 
     let stack_ret = ctx.stack_push(Type::UnknownHeap);
     mov(cb, stack_ret, REG0);
-    return true;
+    true
 }
 */
 // Check if we know how to codegen for a particular cfunc method
 fn lookup_cfunc_codegen(def: *const rb_method_definition_t) -> Option<MethodGenFn>
 {
-    /*
-    TODO(noah): implement lookup_cfunc_codegen
-    MethodGenFn gen_fn;
-    if (st_lookup(yjit_method_codegen_table, def->method_serial, (st_data_t *)&gen_fn)) {
-        return gen_fn;
-    }
-    */
-    return None;
+    let method_serial = unsafe { get_def_method_serial(def) };
+
+    CodegenGlobals::look_up_codegen_method(method_serial)
 }
 
 // Is anyone listening for :c_call and :c_return event currently?
@@ -3539,8 +3533,7 @@ fn gen_send_cfunc(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
     }
 
     // Delegate to codegen for C methods if we have it.
-    let cme_def = unsafe { get_cme_def(cme) };
-    let codegen_p = lookup_cfunc_codegen(cme_def);
+    let codegen_p = lookup_cfunc_codegen(unsafe { (*cme).def });
     if codegen_p.is_some() {
         let known_cfunc_codegen = codegen_p.unwrap();
         if known_cfunc_codegen(jit, ctx, cb, ocb, ci, cme, block, argc, recv_known_klass) {
@@ -3725,7 +3718,7 @@ fn gen_return_branch(cb: &mut CodeBlock, target0: CodePtr, target1: Option<CodeP
 
 fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: * const rb_callinfo, cme: * const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32) -> CodegenStatus
 {
-    let iseq = unsafe { def_iseq_ptr(get_cme_def(cme)) };
+    let iseq = unsafe { get_def_iseq_ptr((*cme).def) };
 
     // When you have keyword arguments, there is an extra object that gets
     // placed on the stack the represents a bitmap of the keywords that were not
@@ -3897,7 +3890,7 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
     gen_check_ints(cb, side_exit);
 
     let leaf_builtin_raw = unsafe { rb_leaf_builtin_function(iseq) };
-    let leaf_builtin: Option<*const rb_builtin_function> = if leaf_builtin_raw == (0 as *const rb_builtin_function) { None } else { Some(leaf_builtin_raw) };
+    let leaf_builtin: Option<*const rb_builtin_function> = if leaf_builtin_raw.is_null() { None } else { Some(leaf_builtin_raw) };
     match (block, leaf_builtin) {
         (None, Some(builtin_info)) => {
             let builtin_argc = unsafe { (*builtin_info).argc };
@@ -4330,7 +4323,7 @@ fn gen_send_general(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
 
     // Do method lookup
     let mut cme = unsafe { rb_callable_method_entry(comptime_recv_klass, mid) };
-    if cme == (0 as *mut rb_callable_method_entry_t) {
+    if cme.is_null() {
         // TODO: counter
         return CantCompile;
     }
@@ -5198,28 +5191,30 @@ fn get_method_gen_fn()
 {
     // TODO: implement pattern matching for this
 
-    /*
-    // Specialization for C methods. See yjit_reg_method() for details.
-    yjit_reg_method(rb_cBasicObject, "!", jit_rb_obj_not);
+    // All these class constants are mutable statics.
+    unsafe {
+        // Specialization for C methods. See yjit_reg_method() for details.
+        //yjit_reg_method(rb_cBasicObject, "!", jit_rb_obj_not);
 
-    yjit_reg_method(rb_cNilClass, "nil?", jit_rb_true);
-    yjit_reg_method(rb_mKernel, "nil?", jit_rb_false);
+        yjit_reg_method(rb_cNilClass, "nil?", jit_rb_true);
+        yjit_reg_method(rb_mKernel, "nil?", jit_rb_false);
 
-    yjit_reg_method(rb_cBasicObject, "==", jit_rb_obj_equal);
-    yjit_reg_method(rb_cBasicObject, "equal?", jit_rb_obj_equal);
-    yjit_reg_method(rb_mKernel, "eql?", jit_rb_obj_equal);
-    yjit_reg_method(rb_cModule, "==", jit_rb_obj_equal);
-    yjit_reg_method(rb_cSymbol, "==", jit_rb_obj_equal);
-    yjit_reg_method(rb_cSymbol, "===", jit_rb_obj_equal);
+        yjit_reg_method(rb_cBasicObject, "==", jit_rb_obj_equal);
+        yjit_reg_method(rb_cBasicObject, "equal?", jit_rb_obj_equal);
+        yjit_reg_method(rb_mKernel, "eql?", jit_rb_obj_equal);
+        yjit_reg_method(rb_cModule, "==", jit_rb_obj_equal);
+        yjit_reg_method(rb_cSymbol, "==", jit_rb_obj_equal);
+        yjit_reg_method(rb_cSymbol, "===", jit_rb_obj_equal);
+        /*
+        // rb_str_to_s() methods in string.c
+        yjit_reg_method(rb_cString, "to_s", jit_rb_str_to_s);
+        yjit_reg_method(rb_cString, "to_str", jit_rb_str_to_s);
+        yjit_reg_method(rb_cString, "bytesize", jit_rb_str_bytesize);
 
-    // rb_str_to_s() methods in string.c
-    yjit_reg_method(rb_cString, "to_s", jit_rb_str_to_s);
-    yjit_reg_method(rb_cString, "to_str", jit_rb_str_to_s);
-    yjit_reg_method(rb_cString, "bytesize", jit_rb_str_bytesize);
-
-    // Thread.current
-    yjit_reg_method(rb_singleton_class(rb_cThread), "current", jit_thread_s_current);
-    */
+        // Thread.current
+        yjit_reg_method(rb_singleton_class(rb_cThread), "current", jit_thread_s_current);
+        */
+    }
 }
 
 /// Global state needed for code generation
@@ -5243,6 +5238,9 @@ pub struct CodegenGlobals
 
     // For implementing global code invalidation
     global_inval_patches: Vec<CodepagePatch>,
+
+    // Methods for generating code for hardcoded (usually C) methods
+    method_codegen_table: HashMap<u64, MethodGenFn>,
 }
 
 // For implementing global code invalidation
@@ -5298,6 +5296,7 @@ impl CodegenGlobals {
                     stub_exit_code: stub_exit_code,
                     global_inval_patches: Vec::new(),
                     outline_full_cfunc_return_pos: None,
+                    method_codegen_table: HashMap::new(),
                 }
             )
         }
@@ -5335,5 +5334,21 @@ impl CodegenGlobals {
 
     pub fn get_outline_full_cfunc_return_pos() -> CodePtr {
         CodegenGlobals::get_instance().outline_full_cfunc_return_pos.unwrap()
+    }
+
+    pub fn look_up_codegen_method(method_serial: u64) -> Option<MethodGenFn> {
+        let table = &CodegenGlobals::get_instance().method_codegen_table;
+
+        let option_ref = table.get(&method_serial);
+        match option_ref {
+            None => None,
+            Some(&mgf) => Some(mgf), // Deref
+        }
+    }
+
+    pub fn register_codegen_method(method_serial: u64, method: MethodGenFn) {
+        let table = &mut CodegenGlobals::get_instance().method_codegen_table;
+
+        table.insert(method_serial, method);
     }
 }
