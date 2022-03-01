@@ -417,12 +417,12 @@ fn basic_capstone_usage() -> std::result::Result<(), capstone::Error> {
 fn block_comments() {
     let mut cb = super::CodeBlock::new_dummy(4096);
 
-    cb.add_comment("Beginning".to_string());
+    cb.add_comment("Beginning");
     xor(&mut cb, EAX, EAX); // 2 bytes long
-    cb.add_comment("Two bytes in".to_string());
-    cb.add_comment("Two bytes in".to_string()); // Duplicate, should be ignored
+    cb.add_comment("Two bytes in");
+    cb.add_comment("Two bytes in"); // Duplicate, should be ignored
     test(&mut cb, mem_opnd(64, RSI, 64), imm_opnd(!0x08)); // 8 bytes long
-    cb.add_comment("Ten bytes in".to_string());
+    cb.add_comment("Ten bytes in");
 
     let comments = cb.get_comments();
     let expected:Vec<(usize,String)> = vec!( (0, "Beginning".to_string()), (2, "Two bytes in".to_string()), (10, "Ten bytes in".to_string()) );

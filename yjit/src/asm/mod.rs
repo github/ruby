@@ -88,7 +88,6 @@ pub struct CodeBlock
     label_refs: Vec<LabelRef>,
 
     // Comments for assembly instructions, if that feature is enabled
-    #[cfg(feature="asm_comments")]
     asm_comments: Vec<(usize, String)>,
 
     // Keep track of the current aligned write position.
@@ -112,21 +111,6 @@ impl CodeBlock
         let mut dummy_block = vec![0; mem_size];
         let mem_ptr = dummy_block.as_mut_ptr();
 
-        #[cfg(not(feature="asm_comments"))]
-        return Self {
-            dummy_block: dummy_block,
-            mem_block: mem_ptr,
-            mem_size: mem_size,
-            write_pos: 0,
-            label_addrs: Vec::new(),
-            label_names: Vec::new(),
-            label_refs: Vec::new(),
-            current_aligned_write_pos: ALIGNED_WRITE_POSITION_NONE,
-            page_size: 4096,
-            dropped_bytes: false
-        };
-
-        #[cfg(feature="asm_comments")]
         Self {
             dummy_block: dummy_block,
             mem_block: mem_ptr,
@@ -143,21 +127,6 @@ impl CodeBlock
     }
 
     pub fn new(mem_block: *mut u8, mem_size: usize, page_size: usize) -> Self {
-        #[cfg(not(feature="asm_comments"))]
-        return Self {
-            dummy_block: vec![0; 0],
-            mem_block: mem_block,
-            mem_size: mem_size,
-            write_pos: 0,
-            label_addrs: Vec::new(),
-            label_names: Vec::new(),
-            label_refs: Vec::new(),
-            current_aligned_write_pos: ALIGNED_WRITE_POSITION_NONE,
-            page_size,
-            dropped_bytes: false
-        };
-
-        #[cfg(feature="asm_comments")]
         Self {
             dummy_block: vec![0; 0],
             mem_block: mem_block,
@@ -202,12 +171,8 @@ impl CodeBlock
     }
 
     /// Get a slice (readonly ref) of assembly comments - if the feature is off, this will be empty.
-    pub fn get_comments(&self) -> Option<&[(usize, String)]> {
-        #[cfg(feature="asm_comments")]
-        return Some(self.asm_comments.as_slice());
-
-        #[cfg(not(feature="asm_comments"))]
-        None
+    pub fn get_comments(&self) -> &[(usize, String)] {
+        return self.asm_comments.as_slice();
     }
 
     pub fn get_write_pos(&self) -> usize {
