@@ -138,9 +138,7 @@ pub fn jit_mov_gc_ptr(jit:&mut JITState, cb: &mut CodeBlock, reg:X86Opnd, ptr: V
     assert!( reg.num_bits() == 64 );
 
     // Load the pointer constant into the specified register
-    let VALUE(ptr_value) = ptr;
-    //mov(cb, reg, const_ptr_opnd(ptr_value as *const u8));  // TODO(noah): when uimm_opnd works with mov() properly, change back to this
-    mov(cb, reg, imm_opnd(ptr_value as i64));
+    mov(cb, reg, const_ptr_opnd(ptr.as_ptr()));
 
     // The pointer immediate is encoded as the last part of the mov written out
     let ptr_offset:u32 = (cb.get_write_pos() as u32) - (SIZEOF_VALUE as u32);
@@ -2507,18 +2505,18 @@ fn gen_opt_eq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &m
     }
 }
 
-/*
 fn gen_opt_neq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // opt_neq is passed two rb_call_data as arguments:
     // first for ==, second for !=
-    struct rb_call_data *cd = (struct rb_call_data *)jit_get_arg(jit, 1);
-    return gen_send_general(jit, ctx, cd, NULL);
+    let cd = jit_get_arg(jit, 1).as_ptr();
+    return gen_send_general(jit, ctx, cb, ocb, cd, None);
 }
 
+/*
 fn gen_opt_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    struct rb_call_data * cd = (struct rb_call_data *)jit_get_arg(jit, 0);
+    let cd: *const rb_call_data = jit_get_arg(jit, 0).as_ptr();
     int32_t argc = (int32_t)vm_ci_argc(cd->ci);
 
     // Only JIT one arg calls like `ary[6]`
@@ -2847,19 +2845,17 @@ fn gen_opt_minus(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
     }
 }
 
-/*
 fn gen_opt_mult(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // Delegate to send, call the method on the recv
-    return gen_opt_send_without_block(jit, ctx, cb);
+    gen_opt_send_without_block(jit, ctx, cb, ocb)
 }
 
 fn gen_opt_div(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // Delegate to send, call the method on the recv
-    return gen_opt_send_without_block(jit, ctx, cb);
+    gen_opt_send_without_block(jit, ctx, cb, ocb)
 }
-*/
 
 fn gen_opt_mod(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
@@ -2889,25 +2885,23 @@ fn gen_opt_mod(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &
     KeepCompiling
 }
 
-/*
 fn gen_opt_ltlt(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // Delegate to send, call the method on the recv
-    return gen_opt_send_without_block(jit, ctx, cb);
+    gen_opt_send_without_block(jit, ctx, cb, ocb)
 }
 
 fn gen_opt_nil_p(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // Delegate to send, call the method on the recv
-    return gen_opt_send_without_block(jit, ctx, cb);
+    gen_opt_send_without_block(jit, ctx, cb, ocb)
 }
 
 fn gen_opt_empty_p(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // Delegate to send, call the method on the recv
-    return gen_opt_send_without_block(jit, ctx, cb);
+    gen_opt_send_without_block(jit, ctx, cb, ocb)
 }
-*/
 
 fn gen_opt_str_freeze(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
@@ -2945,27 +2939,26 @@ fn gen_opt_str_uminus(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock,
     KeepCompiling
 }
 
-/*
 fn gen_opt_not(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    return gen_opt_send_without_block(jit, ctx, cb);
+    return gen_opt_send_without_block(jit, ctx, cb, ocb);
 }
 
 fn gen_opt_size(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    return gen_opt_send_without_block(jit, ctx, cb);
+    return gen_opt_send_without_block(jit, ctx, cb, ocb);
 }
 
 fn gen_opt_length(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    return gen_opt_send_without_block(jit, ctx, cb);
+    return gen_opt_send_without_block(jit, ctx, cb, ocb);
 }
 
 fn gen_opt_regexpmatch2(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    return gen_opt_send_without_block(jit, ctx, cb);
+    return gen_opt_send_without_block(jit, ctx, cb, ocb);
 }
-
+/*
 fn gen_opt_case_dispatch(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // Normally this instruction would lookup the key in a hash and jump to an
@@ -4480,29 +4473,26 @@ fn gen_send_general(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
 
 fn gen_opt_send_without_block(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    /*
-    struct rb_call_data *cd = (struct rb_call_data *)jit_get_arg(jit, 0);
-    gen_send_general(jit, ctx, cd, NULL)
-    */
+    let cd = jit_get_arg(jit, 0).as_ptr();
 
-    todo!()
+    gen_send_general(jit, ctx, cb, ocb, cd, None)
+}
+
+fn gen_send(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+{
+    let cd = jit_get_arg(jit, 0).as_ptr();
+    let block = jit_get_arg(jit, 1).as_ptr();
+    return gen_send_general(jit, ctx, cb, ocb, cd, Some(block));
 }
 
 /*
-fn gen_send(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
-{
-    struct rb_call_data *cd = (struct rb_call_data *)jit_get_arg(jit, 0);
-    rb_iseq_t *block = (rb_iseq_t *)jit_get_arg(jit, 1);
-    return gen_send_general(jit, ctx, cd, block);
-}
-
 fn gen_invokesuper(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    struct rb_call_data *cd = (struct rb_call_data *)jit_get_arg(jit, 0);
-    rb_iseq_t *block = (rb_iseq_t *)jit_get_arg(jit, 1);
+    let cd = jit_get_arg(jit, 0).as_ptr();
+    let block = jit_get_arg(jit, 1).as_ptr();
 
     // Defer compilation so we can specialize on class of receiver
-    if (!jit_at_current_insn(jit)) {
+    if !jit_at_current_insn(jit) {
         defer_compilation(jit, cb, ctx);
         return EndBlock;
     }
@@ -4724,31 +4714,33 @@ fn gen_anytostring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
 
     KeepCompiling
 }
+*/
 
 fn gen_objtostring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    if (!jit_at_current_insn(jit)) {
+    if !jit_at_current_insn(jit) {
         defer_compilation(jit, cb, ctx);
         return EndBlock;
     }
 
     let recv = ctx.stack_opnd(0);
-    VALUE comptime_recv = jit_peek_at_stack(jit, ctx, 0);
+    let comptime_recv = jit_peek_at_stack(jit, ctx, 0);
 
-    if (RB_TYPE_P(comptime_recv, T_STRING)) {
-        uint8_t *side_exit = get_side_exit(jit, ocb, ctx);
+    if unsafe { RB_TYPE_P(comptime_recv, RUBY_T_STRING) } {
+        let side_exit = get_side_exit(jit, ocb, ctx);
 
         mov(cb, REG0, recv);
-        jit_guard_known_klass(jit, ctx, cb, CLASS_OF(comptime_recv), StackOpnd(0), comptime_recv, SEND_MAX_DEPTH, side_exit);
+        jit_guard_known_klass(jit, ctx, cb, comptime_recv.class_of(), StackOpnd(0), comptime_recv, SEND_MAX_DEPTH, side_exit);
         // No work needed. The string value is already on the top of the stack.
         KeepCompiling
     }
     else {
-        struct rb_call_data *cd = (struct rb_call_data *)jit_get_arg(jit, 0);
-        return gen_send_general(jit, ctx, cd, NULL);
+        let cd = jit_get_arg(jit, 0).as_ptr();
+        gen_send_general(jit, ctx, cb, ocb, cd, None)
     }
 }
 
+/*
 fn gen_toregexp(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     rb_num_t opt = jit_get_arg(jit, 0);
@@ -5140,33 +5132,31 @@ fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn>
         OP_GETINSTANCEVARIABLE => Some(gen_getinstancevariable),
         OP_SETINSTANCEVARIABLE => Some(gen_setinstancevariable),
 
-        /*
-        yjit_reg_op(BIN(opt_eq), gen_opt_eq);
-        yjit_reg_op(BIN(opt_neq), gen_opt_neq);
-        yjit_reg_op(BIN(opt_aref), gen_opt_aref);
-        yjit_reg_op(BIN(opt_aset), gen_opt_aset);
-        yjit_reg_op(BIN(opt_mult), gen_opt_mult);
-        yjit_reg_op(BIN(opt_div), gen_opt_div);
-        yjit_reg_op(BIN(opt_ltlt), gen_opt_ltlt);
-        yjit_reg_op(BIN(opt_nil_p), gen_opt_nil_p);
-        yjit_reg_op(BIN(opt_empty_p), gen_opt_empty_p);
-        yjit_reg_op(BIN(opt_not), gen_opt_not);
-        yjit_reg_op(BIN(opt_size), gen_opt_size);
-        yjit_reg_op(BIN(opt_length), gen_opt_length);
-        yjit_reg_op(BIN(opt_regexpmatch2), gen_opt_regexpmatch2);
-        yjit_reg_op(BIN(opt_getinlinecache), gen_opt_getinlinecache);
-        yjit_reg_op(BIN(invokebuiltin), gen_invokebuiltin);
-        yjit_reg_op(BIN(opt_invokebuiltin_delegate), gen_opt_invokebuiltin_delegate);
-        yjit_reg_op(BIN(opt_invokebuiltin_delegate_leave), gen_opt_invokebuiltin_delegate);
-        yjit_reg_op(BIN(opt_case_dispatch), gen_opt_case_dispatch);
-        */
-        OP_BRANCHIF => Some(gen_branchif),
+        OP_OPT_EQ => Some(gen_opt_eq),
+        OP_OPT_NEQ => Some(gen_opt_neq),
+        //yjit_reg_op(BIN(opt_aref), gen_opt_aref);
+        //yjit_reg_op(BIN(opt_aset), gen_opt_aset);
+        OP_OPT_MULT => Some(gen_opt_mult),
+        OP_OPT_DIV => Some(gen_opt_div),
+        OP_OPT_LTLT => Some(gen_opt_ltlt),
+        OP_OPT_NIL_P => Some(gen_opt_nil_p),
+        OP_OPT_EMPTY_P => Some(gen_opt_empty_p),
+        OP_OPT_NOT => Some(gen_opt_not),
+        OP_OPT_SIZE => Some(gen_opt_size),
+        OP_OPT_LENGTH => Some(gen_opt_length),
+        OP_OPT_REGEXPMATCH2 => Some(gen_opt_regexpmatch2),
+        //yjit_reg_op(BIN(opt_getinlinecache), gen_opt_getinlinecache);
+        //yjit_reg_op(BIN(invokebuiltin), gen_invokebuiltin);
+        //yjit_reg_op(BIN(opt_invokebuiltin_delegate), gen_opt_invokebuiltin_delegate);
+        //yjit_reg_op(BIN(opt_invokebuiltin_delegate_leave), gen_opt_invokebuiltin_delegate);
+        //yjit_reg_op(BIN(opt_case_dispatch), gen_opt_case_dispatch);
+        //OP_BRANCHIF => Some(gen_branchif),
         //yjit_reg_op(BIN(branchunless), gen_branchunless);
         //yjit_reg_op(BIN(branchnil), gen_branchnil);
-        OP_JUMP => Some(gen_jump),
+        //OP_JUMP => Some(gen_jump),
         //yjit_reg_op(BIN(getblockparamproxy), gen_getblockparamproxy);
-        //yjit_reg_op(BIN(opt_send_without_block), gen_opt_send_without_block);
-        //yjit_reg_op(BIN(send), gen_send);
+        OP_OPT_SEND_WITHOUT_BLOCK => Some(gen_opt_send_without_block),
+        OP_SEND => Some(gen_send),
         //yjit_reg_op(BIN(invokesuper), gen_invokesuper);
         OP_LEAVE => Some(gen_leave),
 
@@ -5174,7 +5164,9 @@ fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn>
         OP_SETGLOBAL => Some(gen_setglobal),
         /*
         yjit_reg_op(BIN(anytostring), gen_anytostring);
-        yjit_reg_op(BIN(objtostring), gen_objtostring);
+        */
+        OP_OBJTOSTRING => Some(gen_objtostring),
+        /*
         yjit_reg_op(BIN(toregexp), gen_toregexp);
         */
         OP_GETSPECIAL => Some(gen_getspecial),

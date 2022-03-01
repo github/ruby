@@ -432,6 +432,11 @@ impl VALUE {
         let VALUE(us) = self;
         us as usize
     }
+
+    pub fn as_ptr<T>(self:VALUE) -> *const T {
+        let VALUE(us) = self;
+        us as *const T
+    }
 }
 
 impl VALUE {
