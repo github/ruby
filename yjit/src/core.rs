@@ -1424,7 +1424,7 @@ pub fn gen_branch(
     */
 }
 
-fn gen_jump_branch(cb: &mut CodeBlock, target0: CodePtr, target1: CodePtr, shape: BranchShape)
+fn gen_jump_branch(cb: &mut CodeBlock, target0: CodePtr, target1: Option<CodePtr>, shape: BranchShape)
 {
     if shape == BranchShape::Next1 {
         panic!("Branch shape Next1 not allowed in gen_jump_branch!");
@@ -1484,7 +1484,7 @@ pub fn gen_direct_jump(
     todo!("gen_direct_jump() unimplemented");
 }
 
-pub fn defer_compilation(jit: &JITState, cb: &mut CodeBlock, cur_ctx: &Context)
+pub fn defer_compilation(jit: &JITState, cur_ctx: &Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb)
 {
     if cur_ctx.chain_depth != 0 {
         panic!("Double defer!");
@@ -1498,20 +1498,19 @@ pub fn defer_compilation(jit: &JITState, cb: &mut CodeBlock, cur_ctx: &Context)
 
     next_ctx.chain_depth += 1;
 
-    /*
-    let branch = make_branch_entry(cb, cur_ctx, gen_jump_branch);
+    let block_rc = jit.get_block();
+    let branch_rc = make_branch_entry(jit.get_block(), cur_ctx, gen_jump_branch);
+    let mut branch = branch_rc.borrow_mut();
+    let block = block_rc.borrow();
 
     branch.target_ctxs[0] = next_ctx;
-    branch.targets[0] = BlockId { iseq: jit.get_block().blockid.iseq, idx: jit.get_insn_idx() };
-    branch.dst_addrs[0] = Some(get_branch_target(branch.targets[0], &next_ctx, &branch, 0));
+    branch.targets[0] = BlockId { iseq: block.blockid.iseq, idx: jit.get_insn_idx() };
+    branch.dst_addrs[0] = Some(get_branch_target(branch.targets[0], &next_ctx, &branch_rc, 0, ocb));
 
     // Call the branch generation function
     branch.start_addr = Some(cb.get_write_ptr());
-    gen_jump_branch(cb, branch.dst_addrs[0], CodePtr::from(ptr::null()), BranchShape::Default);
+    gen_jump_branch(cb, branch.dst_addrs[0].unwrap(), None, BranchShape::Default);
     branch.end_addr = Some(cb.get_write_ptr());
-    */
-
-    todo!("defer_compilation() not yet implemented");
 }
 
 /*
