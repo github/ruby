@@ -3,6 +3,7 @@
 
 use crate::cruby::*;
 use crate::options::*;
+use crate::codegen::{CodegenGlobals};
 use crate::yjit::{yjit_enabled_p};
 
 // YJIT exit counts for each instruction type
@@ -175,68 +176,75 @@ pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
     unsafe {
         let hash = rb_hash_new();
 
-        /*
+        // Inline and outlined code size
         {
-            VALUE key = ID2SYM(rb_intern("inline_code_size"));
-            VALUE value = LL2NUM((long long)cb->write_pos);
-            rb_hash_aset(hash, key, value);
+            // Get the inline and outlined code blocks
+            let cb = CodegenGlobals::get_inline_cb();
+            let ocb = CodegenGlobals::get_outlined_cb();
 
-            key = ID2SYM(rb_intern("outlined_code_size"));
-            value = LL2NUM((long long)ocb->write_pos);
-            rb_hash_aset(hash, key, value);
+            // Inline code size
+            //VALUE key = ID2SYM(rb_intern("inline_code_size"));
+            let value = VALUE::fixnum_from_usize(cb.get_write_pos());
+            //rb_hash_aset(hash, key, value);
+
+            // Outlined code size
+            //key = ID2SYM(rb_intern("outlined_code_size"));
+            //value = LL2NUM((long long)ocb->write_pos);
+            let value = VALUE::fixnum_from_usize(ocb.unwrap().get_write_pos());
+            //rb_hash_aset(hash, key, value);
         }
-        */
+
+
 
         /*
         // Indicate that the complete set of stats is available
         rb_hash_aset(hash, ID2SYM(rb_intern("all_stats")), Qtrue);
+        */
 
-        int64_t *counter_reader = (int64_t *)&yjit_runtime_counters;
-        int64_t *counter_reader_end = &yjit_runtime_counters.last_member;
 
-        // For each counter in yjit_counter_names, add that counter as
-        // a key/value pair.
 
-        // Iterate through comma separated counter name list
-        char *name_reader = yjit_counter_names;
-        char *counter_name_end = yjit_counter_names + sizeof(yjit_counter_names);
-        while (name_reader < counter_name_end && counter_reader < counter_reader_end) {
-            if (*name_reader == ',' || *name_reader == ' ') {
-                name_reader++;
-                continue;
-            }
 
-            // Compute length of counter name
-            int name_len;
-            char *name_end;
-            {
-                name_end = strchr(name_reader, ',');
-                if (name_end == NULL) break;
-                name_len = (int)(name_end - name_reader);
-            }
+        // For each counter we track
+        for counter_idx in 0..COUNTER_NAMES.len() {
+            let counter_name = COUNTER_NAMES[counter_idx];
+
 
             // Put counter into hash
-            VALUE key = ID2SYM(rb_intern2(name_reader, name_len));
-            VALUE value = LL2NUM((long long)*counter_reader);
-            rb_hash_aset(hash, key, value);
+            //VALUE key = ID2SYM(rb_intern2(name_reader, name_len));
+            //VALUE value = LL2NUM((long long)*counter_reader);
+            //rb_hash_aset(hash, key, value);
 
-            counter_reader++;
-            name_reader = name_end;
+
         }
+
+
+
 
         // For each entry in exit_op_count, add a stats entry with key "exit_INSTRUCTION_NAME"
         // and the value is the count of side exits for that instruction.
+        for op_idx in 0..VM_INSTRUCTION_SIZE {
+            // Look up Ruby's NUL-terminated insn name string
+            //let op_name = insn_name(op_idx);
 
-        char key_string[rb_vm_max_insn_name_size + 6]; // Leave room for "exit_" and a final NUL
-        for (int i = 0; i < VM_INSTRUCTION_SIZE; i++) {
-            const char *i_name = insn_name(i); // Look up Ruby's NUL-terminated insn name string
-            snprintf(key_string, rb_vm_max_insn_name_size + 6, "%s%s", "exit_", i_name);
 
+            //let key_string = "exit_" + op_name;
+
+
+
+            /*
             VALUE key = ID2SYM(rb_intern(key_string));
             VALUE value = LL2NUM((long long)exit_op_count[i]);
             rb_hash_aset(hash, key, value);
+            */
+
+
+
         }
-        */
+
+
+
+
+
 
         return hash;
     }
