@@ -91,7 +91,25 @@ extern "C" {
     pub fn rb_obj_is_kind_of(obj: VALUE, klass: VALUE) -> VALUE;
 }
 extern "C" {
+    pub fn rb_backref_get() -> VALUE;
+}
+extern "C" {
     pub fn rb_range_new(beg: VALUE, end: VALUE, excl: ::std::os::raw::c_int) -> VALUE;
+}
+extern "C" {
+    pub fn rb_reg_nth_match(n: ::std::os::raw::c_int, md: VALUE) -> VALUE;
+}
+extern "C" {
+    pub fn rb_reg_last_match(md: VALUE) -> VALUE;
+}
+extern "C" {
+    pub fn rb_reg_match_pre(md: VALUE) -> VALUE;
+}
+extern "C" {
+    pub fn rb_reg_match_post(md: VALUE) -> VALUE;
+}
+extern "C" {
+    pub fn rb_reg_match_last(md: VALUE) -> VALUE;
 }
 extern "C" {
     pub fn rb_ivar_get(obj: VALUE, name: ID) -> VALUE;

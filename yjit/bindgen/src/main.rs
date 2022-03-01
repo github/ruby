@@ -89,6 +89,16 @@ fn main() {
         .allowlist_function("rb_ec_str_resurrect")
         .allowlist_function("rb_str_concat_literals")
 
+        // From include/ruby/internal/intern/parse.h
+        .allowlist_function("rb_backref_get")
+
+        // From include/ruby/internal/intern/re.h
+        .allowlist_function("rb_reg_last_match")
+        .allowlist_function("rb_reg_match_pre")
+        .allowlist_function("rb_reg_match_post")
+        .allowlist_function("rb_reg_match_last")
+        .allowlist_function("rb_reg_nth_match")
+
         // `ruby_value_type` is a C enum and this stops it from
         // prefixing all the members with the name of the type
         .prepend_enum_name(false)

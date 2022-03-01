@@ -4794,6 +4794,7 @@ fn gen_toregexp(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
 
     KeepCompiling
 }
+*/
 
 fn gen_getspecial(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
@@ -4801,13 +4802,13 @@ fn gen_getspecial(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
     // key is only used when type == 0
     // A non-zero type determines which type of backref to fetch
     //rb_num_t key = jit_get_arg(jit, 0);
-    rb_num_t type = jit_get_arg(jit, 1);
+    let rtype = jit_get_arg(jit, 1).as_u64();
 
-    if (type == 0) {
+    if rtype == 0 {
         // not yet implemented
         return CantCompile;
     }
-    else if (type & 0x01) {
+    else if rtype & 0x01 != 0 {
         // Fetch a "special" backref based on a char encoded by shifting by 1
 
         // Can raise if matchdata uninitialized
@@ -4815,28 +4816,28 @@ fn gen_getspecial(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
 
         // call rb_backref_get()
         add_comment(cb, "rb_backref_get");
-        call_ptr(cb, REG0, (void *)rb_backref_get);
+        call_ptr(cb, REG0, rb_backref_get as *const u8);
         mov(cb, C_ARG_REGS[0], RAX);
 
-        switch (type >> 1) {
-          case '&':
-            add_comment(cb, "rb_reg_last_match");
-            call_ptr(cb, REG0, (void *)rb_reg_last_match);
-            break;
-          case '`':
-            add_comment(cb, "rb_reg_match_pre");
-            call_ptr(cb, REG0, (void *)rb_reg_match_pre);
-            break;
-          case '\'':
-            add_comment(cb, "rb_reg_match_post");
-            call_ptr(cb, REG0, (void *)rb_reg_match_post);
-            break;
-          case '+':
-            add_comment(cb, "rb_reg_match_last");
-            call_ptr(cb, REG0, (void *)rb_reg_match_last);
-            break;
-          default:
-            rb_bug("invalid back-ref");
+        let rt_u8: u8 = (rtype >> 1).try_into().unwrap();
+        match rt_u8.into() {
+            '&' => {
+                add_comment(cb, "rb_reg_last_match");
+                call_ptr(cb, REG0, rb_reg_last_match as *const u8);
+            },
+            '`' => {
+                add_comment(cb, "rb_reg_match_pre");
+                call_ptr(cb, REG0, rb_reg_match_pre as *const u8);
+            },
+            '\'' => {
+                add_comment(cb, "rb_reg_match_post");
+                call_ptr(cb, REG0, rb_reg_match_post as *const u8);
+            },
+            '+' => {
+                add_comment(cb, "rb_reg_match_last");
+                call_ptr(cb, REG0, rb_reg_match_last as *const u8);
+            },
+            _ => panic!("invalid back-ref"),
         }
 
         let stack_ret = ctx.stack_push(Type::Unknown);
@@ -4852,13 +4853,13 @@ fn gen_getspecial(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
 
         // call rb_backref_get()
         add_comment(cb, "rb_backref_get");
-        call_ptr(cb, REG0, (void *)rb_backref_get);
+        call_ptr(cb, REG0, rb_backref_get as *const u8);
 
         // rb_reg_nth_match((int)(type >> 1), backref);
         add_comment(cb, "rb_reg_nth_match");
-        mov(cb, C_ARG_REGS[0], imm_opnd(type >> 1));
+        mov(cb, C_ARG_REGS[0], imm_opnd((rtype >> 1).try_into().unwrap()));
         mov(cb, C_ARG_REGS[1], RAX);
-        call_ptr(cb, REG0, (void *)rb_reg_nth_match);
+        call_ptr(cb, REG0, rb_reg_nth_match as *const u8);
 
         let stack_ret = ctx.stack_push(Type::Unknown);
         mov(cb, stack_ret, RAX);
@@ -4866,7 +4867,6 @@ fn gen_getspecial(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
         KeepCompiling
     }
 }
-*/
 
 fn gen_getclassvariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
@@ -5183,8 +5183,8 @@ fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn>
         yjit_reg_op(BIN(anytostring), gen_anytostring);
         yjit_reg_op(BIN(objtostring), gen_objtostring);
         yjit_reg_op(BIN(toregexp), gen_toregexp);
-        yjit_reg_op(BIN(getspecial), gen_getspecial);
         */
+        OP_GETSPECIAL => Some(gen_getspecial),
         OP_GETCLASSVARIABLE => Some(gen_getclassvariable),
         OP_SETCLASSVARIABLE => Some(gen_setclassvariable),
 
