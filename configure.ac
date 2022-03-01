@@ -3787,7 +3787,8 @@ AS_CASE(["${YJIT_SUPPORT}"],
     AS_IF([test x"$YJIT_SUPPORT" = "xyes"],
             [rb_rust_target_subdir=release
              CARGO_BUILD_ARGS='--release'],
-            [rb_rust_target_subdir=debug])
+            [rb_rust_target_subdir=debug
+             CARGO_BUILD_ARGS='--features stats,asm_comments'])
     YJIT_LIBS="yjit/target/${rb_rust_target_subdir}/libyjit.a"
     YJIT_OBJ='yjit.$(OBJEXT)'
     AC_DEFINE(USE_YJIT, 1)

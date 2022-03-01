@@ -82,8 +82,9 @@
 // A lot of imported CRuby globals aren't all-caps
 #![allow(non_upper_case_globals)]
 
+use std::ffi::CString;
 use std::convert::From;
-use std::os::raw::{c_int, c_uint, c_long};
+use std::os::raw::{c_int, c_uint, c_long, c_char};
 
 // We check that we can do this with the configure script and a couple of
 // static asserts. u64 and not usize to play nice with lowering to x86.
@@ -102,16 +103,8 @@ extern "C" {
     #[link_name = "rb_yjit_alloc_exec_mem"] // we can rename functions with this attribute
     pub fn alloc_exec_mem(mem_size: u32) -> *mut u8;
 
-    // Alan suggests calling these from the C side, not exporting them to Rust
-    //pub fn RB_VM_LOCK_ENTER();
-    //pub fn RB_VM_LOCK_LEAVE();
-    //pub fn rb_vm_barrier();
-
-    //int insn = rb_vm_insn_addr2opcode((const void *)*exit_pc);
-
-    //pub fn rb_intern(???) -> ???
-    //pub fn ID2SYM(id: VALUE) -> VALUE;
-    //pub fn LL2NUM((long long)ocb->write_pos) -> VALUE;
+    #[link_name = "rb_insn_name"]
+    pub fn insn_name(insn: VALUE) -> *const c_char;
 
     #[link_name = "rb_insn_len"]
     pub fn raw_insn_len(v: VALUE) -> c_int;
@@ -134,14 +127,11 @@ extern "C" {
     #[link_name = "rb_get_cfp_ep"]
     pub fn get_cfp_ep(cfp: CfpPtr) -> *mut VALUE;
 
-    #[link_name = "rb_get_cme_defined_class"]
-    pub fn get_cme_defined_class(cme: * const rb_callable_method_entry_t) -> VALUE;
-
-    #[link_name = "rb_get_cme_def"]
-    pub fn get_cme_def(cme: * const rb_callable_method_entry_t) -> *const rb_method_definition_t;
-
     #[link_name = "rb_get_cme_def_type"]
     pub fn get_cme_def_type(cme: * const rb_callable_method_entry_t) -> rb_method_type_t;
+
+    #[link_name = "rb_get_cme_def_method_serial"]
+    pub fn get_cme_def_method_serial(cme: * const rb_callable_method_entry_t) -> u64;
 
     #[link_name = "rb_get_cme_def_body_attr_id"]
     pub fn get_cme_def_body_attr_id(cme: * const rb_callable_method_entry_t) -> ID;
@@ -152,14 +142,18 @@ extern "C" {
     #[link_name = "rb_get_cme_def_body_cfunc"]
     pub fn get_cme_def_body_cfunc(cme: * const rb_callable_method_entry_t) -> *mut rb_method_cfunc_t;
 
+    #[link_name = "rb_get_def_method_serial"]
+    /// While this returns a uintptr_t in C, we always use it as a Rust u64
+    pub fn get_def_method_serial(def: * const rb_method_definition_t) -> u64;
+
     #[link_name = "rb_get_mct_argc"]
     pub fn get_mct_argc(mct: * const rb_method_cfunc_t) -> c_int;
 
     #[link_name = "rb_get_mct_func"]
     pub fn get_mct_func(mct: * const rb_method_cfunc_t) -> *const u8;
 
-    #[link_name = "rb_def_iseq_ptr"]
-    pub fn def_iseq_ptr(def: *const rb_method_definition_t) -> IseqPtr;
+    #[link_name = "rb_get_def_iseq_ptr"]
+    pub fn get_def_iseq_ptr(def: *const rb_method_definition_t) -> IseqPtr;
 
     #[link_name = "rb_iseq_encoded_size"]
     pub fn get_iseq_encoded_size(iseq: IseqPtr) -> c_uint;
@@ -222,6 +216,8 @@ extern "C" {
     pub fn rb_aliased_callable_method_entry(me: *const rb_callable_method_entry_t) -> *const rb_callable_method_entry_t;
     pub fn rb_iseq_only_optparam_p(iseq: IseqPtr) -> bool;
     pub fn rb_iseq_only_kwparam_p(iseq: IseqPtr) -> bool;
+    pub fn rb_vm_getclassvariable(iseq: IseqPtr, cfp: CfpPtr, id: ID, ic: ICVARC) -> VALUE;
+    pub fn rb_vm_setclassvariable(iseq: IseqPtr, cfp: CfpPtr, id: ID, val: VALUE, ic: ICVARC) -> VALUE;
 
     #[link_name = "rb_vm_ci_argc"]
     pub fn vm_ci_argc(ci: * const rb_callinfo) -> c_int;
@@ -261,7 +257,7 @@ pub fn get_ruby_vm_frozen_core() -> VALUE
     VALUE(0xACE_DECADE)
 }
 
-/// Opaque iseq type for opaque iseq pointers.
+/// Opaque iseq type for opaque iseq pointers from vm_core.h
 /// See: https://doc.rust-lang.org/nomicon/ffi.html#representing-opaque-structs
 #[repr(C)]
 pub struct rb_iseq_t {
@@ -277,7 +273,7 @@ pub struct VALUE(pub usize);
 /// Pointer to an ISEQ
 pub type IseqPtr = *const rb_iseq_t;
 
-/// Opaque execution-context type
+/// Opaque execution-context type from vm_core.h
 #[repr(C)]
 pub struct rb_execution_context_struct {
     _data: [u8; 0],
@@ -285,25 +281,19 @@ pub struct rb_execution_context_struct {
         core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
 
-/// Pointer to an execution context (EC)
+/// Pointer to an execution context (rb_execution_context_struct)
 pub type EcPtr = *const rb_execution_context_struct;
 
-/// Opaque execution-context type
-#[repr(C)]
-pub struct iseq_inline_iv_cache_entry {
-    _data: [u8; 0],
-    _marker:
-        core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
-}
-
+// From method.h
 #[repr(C)]
 pub struct rb_method_definition_t {
     _data: [u8; 0],
     _marker:
         core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
+type rb_method_definition_struct = rb_method_definition_t;
 
-/// Opaque cfunc type
+/// Opaque cfunc type from method.h
 #[repr(C)]
 pub struct rb_method_cfunc_t {
     _data: [u8; 0],
@@ -311,7 +301,7 @@ pub struct rb_method_cfunc_t {
         core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
 
-/// Opaque FILE type
+/// Opaque FILE type from the C standard library
 #[repr(C)]
 pub struct FILE {
     _data: [u8; 0],
@@ -319,7 +309,7 @@ pub struct FILE {
         core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
 
-/// Opaque call-data type
+/// Opaque call-data type from vm_callinfo.h
 #[repr(C)]
 pub struct rb_call_data {
     _data: [u8; 0],
@@ -327,7 +317,7 @@ pub struct rb_call_data {
     core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
 
-/// Opaque call-info type
+/// Opaque call-info type from vm_callinfo.h
 #[repr(C)]
 pub struct rb_callinfo {
     _data: [u8; 0],
@@ -335,14 +325,7 @@ pub struct rb_callinfo {
     core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
 
-/// Opaque call-info type
-#[repr(C)]
-pub struct rb_callable_method_entry_t {
-    _data: [u8; 0],
-    _marker:
-    core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
-}
-
+/// Opaque control_frame (CFP) struct from vm_core.h
 #[repr(C)]
 pub struct rb_control_frame_struct {
     _data: [u8; 0],
@@ -442,6 +425,11 @@ impl VALUE {
         let VALUE(us) = self;
         us as usize
     }
+
+    pub fn as_ptr<T>(self:VALUE) -> *const T {
+        let VALUE(us) = self;
+        us as *const T
+    }
 }
 
 impl VALUE {
@@ -472,6 +460,17 @@ impl From<VALUE> for i32 {
         let VALUE(uimm) = value;
         assert!(uimm <= (i32::MAX as usize));
         uimm as i32
+    }
+}
+
+/// Produce a Ruby symbol from a Rust string slice
+pub fn str2sym(str: &str) -> VALUE
+{
+    let c_str = CString::new(str).unwrap();
+    let c_ptr: *const c_char = c_str.as_ptr();
+
+    unsafe {
+        rb_id2sym(rb_intern(c_ptr))
     }
 }
 

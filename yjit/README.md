@@ -66,9 +66,14 @@ You can double check your current architecture via the `arch` command:
 
 ```
 $ arch -x86_64 zsh
-aaron@tc-lan-adapter ~ % arch
+$ arch
 i386
-aaron@tc-lan-adapter ~ % 
+```
+
+You may need to set the default target for `rustc` to x86-64, e.g.
+
+```
+$ rustup default stable-x86_64-apple-darwin
 ```
 
 While in your i386 shell, install Cargo and Homebrew, then hack away!

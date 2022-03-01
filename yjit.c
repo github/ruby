@@ -254,6 +254,12 @@ rb_iseq_opcode_at_pc(const rb_iseq_t *iseq, const VALUE *pc)
     return rb_vm_insn_addr2opcode((const void *)at_pc);
 }
 
+const char*
+rb_insn_name(VALUE insn)
+{
+    return insn_name(insn);
+}
+
 // Query the instruction length in bytes for YARV opcode insn
 int
 rb_insn_len(VALUE insn)
@@ -281,21 +287,10 @@ rb_METHOD_ENTRY_VISI(rb_callable_method_entry_t *me) {
     return METHOD_ENTRY_VISI(me);
 }
 
-VALUE
-rb_get_cme_defined_class(rb_callable_method_entry_t* cme) {
-    return cme->defined_class;
-}
-
 rb_method_type_t
 rb_get_cme_def_type(rb_callable_method_entry_t* cme)
 {
     return cme->def->type;
-}
-
-rb_method_definition_t *
-rb_get_cme_def(rb_callable_method_entry_t* cme)
-{
-    return cme->def;
 }
 
 ID
@@ -316,6 +311,12 @@ rb_get_cme_def_body_cfunc(rb_callable_method_entry_t* cme)
     return UNALIGNED_MEMBER_PTR(cme->def, body.cfunc);
 }
 
+uintptr_t
+rb_get_def_method_serial(rb_method_definition_t *def)
+{
+    return def->method_serial;
+}
+
 int
 rb_get_mct_argc(rb_method_cfunc_t *mct)
 {
@@ -329,7 +330,7 @@ rb_get_mct_func(rb_method_cfunc_t *mct)
 }
 
 const rb_iseq_t*
-rb_def_iseq_ptr(rb_method_definition_t *def)
+rb_get_def_iseq_ptr(rb_method_definition_t *def)
 {
     return def_iseq_ptr(def);
 }
@@ -487,12 +488,6 @@ const struct rb_callinfo*
 rb_get_call_data_ci(struct rb_call_data* cd) {
     return cd->ci;
 }
-
-// The number of bytes counting from the beginning of the inline code block
-// that should not be changed. After patching for global invalidation, no one
-// should make changes to the invalidated code region anymore. This is used to
-// break out of invalidation race when there are multiple ractors.
-static uint32_t yjit_codepage_frozen_bytes = 0;
 
 #include "yjit_core.c"
 #include "yjit_iface.c"

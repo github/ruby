@@ -55,6 +55,12 @@ pub type ruby_value_type = u32;
 pub type st_data_t = ::std::os::raw::c_ulong;
 pub type st_index_t = st_data_t;
 extern "C" {
+    pub static mut rb_mKernel: VALUE;
+}
+extern "C" {
+    pub static mut rb_cBasicObject: VALUE;
+}
+extern "C" {
     pub static mut rb_cFalseClass: VALUE;
 }
 extern "C" {
@@ -62,6 +68,9 @@ extern "C" {
 }
 extern "C" {
     pub static mut rb_cInteger: VALUE;
+}
+extern "C" {
+    pub static mut rb_cModule: VALUE;
 }
 extern "C" {
     pub static mut rb_cNilClass: VALUE;
@@ -88,10 +97,34 @@ extern "C" {
     pub fn rb_hash_bulk_insert(argc: ::std::os::raw::c_long, argv: *const VALUE, hash: VALUE);
 }
 extern "C" {
+    pub fn rb_id2sym(id: ID) -> VALUE;
+}
+extern "C" {
+    pub fn rb_intern(name: *const ::std::os::raw::c_char) -> ID;
+}
+extern "C" {
     pub fn rb_obj_is_kind_of(obj: VALUE, klass: VALUE) -> VALUE;
 }
 extern "C" {
+    pub fn rb_backref_get() -> VALUE;
+}
+extern "C" {
     pub fn rb_range_new(beg: VALUE, end: VALUE, excl: ::std::os::raw::c_int) -> VALUE;
+}
+extern "C" {
+    pub fn rb_reg_nth_match(n: ::std::os::raw::c_int, md: VALUE) -> VALUE;
+}
+extern "C" {
+    pub fn rb_reg_last_match(md: VALUE) -> VALUE;
+}
+extern "C" {
+    pub fn rb_reg_match_pre(md: VALUE) -> VALUE;
+}
+extern "C" {
+    pub fn rb_reg_match_post(md: VALUE) -> VALUE;
+}
+extern "C" {
+    pub fn rb_reg_match_last(md: VALUE) -> VALUE;
 }
 extern "C" {
     pub fn rb_ivar_get(obj: VALUE, name: ID) -> VALUE;
@@ -315,6 +348,7 @@ extern "C" {
         elts: *const VALUE,
     ) -> VALUE;
 }
+pub type rb_serial_t = ::std::os::raw::c_ulonglong;
 extern "C" {
     pub fn rb_class_allocate_instance(klass: VALUE) -> VALUE;
 }
@@ -324,6 +358,24 @@ pub const METHOD_VISI_PRIVATE: rb_method_visibility_t = 2;
 pub const METHOD_VISI_PROTECTED: rb_method_visibility_t = 3;
 pub const METHOD_VISI_MASK: rb_method_visibility_t = 3;
 pub type rb_method_visibility_t = u32;
+#[repr(C)]
+pub struct rb_method_entry_struct {
+    pub flags: VALUE,
+    pub defined_class: VALUE,
+    pub def: *mut rb_method_definition_struct,
+    pub called_id: ID,
+    pub owner: VALUE,
+}
+pub type rb_method_entry_t = rb_method_entry_struct;
+#[repr(C)]
+pub struct rb_callable_method_entry_struct {
+    pub flags: VALUE,
+    pub defined_class: VALUE,
+    pub def: *mut rb_method_definition_struct,
+    pub called_id: ID,
+    pub owner: VALUE,
+}
+pub type rb_callable_method_entry_t = rb_callable_method_entry_struct;
 pub const VM_METHOD_TYPE_ISEQ: rb_method_type_t = 0;
 pub const VM_METHOD_TYPE_CFUNC: rb_method_type_t = 1;
 pub const VM_METHOD_TYPE_ATTRSET: rb_method_type_t = 2;
@@ -345,9 +397,22 @@ pub const OPTIMIZED_METHOD_TYPE_STRUCT_ASET: method_optimized_type = 4;
 pub const OPTIMIZED_METHOD_TYPE__MAX: method_optimized_type = 5;
 pub type method_optimized_type = u32;
 extern "C" {
+    pub fn rb_method_entry_at(obj: VALUE, id: ID) -> *const rb_method_entry_t;
+}
+extern "C" {
     pub fn rb_callable_method_entry(klass: VALUE, id: ID) -> *const rb_callable_method_entry_t;
 }
 pub type rb_num_t = ::std::os::raw::c_ulong;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct iseq_inline_iv_cache_entry {
+    pub entry: *mut rb_iv_index_tbl_entry,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct iseq_inline_cvar_cache_entry {
+    pub entry: *mut rb_cvar_class_tbl_entry,
+}
 pub const BOP_PLUS: ruby_basic_operators = 0;
 pub const BOP_MINUS: ruby_basic_operators = 1;
 pub const BOP_MULT: ruby_basic_operators = 2;
@@ -380,6 +445,7 @@ pub const BOP_OR: ruby_basic_operators = 28;
 pub const BOP_LAST_: ruby_basic_operators = 29;
 pub type ruby_basic_operators = u32;
 pub type IVC = *mut iseq_inline_iv_cache_entry;
+pub type ICVARC = *mut iseq_inline_cvar_cache_entry;
 pub const VM_FRAME_MAGIC_METHOD: u32 = 286326785;
 pub const VM_FRAME_MAGIC_BLOCK: u32 = 572653569;
 pub const VM_FRAME_MAGIC_CLASS: u32 = 858980353;
@@ -468,6 +534,18 @@ extern "C" {
 }
 extern "C" {
     pub fn rb_leaf_builtin_function(iseq: *const rb_iseq_t) -> *const rb_builtin_function;
+}
+#[repr(C)]
+pub struct rb_iv_index_tbl_entry {
+    pub index: u32,
+    pub class_serial: rb_serial_t,
+    pub class_value: VALUE,
+}
+#[repr(C)]
+pub struct rb_cvar_class_tbl_entry {
+    pub index: u32,
+    pub global_cvar_state: rb_serial_t,
+    pub class_value: VALUE,
 }
 extern "C" {
     pub fn rb_hash_new_with_size(size: st_index_t) -> VALUE;

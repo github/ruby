@@ -1105,7 +1105,7 @@ pub fn gen_entry_point(iseq: IseqPtr, insn_idx: u32, ec: EcPtr) -> Option<CodePt
     // The entry context makes no assumptions about types
     let blockid = BlockId { iseq, idx: insn_idx };
 
-    // Get the inline code block
+    // Get the inline and outlined code blocks
     let cb = CodegenGlobals::get_inline_cb();
     let ocb = CodegenGlobals::get_outlined_cb();
 
