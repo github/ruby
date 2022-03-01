@@ -222,6 +222,8 @@ extern "C" {
     pub fn rb_aliased_callable_method_entry(me: *const rb_callable_method_entry_t) -> *const rb_callable_method_entry_t;
     pub fn rb_iseq_only_optparam_p(iseq: IseqPtr) -> bool;
     pub fn rb_iseq_only_kwparam_p(iseq: IseqPtr) -> bool;
+    pub fn rb_vm_getclassvariable(iseq: IseqPtr, cfp: CfpPtr, id: ID, ic: ICVARC) -> VALUE;
+    pub fn rb_vm_setclassvariable(iseq: IseqPtr, cfp: CfpPtr, id: ID, val: VALUE, ic: ICVARC) -> VALUE;
 
     #[link_name = "rb_vm_ci_argc"]
     pub fn vm_ci_argc(ci: * const rb_callinfo) -> c_int;
@@ -287,14 +289,6 @@ pub struct rb_execution_context_struct {
 
 /// Pointer to an execution context (EC)
 pub type EcPtr = *const rb_execution_context_struct;
-
-/// Opaque execution-context type
-#[repr(C)]
-pub struct iseq_inline_iv_cache_entry {
-    _data: [u8; 0],
-    _marker:
-        core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
-}
 
 #[repr(C)]
 pub struct rb_method_definition_t {

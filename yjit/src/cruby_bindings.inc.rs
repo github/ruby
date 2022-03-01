@@ -315,6 +315,7 @@ extern "C" {
         elts: *const VALUE,
     ) -> VALUE;
 }
+pub type rb_serial_t = ::std::os::raw::c_ulonglong;
 extern "C" {
     pub fn rb_class_allocate_instance(klass: VALUE) -> VALUE;
 }
@@ -348,6 +349,16 @@ extern "C" {
     pub fn rb_callable_method_entry(klass: VALUE, id: ID) -> *const rb_callable_method_entry_t;
 }
 pub type rb_num_t = ::std::os::raw::c_ulong;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct iseq_inline_iv_cache_entry {
+    pub entry: *mut rb_iv_index_tbl_entry,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct iseq_inline_cvar_cache_entry {
+    pub entry: *mut rb_cvar_class_tbl_entry,
+}
 pub const BOP_PLUS: ruby_basic_operators = 0;
 pub const BOP_MINUS: ruby_basic_operators = 1;
 pub const BOP_MULT: ruby_basic_operators = 2;
@@ -380,6 +391,7 @@ pub const BOP_OR: ruby_basic_operators = 28;
 pub const BOP_LAST_: ruby_basic_operators = 29;
 pub type ruby_basic_operators = u32;
 pub type IVC = *mut iseq_inline_iv_cache_entry;
+pub type ICVARC = *mut iseq_inline_cvar_cache_entry;
 pub const VM_FRAME_MAGIC_METHOD: u32 = 286326785;
 pub const VM_FRAME_MAGIC_BLOCK: u32 = 572653569;
 pub const VM_FRAME_MAGIC_CLASS: u32 = 858980353;
@@ -468,6 +480,18 @@ extern "C" {
 }
 extern "C" {
     pub fn rb_leaf_builtin_function(iseq: *const rb_iseq_t) -> *const rb_builtin_function;
+}
+#[repr(C)]
+pub struct rb_iv_index_tbl_entry {
+    pub index: u32,
+    pub class_serial: rb_serial_t,
+    pub class_value: VALUE,
+}
+#[repr(C)]
+pub struct rb_cvar_class_tbl_entry {
+    pub index: u32,
+    pub global_cvar_state: rb_serial_t,
+    pub class_value: VALUE,
 }
 extern "C" {
     pub fn rb_hash_new_with_size(size: st_index_t) -> VALUE;

@@ -4866,21 +4866,20 @@ fn gen_getspecial(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
         KeepCompiling
     }
 }
+*/
 
-VALUE
-rb_vm_getclassvariable(const rb_iseq_t *iseq, const rb_control_frame_t *cfp, ID id, ICVARC ic);
-
-fn gen_getclassvariable(jitstate_t* jit, ctx_t* ctx, codeblock_t* cb)
+fn gen_getclassvariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // rb_vm_getclassvariable can raise exceptions.
     jit_prepare_routine_call(jit, ctx, cb, REG0);
 
-    mov(cb, C_ARG_REGS[0], member_opnd(REG_CFP, rb_control_frame_t, iseq));
+    let cfp_iseq_opnd = mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_ISEQ);
+    mov(cb, C_ARG_REGS[0], cfp_iseq_opnd);
     mov(cb, C_ARG_REGS[1], REG_CFP);
-    mov(cb, C_ARG_REGS[2], imm_opnd(jit_get_arg(jit, 0)));
-    mov(cb, C_ARG_REGS[3], imm_opnd(jit_get_arg(jit, 1)));
+    mov(cb, C_ARG_REGS[2], uimm_opnd(jit_get_arg(jit, 0).as_u64()));
+    mov(cb, C_ARG_REGS[3], uimm_opnd(jit_get_arg(jit, 1).as_u64()));
 
-    call_ptr(cb, REG0, (void *)rb_vm_getclassvariable);
+    call_ptr(cb, REG0, rb_vm_getclassvariable as *const u8);
 
     let stack_top = ctx.stack_push(Type::Unknown);
     mov(cb, stack_top, RAX);
@@ -4888,25 +4887,24 @@ fn gen_getclassvariable(jitstate_t* jit, ctx_t* ctx, codeblock_t* cb)
     KeepCompiling
 }
 
-VALUE
-rb_vm_setclassvariable(const rb_iseq_t *iseq, const rb_control_frame_t *cfp, ID id, VALUE val, ICVARC ic);
-
-fn gen_setclassvariable(jitstate_t* jit, ctx_t* ctx, codeblock_t* cb)
+fn gen_setclassvariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // rb_vm_setclassvariable can raise exceptions.
     jit_prepare_routine_call(jit, ctx, cb, REG0);
 
-    mov(cb, C_ARG_REGS[0], member_opnd(REG_CFP, rb_control_frame_t, iseq));
+    let cfp_iseq_opnd = mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_ISEQ);
+    mov(cb, C_ARG_REGS[0], cfp_iseq_opnd);
     mov(cb, C_ARG_REGS[1], REG_CFP);
-    mov(cb, C_ARG_REGS[2], imm_opnd(jit_get_arg(jit, 0)));
+    mov(cb, C_ARG_REGS[2], uimm_opnd(jit_get_arg(jit, 0).as_u64()));
     mov(cb, C_ARG_REGS[3], ctx.stack_pop(1));
-    mov(cb, C_ARG_REGS[4], imm_opnd(jit_get_arg(jit, 1)));
+    mov(cb, C_ARG_REGS[4], uimm_opnd(jit_get_arg(jit, 1).as_u64()));
 
-    call_ptr(cb, REG0, (void *)rb_vm_setclassvariable);
+    call_ptr(cb, REG0, rb_vm_setclassvariable as *const u8);
 
     KeepCompiling
 }
 
+/*
 fn gen_opt_getinlinecache(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     VALUE jump_offset = jit_get_arg(jit, 0);
@@ -5186,9 +5184,9 @@ fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn>
         yjit_reg_op(BIN(objtostring), gen_objtostring);
         yjit_reg_op(BIN(toregexp), gen_toregexp);
         yjit_reg_op(BIN(getspecial), gen_getspecial);
-        yjit_reg_op(BIN(getclassvariable), gen_getclassvariable);
-        yjit_reg_op(BIN(setclassvariable), gen_setclassvariable);
         */
+        OP_GETCLASSVARIABLE => Some(gen_getclassvariable),
+        OP_SETCLASSVARIABLE => Some(gen_setclassvariable),
 
         // Unimplemented opcode, YJIT won't generate code for this yet
         _ => None

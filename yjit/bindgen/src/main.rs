@@ -75,6 +75,8 @@ fn main() {
         // From vm_callinfo.h
         .allowlist_type("VM_CALL.*") // This doesn't work, possibly due to the odd structure of the #defines
         .allowlist_type("vm_call_flag_bits") // So instead we include the other enum and do the bit-shift ourselves
+        .blocklist_type("rb_call_data")
+        .opaque_type("rb_call_data")
 
         // From vm_core.h
         .allowlist_var("VM_BLOCK_HANDLER_NONE")
@@ -110,13 +112,12 @@ fn main() {
         .allowlist_var(".*_REDEFINED_OP_FLAG")
         .allowlist_type("rb_num_t")
         .allowlist_function("rb_callable_method_entry")
+        .allowlist_type("IVC") // pointer to iseq_inline_iv_cache_entry
+        .allowlist_type("iseq_inline_inv_cache_entry")
+        .allowlist_type("ICVARC") // pointer to iseq_inline_cvar_cache_entry
+        .allowlist_type("iseq_inline_cvar_cache_entry")
 
         // Opaque types from vm_core.h
-        .allowlist_type("IVC") // pointer to iseq_inline_iv_cache_entry
-        .opaque_type("iseq_inline_iv_cache_entry") // inline cache entry
-        .blocklist_type("iseq_inline_iv_cache_entry")
-        .blocklist_type("rb_call_data")
-        .opaque_type("rb_call_data")
         .blocklist_type("rb_execution_context_.*")
         .opaque_type("rb_execution_context_.*")
         .blocklist_type("rb_callable_method_entry_t")
