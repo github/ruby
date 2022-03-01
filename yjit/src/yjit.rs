@@ -12,7 +12,8 @@ use std::os::raw;
 /// See [rb_yjit_enabled_p]
 static YJIT_ENABLED: AtomicBool = AtomicBool::new(false);
 
-/// Parse one command-line option
+/// Parse one command-line option.
+/// This is called from ruby.c
 #[no_mangle]
 pub extern "C" fn rb_yjit_parse_option(str_ptr: *const raw::c_char) -> bool
 {
