@@ -183,26 +183,18 @@ pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
             let ocb = CodegenGlobals::get_outlined_cb();
 
             // Inline code size
-            //VALUE key = ID2SYM(rb_intern("inline_code_size"));
+            let key = str2sym("inline_code_size");
             let value = VALUE::fixnum_from_usize(cb.get_write_pos());
-            //rb_hash_aset(hash, key, value);
+            rb_hash_aset(hash, key, value);
 
             // Outlined code size
-            //key = ID2SYM(rb_intern("outlined_code_size"));
-            //value = LL2NUM((long long)ocb->write_pos);
+            let key = str2sym("outlined_code_size");
             let value = VALUE::fixnum_from_usize(ocb.unwrap().get_write_pos());
-            //rb_hash_aset(hash, key, value);
+            rb_hash_aset(hash, key, value);
         }
 
-
-
-        /*
         // Indicate that the complete set of stats is available
-        rb_hash_aset(hash, ID2SYM(rb_intern("all_stats")), Qtrue);
-        */
-
-
-
+        rb_hash_aset(hash, str2sym("all_stats"), Qtrue);
 
         // For each counter we track
         for counter_idx in 0..COUNTER_NAMES.len() {
@@ -217,14 +209,11 @@ pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
 
         }
 
-
-
-
         // For each entry in exit_op_count, add a stats entry with key "exit_INSTRUCTION_NAME"
         // and the value is the count of side exits for that instruction.
         for op_idx in 0..VM_INSTRUCTION_SIZE {
             // Look up Ruby's NUL-terminated insn name string
-            //let op_name = insn_name(op_idx);
+            let op_name = insn_name(VALUE::fixnum_from_usize(op_idx));
 
 
             //let key_string = "exit_" + op_name;
@@ -240,11 +229,6 @@ pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
 
 
         }
-
-
-
-
-
 
         return hash;
     }

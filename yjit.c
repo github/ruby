@@ -254,6 +254,12 @@ rb_iseq_opcode_at_pc(const rb_iseq_t *iseq, const VALUE *pc)
     return rb_vm_insn_addr2opcode((const void *)at_pc);
 }
 
+const char*
+rb_insn_name(VALUE insn)
+{
+    return insn_name(insn);
+}
+
 // Query the instruction length in bytes for YARV opcode insn
 int
 rb_insn_len(VALUE insn)
@@ -482,12 +488,6 @@ const struct rb_callinfo*
 rb_get_call_data_ci(struct rb_call_data* cd) {
     return cd->ci;
 }
-
-// The number of bytes counting from the beginning of the inline code block
-// that should not be changed. After patching for global invalidation, no one
-// should make changes to the invalidated code region anymore. This is used to
-// break out of invalidation race when there are multiple ractors.
-static uint32_t yjit_codepage_frozen_bytes = 0;
 
 #include "yjit_core.c"
 #include "yjit_iface.c"

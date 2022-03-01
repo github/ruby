@@ -264,7 +264,6 @@ static void cb_mark_all_executable(codeblock_t *cb);
 
 // Encode individual instructions into a code block
 static void call(codeblock_t *cb, x86opnd_t opnd);
-static void jmp_ptr(codeblock_t *cb, uint8_t *ptr);
 static void mov(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
 static inline void nop(codeblock_t *cb, uint32_t length);
 

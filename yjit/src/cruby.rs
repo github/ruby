@@ -82,8 +82,9 @@
 // A lot of imported CRuby globals aren't all-caps
 #![allow(non_upper_case_globals)]
 
+use std::ffi::CString;
 use std::convert::From;
-use std::os::raw::{c_int, c_uint, c_long};
+use std::os::raw::{c_int, c_uint, c_long, c_char};
 
 // We check that we can do this with the configure script and a couple of
 // static asserts. u64 and not usize to play nice with lowering to x86.
@@ -102,16 +103,8 @@ extern "C" {
     #[link_name = "rb_yjit_alloc_exec_mem"] // we can rename functions with this attribute
     pub fn alloc_exec_mem(mem_size: u32) -> *mut u8;
 
-    // Alan suggests calling these from the C side, not exporting them to Rust
-    //pub fn RB_VM_LOCK_ENTER();
-    //pub fn RB_VM_LOCK_LEAVE();
-    //pub fn rb_vm_barrier();
-
-    //int insn = rb_vm_insn_addr2opcode((const void *)*exit_pc);
-
-    //pub fn rb_intern(???) -> ???
-    //pub fn ID2SYM(id: VALUE) -> VALUE;
-    //pub fn LL2NUM((long long)ocb->write_pos) -> VALUE;
+    #[link_name = "rb_insn_name"]
+    pub fn insn_name(insn: VALUE) -> *const c_char;
 
     #[link_name = "rb_insn_len"]
     pub fn raw_insn_len(v: VALUE) -> c_int;
@@ -467,6 +460,17 @@ impl From<VALUE> for i32 {
         let VALUE(uimm) = value;
         assert!(uimm <= (i32::MAX as usize));
         uimm as i32
+    }
+}
+
+/// Produce a Ruby symbol from a Rust string slice
+pub fn str2sym(str: &str) -> VALUE
+{
+    let c_str = CString::new(str).unwrap();
+    let c_ptr: *const c_char = c_str.as_ptr();
+
+    unsafe {
+        rb_id2sym(rb_intern(c_ptr))
     }
 }
 
