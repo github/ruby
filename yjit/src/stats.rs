@@ -17,11 +17,19 @@ macro_rules! make_counters {
         #[derive(Default, Debug)]
         pub struct Counters { $(pub $counter_name: u64),+ }
 
+        // Global counters instance, initialized to zero
+        pub static mut COUNTERS: Counters = Counters { $($counter_name: 0),+ };
+
         // Counter names constant
         const COUNTER_NAMES: &'static [&'static str] = &[ $(stringify!($counter_name)),+ ];
 
-        // Global counters instance, initialized to zero
-        pub static mut COUNTERS: Counters = Counters { $($counter_name: 0),+ };
+        // Map a counter name string to a counter pointer
+        fn get_counter_ptr(name: &str) -> *mut u64 {
+            match name {
+                $( stringify!($counter_name) => { ptr_to_counter!($counter_name) } ),+
+                _ => panic!()
+            }
+        }
     }
 }
 
@@ -201,15 +209,14 @@ pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
         for counter_idx in 0..COUNTER_NAMES.len() {
             let counter_name = COUNTER_NAMES[counter_idx];
 
+            // Get the counter value
+            let counter_ptr = get_counter_ptr(counter_name);
+            let counter_val = *counter_ptr;
+
             // Put counter into hash
             let key = str2sym(counter_name);
-
-            //let value = VALUE::fixnum_from_usize(
-
-            //VALUE value = LL2NUM((long long)*counter_reader);
-            //rb_hash_aset(hash, key, value);
-
-
+            let value = VALUE::fixnum_from_usize(counter_val as usize);
+            rb_hash_aset(hash, key, value);
         }
 
         // For each entry in exit_op_count, add a stats entry with key "exit_INSTRUCTION_NAME"
