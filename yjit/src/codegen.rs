@@ -2516,38 +2516,39 @@ fn gen_opt_neq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &
     return gen_send_general(jit, ctx, cb, ocb, cd, None);
 }
 
-/*
 fn gen_opt_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let cd: *const rb_call_data = jit_get_arg(jit, 0).as_ptr();
-    int32_t argc = (int32_t)vm_ci_argc(cd->ci);
+    let argc = unsafe { vm_ci_argc((*cd).ci) };
 
     // Only JIT one arg calls like `ary[6]`
-    if (argc != 1) {
+    if argc != 1 {
         gen_counter_incr!(cb, oaref_argc_not_one);
         return CantCompile;
     }
 
     // Defer compilation so we can specialize base on a runtime receiver
-    if (!jit_at_current_insn(jit)) {
+    if !jit_at_current_insn(jit) {
         defer_compilation(jit, ctx, cb, ocb);
         return EndBlock;
     }
 
     // Remember the context on entry for adding guard chains
-    const ctx_t starting_context = *ctx;
+    let starting_context = ctx.clone();
 
     // Specialize base on compile time values
-    VALUE comptime_idx = jit_peek_at_stack(jit, ctx, 0);
-    VALUE comptime_recv = jit_peek_at_stack(jit, ctx, 1);
+    let comptime_idx = jit_peek_at_stack(jit, ctx, 0);
+    let comptime_recv = jit_peek_at_stack(jit, ctx, 1);
 
     // Create a side-exit to fall back to the interpreter
-    uint8_t *side_exit = get_side_exit(jit, ocb, ctx);
+    let side_exit = get_side_exit(jit, ocb, ctx);
 
-    if (CLASS_OF(comptime_recv) == rb_cArray && RB_FIXNUM_P(comptime_idx)) {
+    if comptime_recv.class_of() == unsafe { rb_cArray } && comptime_idx.fixnum_p() {
+        /*
         if (!assume_bop_not_redefined(jit, ARRAY_REDEFINED_OP_FLAG, BOP_AREF)) {
             return CantCompile;
         }
+        */
 
         // Pop the stack operands
         let idx_opnd = ctx.stack_pop(1);
@@ -2556,23 +2557,23 @@ fn gen_opt_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
 
         // if (SPECIAL_CONST_P(recv)) {
         // Bail if receiver is not a heap object
-        test(cb, REG0, imm_opnd(RUBY_IMMEDIATE_MASK));
+        test(cb, REG0, uimm_opnd(RUBY_IMMEDIATE_MASK as u64));
         jnz_ptr(cb, side_exit);
-        cmp(cb, REG0, imm_opnd(Qfalse));
+        cmp(cb, REG0, uimm_opnd(Qfalse.into()));
         je_ptr(cb, side_exit);
-        cmp(cb, REG0, imm_opnd(Qnil));
+        cmp(cb, REG0, uimm_opnd(Qnil.into()));
         je_ptr(cb, side_exit);
 
         // Bail if recv has a class other than ::Array.
         // BOP_AREF check above is only good for ::Array.
-        mov(cb, REG1, mem_opnd(64, REG0, offsetof(struct RBasic, klass)));
-        mov(cb, REG0, const_ptr_opnd((void *)rb_cArray));
+        mov(cb, REG1, mem_opnd(64, REG0, RUBY_OFFSET_RBASIC_KLASS));
+        mov(cb, REG0, uimm_opnd(unsafe { rb_cArray }.into()));
         cmp(cb, REG0, REG1);
         jit_chain_guard(JCC_JNE, jit, &starting_context, cb, OPT_AREF_MAX_CHAIN_DEPTH, side_exit);
 
         // Bail if idx is not a FIXNUM
         mov(cb, REG1, idx_opnd);
-        test(cb, REG1, imm_opnd(RUBY_FIXNUM_FLAG));
+        test(cb, REG1, uimm_opnd(RUBY_FIXNUM_FLAG as u64));
         jz_ptr(cb, counted_exit!(ocb, side_exit, oaref_arg_not_fixnum));
 
         // Call VALUE rb_ary_entry_internal(VALUE ary, long offset).
@@ -2581,7 +2582,7 @@ fn gen_opt_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
             mov(cb, RDI, recv_opnd);
             sar(cb, REG1, imm_opnd(1)); // Convert fixnum to int
             mov(cb, RSI, REG1);
-            call_ptr(cb, REG0, (void *)rb_ary_entry_internal);
+            call_ptr(cb, REG0, rb_ary_entry_internal as *const u8);
 
             // Push the return value onto the stack
             let stack_ret = ctx.stack_push(Type::Unknown);
@@ -2589,20 +2590,22 @@ fn gen_opt_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         }
 
         // Jump to next instruction. This allows guard chains to share the same successor.
-        jump_to_next_insn(jit, ctx);
+        jump_to_next_insn(jit, ctx, cb, ocb);
         return EndBlock;
     }
-    else if (CLASS_OF(comptime_recv) == rb_cHash) {
+    else if comptime_recv.class_of() == unsafe { rb_cHash } {
+        /*
         if (!assume_bop_not_redefined(jit, HASH_REDEFINED_OP_FLAG, BOP_AREF)) {
             return CantCompile;
         }
+        */
 
         let key_opnd = ctx.stack_opnd(0);
         let recv_opnd = ctx.stack_opnd(1);
 
         // Guard that the receiver is a hash
         mov(cb, REG0, recv_opnd);
-        jit_guard_known_klass(jit, ctx, cb, rb_cHash, StackOpnd(1), comptime_recv, OPT_AREF_MAX_CHAIN_DEPTH, side_exit);
+        jit_guard_known_klass(jit, ctx, cb, unsafe { rb_cHash }, StackOpnd(1), comptime_recv, OPT_AREF_MAX_CHAIN_DEPTH, side_exit);
 
         // Setup arguments for rb_hash_aref().
         mov(cb, C_ARG_REGS[0], REG0);
@@ -2611,51 +2614,51 @@ fn gen_opt_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         // Prepare to call rb_hash_aref(). It might call #hash on the key.
         jit_prepare_routine_call(jit, ctx, cb, REG0);
 
-        call_ptr(cb, REG0, (void *)rb_hash_aref);
+        call_ptr(cb, REG0, rb_hash_aref as *const u8);
 
         // Pop the key and the reciever
-        (void)ctx.stack_pop(2);
+        ctx.stack_pop(2);
 
         // Push the return value onto the stack
         let stack_ret = ctx.stack_push(Type::Unknown);
         mov(cb, stack_ret, RAX);
 
         // Jump to next instruction. This allows guard chains to share the same successor.
-        jump_to_next_insn(jit, ctx);
+        jump_to_next_insn(jit, ctx, cb, ocb);
         EndBlock
     }
     else {
         // General case. Call the [] method.
-        return gen_opt_send_without_block(jit, ctx, cb, ocb);
+        gen_opt_send_without_block(jit, ctx, cb, ocb)
     }
 }
 
 fn gen_opt_aset(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // Defer compilation so we can specialize on a runtime `self`
-    if (!jit_at_current_insn(jit)) {
+    if !jit_at_current_insn(jit) {
         defer_compilation(jit, ctx, cb, ocb);
         return EndBlock;
     }
 
-    VALUE comptime_recv = jit_peek_at_stack(jit, ctx, 2);
-    VALUE comptime_key  = jit_peek_at_stack(jit, ctx, 1);
+    let comptime_recv = jit_peek_at_stack(jit, ctx, 2);
+    let comptime_key  = jit_peek_at_stack(jit, ctx, 1);
 
     // Get the operands from the stack
     let recv = ctx.stack_opnd(2);
     let key = ctx.stack_opnd(1);
     let val = ctx.stack_opnd(0);
 
-    if (CLASS_OF(comptime_recv) == rb_cArray && FIXNUM_P(comptime_key)) {
-        uint8_t *side_exit = get_side_exit(jit, ocb, ctx);
+    if comptime_recv.class_of() == unsafe { rb_cArray } && comptime_key.fixnum_p() {
+        let side_exit = get_side_exit(jit, ocb, ctx);
 
         // Guard receiver is an Array
         mov(cb, REG0, recv);
-        jit_guard_known_klass(jit, ctx, cb, rb_cArray, StackOpnd(2), comptime_recv, SEND_MAX_DEPTH, side_exit);
+        jit_guard_known_klass(jit, ctx, cb, unsafe { rb_cArray }, StackOpnd(2), comptime_recv, SEND_MAX_DEPTH, side_exit);
 
         // Guard key is a fixnum
         mov(cb, REG0, key);
-        jit_guard_known_klass(jit, ctx, cb, rb_cInteger, StackOpnd(1), comptime_key, SEND_MAX_DEPTH, side_exit);
+        jit_guard_known_klass(jit, ctx, cb, unsafe { rb_cInteger }, StackOpnd(1), comptime_key, SEND_MAX_DEPTH, side_exit);
 
         // Call rb_ary_store
         mov(cb, C_ARG_REGS[0], recv);
@@ -2666,7 +2669,7 @@ fn gen_opt_aset(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         // We might allocate or raise
         jit_prepare_routine_call(jit, ctx, cb, REG0);
 
-        call_ptr(cb, REG0, (void *)rb_ary_store);
+        call_ptr(cb, REG0, rb_ary_store as *const u8);
 
         // rb_ary_store returns void
         // stored value should still be on stack
@@ -2677,15 +2680,15 @@ fn gen_opt_aset(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         let stack_ret = ctx.stack_push(Type::Unknown);
         mov(cb, stack_ret, REG0);
 
-        jump_to_next_insn(jit, ctx);
+        jump_to_next_insn(jit, ctx, cb, ocb);
         return EndBlock;
     }
-    else if (CLASS_OF(comptime_recv) == rb_cHash) {
-        uint8_t *side_exit = get_side_exit(jit, ocb, ctx);
+    else if comptime_recv.class_of() == unsafe { rb_cHash } {
+        let side_exit = get_side_exit(jit, ocb, ctx);
 
         // Guard receiver is a Hash
         mov(cb, REG0, recv);
-        jit_guard_known_klass(jit, ctx, cb, rb_cHash, StackOpnd(2), comptime_recv, SEND_MAX_DEPTH, side_exit);
+        jit_guard_known_klass(jit, ctx, cb, unsafe { rb_cHash }, StackOpnd(2), comptime_recv, SEND_MAX_DEPTH, side_exit);
 
         // Call rb_hash_aset
         mov(cb, C_ARG_REGS[0], recv);
@@ -2695,21 +2698,20 @@ fn gen_opt_aset(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         // We might allocate or raise
         jit_prepare_routine_call(jit, ctx, cb, REG0);
 
-        call_ptr(cb, REG0, (void *)rb_hash_aset);
+        call_ptr(cb, REG0, rb_hash_aset as *const u8);
 
         // Push the return value onto the stack
         ctx.stack_pop(3);
         let stack_ret = ctx.stack_push(Type::Unknown);
         mov(cb, stack_ret, RAX);
 
-        jump_to_next_insn(jit, ctx);
+        jump_to_next_insn(jit, ctx, cb, ocb);
         EndBlock
     }
     else {
-        return gen_opt_send_without_block(jit, ctx, cb, ocb);
+        gen_opt_send_without_block(jit, ctx, cb, ocb)
     }
 }
-*/
 
 fn gen_opt_and(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
@@ -4172,24 +4174,23 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
     EndBlock
 }
 
-/*
-fn gen_struct_aref(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const rb_callable_method_entry_t *cme, VALUE comptime_recv, VALUE comptime_recv_klass)
+fn gen_struct_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, comptime_recv: VALUE, comptime_recv_klass: VALUE) -> CodegenStatus
 {
-    if (vm_ci_argc(ci) != 0) {
+    if unsafe { vm_ci_argc(ci) } != 0 {
         return CantCompile;
     }
 
-    const unsigned int off = cme->def->body.optimized.index;
+    let off: i32 = unsafe { get_cme_def_body_optimized_index(cme) }.try_into().unwrap();
 
     // Confidence checks
-    RUBY_ASSERT_ALWAYS(RB_TYPE_P(comptime_recv, T_STRUCT));
-    RUBY_ASSERT_ALWAYS((long)off < RSTRUCT_LEN(comptime_recv));
+    assert!(unsafe { RB_TYPE_P(comptime_recv, RUBY_T_STRUCT) });
+    assert!((off as i64) < unsafe { RSTRUCT_LEN(comptime_recv) });
 
     // We are going to use an encoding that takes a 4-byte immediate which
     // limits the offset to INT32_MAX.
     {
-        uint64_t native_off = (uint64_t)off * (uint64_t)SIZEOF_VALUE;
-        if (native_off > (uint64_t)INT32_MAX) {
+        let native_off = (off as i64) * (SIZEOF_VALUE as i64);
+        if native_off > (i32::MAX as i64) {
             return CantCompile;
         }
     }
@@ -4198,7 +4199,7 @@ fn gen_struct_aref(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, co
     // length. So if our comptime_recv is embedded all runtime
     // structs of the same class should be as well, and the same is
     // true of the converse.
-    bool embedded = FL_TEST_RAW(comptime_recv, RSTRUCT_EMBED_LEN_MASK);
+    let embedded = unsafe { FL_TEST_RAW(comptime_recv, VALUE(RSTRUCT_EMBED_LEN_MASK)) };
 
     add_comment(cb, "struct aref");
 
@@ -4206,31 +4207,34 @@ fn gen_struct_aref(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, co
 
     mov(cb, REG0, recv);
 
-    if (embedded) {
-        mov(cb, REG0, member_opnd_idx(REG0, struct RStruct, as.ary, off));
+    if embedded != VALUE(0) {
+        let ary_elt = mem_opnd(64, REG0, RUBY_OFFSET_RSTRUCT_AS_ARY + (8 * off));
+        mov(cb, REG0, ary_elt);
     }
     else {
-        mov(cb, REG0, member_opnd(REG0, struct RStruct, as.heap.ptr));
-        mov(cb, REG0, mem_opnd(64, REG0, SIZEOF_VALUE * off));
+        let rstruct_ptr = mem_opnd(64, REG0, RUBY_OFFSET_RSTRUCT_AS_HEAP_PTR);
+        mov(cb, REG0, rstruct_ptr);
+        mov(cb, REG0, mem_opnd(64, REG0, (SIZEOF_VALUE as i32) * off));
     }
 
     let ret = ctx.stack_push(Type::Unknown);
     mov(cb, ret, REG0);
 
-    jump_to_next_insn(jit, ctx);
+    jump_to_next_insn(jit, ctx, cb, ocb);
     EndBlock
 }
 
-fn gen_struct_aset(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, const rb_callable_method_entry_t *cme, VALUE comptime_recv, VALUE comptime_recv_klass) {
-    if (vm_ci_argc(ci) != 1) {
+fn gen_struct_aset(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, comptime_recv: VALUE, comptime_recv_klass: VALUE) -> CodegenStatus
+{
+    if unsafe { vm_ci_argc(ci) } != 1 {
         return CantCompile;
     }
 
-    const unsigned int off = cme->def->body.optimized.index;
+    let off:i32 = unsafe { get_cme_def_body_optimized_index(cme) }.try_into().unwrap();
 
     // Confidence checks
-    RUBY_ASSERT_ALWAYS(RB_TYPE_P(comptime_recv, T_STRUCT));
-    RUBY_ASSERT_ALWAYS((long)off < RSTRUCT_LEN(comptime_recv));
+    assert!(unsafe { RB_TYPE_P(comptime_recv, RUBY_T_STRUCT) });
+    assert!((off as i64) < unsafe { RSTRUCT_LEN(comptime_recv) });
 
     add_comment(cb, "struct aset");
 
@@ -4238,17 +4242,16 @@ fn gen_struct_aset(jitstate_t *jit, ctx_t *ctx, const struct rb_callinfo *ci, co
     let recv = ctx.stack_pop(1);
 
     mov(cb, C_ARG_REGS[0], recv);
-    mov(cb, C_ARG_REGS[1], imm_opnd(off));
+    mov(cb, C_ARG_REGS[1], imm_opnd(off as i64));
     mov(cb, C_ARG_REGS[2], val);
-    call_ptr(cb, REG0, (void *)RSTRUCT_SET);
+    call_ptr(cb, REG0, RSTRUCT_SET as *const u8);
 
     let ret = ctx.stack_push(Type::Unknown);
     mov(cb, ret, RAX);
 
-    jump_to_next_insn(jit, ctx);
+    jump_to_next_insn(jit, ctx, cb, ocb);
     EndBlock
 }
-*/
 
 fn gen_send_general(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, cd: *const rb_call_data, block: Option<IseqPtr>) -> CodegenStatus
 {
@@ -4434,12 +4437,10 @@ fn gen_send_general(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
                         return CantCompile;
                     },
                     OPTIMIZED_METHOD_TYPE_STRUCT_AREF => {
-                        todo!();
-                        //return gen_struct_aref(jit, ctx, ci, cme, comptime_recv, comptime_recv_klass);
+                        return gen_struct_aref(jit, ctx, cb, ocb, ci, cme, comptime_recv, comptime_recv_klass);
                     },
                     OPTIMIZED_METHOD_TYPE_STRUCT_ASET => {
-                        todo!();
-                        //return gen_struct_aset(jit, ctx, ci, cme, comptime_recv, comptime_recv_klass);
+                        return gen_struct_aset(jit, ctx, cb, ocb, ci, cme, comptime_recv, comptime_recv_klass);
                     },
                     _ => {
                         panic!("unknown optimized method type!")
@@ -5119,8 +5120,8 @@ fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn>
 
         OP_OPT_EQ => Some(gen_opt_eq),
         OP_OPT_NEQ => Some(gen_opt_neq),
-        //yjit_reg_op(BIN(opt_aref), gen_opt_aref);
-        //yjit_reg_op(BIN(opt_aset), gen_opt_aset);
+        OP_OPT_AREF => Some(gen_opt_aref),
+        OP_OPT_ASET => Some(gen_opt_aset),
         OP_OPT_MULT => Some(gen_opt_mult),
         OP_OPT_DIV => Some(gen_opt_div),
         OP_OPT_LTLT => Some(gen_opt_ltlt),

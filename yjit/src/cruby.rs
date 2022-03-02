@@ -143,6 +143,9 @@ extern "C" {
     #[link_name = "rb_get_cme_def_body_optimized_type"]
     pub fn get_cme_def_body_optimized_type(cme: * const rb_callable_method_entry_t) -> method_optimized_type;
 
+    #[link_name = "rb_get_cme_def_body_optimized_index"]
+    pub fn get_cme_def_body_optimized_index(cme: * const rb_callable_method_entry_t) -> c_uint;
+
     #[link_name = "rb_get_cme_def_body_cfunc"]
     pub fn get_cme_def_body_cfunc(cme: * const rb_callable_method_entry_t) -> *mut rb_method_cfunc_t;
 
@@ -210,6 +213,9 @@ extern "C" {
     #[link_name = "rb_yarv_str_eql_internal"]
     pub fn rb_str_eql_internal(str1: VALUE, str2: VALUE) -> VALUE;
 
+    #[link_name = "rb_yarv_ary_entry_internal"]
+    pub fn rb_ary_entry_internal(ary: VALUE, offset: c_long) -> VALUE;
+
     #[link_name = "rb_FL_TEST"]
     pub fn FL_TEST(obj: VALUE, flags: VALUE) -> VALUE;
 
@@ -224,6 +230,12 @@ extern "C" {
 
     #[link_name = "rb_GET_IC_SERIAL"]
     pub fn GET_IC_SERIAL(ice: *const iseq_inline_constant_cache_entry) -> rb_serial_t;
+
+    #[link_name = "rb_RSTRUCT_LEN"]
+    pub fn RSTRUCT_LEN(st: VALUE) -> c_long;
+
+    #[link_name = "rb_RSTRUCT_SET"]
+    pub fn RSTRUCT_SET(st: VALUE, k: c_int, v: VALUE);
 
     // Ruby only defines these in vm_insnhelper.c, not in any header.
     // Parsing it would result in a lot of duplicate definitions.
@@ -339,9 +351,9 @@ pub struct FILE {
         core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
 
-/// Opaque call-data type from vm_callinfo.h
+/// Opaque call-cache type from vm_callinfo.h
 #[repr(C)]
-pub struct rb_call_data {
+pub struct rb_callcache {
     _data: [u8; 0],
     _marker:
     core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
@@ -598,6 +610,9 @@ pub const RARRAY_EMBED_FLAG:usize = RUBY_FL_USER_1;
 pub const RARRAY_EMBED_LEN_SHIFT:usize = RUBY_FL_USHIFT + 3;
 pub const RARRAY_EMBED_LEN_MASK:usize = RUBY_FL_USER_3 | RUBY_FL_USER_4;
 
+// From internal/struct.h
+pub const RSTRUCT_EMBED_LEN_MASK:usize = RUBY_FL_USER_2 | RUBY_FL_USER_1;
+
 // We'll need to encode a lot of Ruby struct/field offsets as constants unless we want to
 // redeclare all the Ruby C structs and write our own offsetof macro. For now, we use constants.
 pub const RUBY_OFFSET_RBASIC_FLAGS:i32 = 0;  // struct RBasic, field "flags"
@@ -605,6 +620,9 @@ pub const RUBY_OFFSET_RBASIC_KLASS:i32 = 8;  // struct RBasic, field "klass"
 pub const RUBY_OFFSET_RARRAY_AS_HEAP_LEN:i32 = 16;  // struct RArray, subfield "as.heap.len"
 pub const RUBY_OFFSET_RARRAY_AS_ARY:i32 = 16;  // struct RArray, subfield "as.ary"
 pub const RUBY_OFFSET_RARRAY_AS_HEAP_PTR:i32 = 16;  // struct RArray, subfield "as.heap.ptr"
+
+pub const RUBY_OFFSET_RSTRUCT_AS_HEAP_PTR:i32 = 24;  // struct RStruct, subfield "as.heap.ptr"
+pub const RUBY_OFFSET_RSTRUCT_AS_ARY:i32 = 16;  // struct RStruct, subfield "as.ary"
 
 pub const RUBY_OFFSET_ROBJECT_AS_ARY:i32 = 16; // struct RObject, subfield "as.ary"
 pub const RUBY_OFFSET_ROBJECT_AS_HEAP_NUMIV:i32 = 16; // struct RObject, subfield "as.heap.numiv"

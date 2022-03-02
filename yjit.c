@@ -351,6 +351,12 @@ rb_get_cme_def_body_optimized_type(rb_callable_method_entry_t* cme)
     return cme->def->body.optimized.type;
 }
 
+unsigned int
+rb_get_cme_def_body_optimized_index(rb_callable_method_entry_t* cme)
+{
+    return cme->def->body.optimized.index;
+}
+
 rb_method_cfunc_t*
 rb_get_cme_def_body_cfunc(rb_callable_method_entry_t* cme)
 {
@@ -534,6 +540,13 @@ rb_yarv_str_eql_internal(VALUE str1, VALUE str2)
     return rb_str_eql_internal(str1, str2);
 }
 
+// YJIT needs this function to never allocate and never raise
+VALUE
+rb_yarv_ary_entry_internal(VALUE ary, long offset)
+{
+    return rb_ary_entry_internal(ary, offset);
+}
+
 // The FL_TEST() macro
 VALUE
 rb_FL_TEST(VALUE obj, VALUE flags)
@@ -559,6 +572,21 @@ rb_serial_t
 rb_GET_IC_SERIAL(const struct iseq_inline_constant_cache_entry *ice)
 {
     return GET_IC_SERIAL(ice);
+}
+
+long
+rb_RSTRUCT_LEN(VALUE st)
+{
+    return RSTRUCT_LEN(st);
+}
+
+// There are RSTRUCT_SETs in ruby/internal/core/rstruct.h and internal/struct.h
+// with different types (int vs long) for k. Here we use the one from ruby/internal/core/rstruct.h,
+// which takes an int.
+void
+rb_RSTRUCT_SET(VALUE st, int k, VALUE v)
+{
+    RSTRUCT_SET(st, k, v);
 }
 
 const struct rb_callinfo*
