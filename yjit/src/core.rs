@@ -1578,11 +1578,12 @@ verify_blockid(const blockid_t blockid)
 }
 */
 
-/*
 // Invalidate one specific block version
-static void
-invalidate_block_version(block_t *block)
+fn invalidate_block_version(block: &BlockRef)
 {
+    todo!("invalidate_block_version not yet implemented");
+
+    /*
     ASSERT_vm_locking();
 
     // TODO: want to assert that all other ractors are stopped here. Can't patch
@@ -1712,8 +1713,8 @@ invalidate_block_version(block_t *block)
     cb_mark_all_executable(cb);
 
     // fprintf(stderr, "invalidation done\n");
+    */
 }
-*/
 
 #[cfg(test)]
 mod tests {
