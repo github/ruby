@@ -17794,9 +17794,6 @@ yjit.$(OBJEXT): {$(VPATH)}yjit.rb
 yjit.$(OBJEXT): {$(VPATH)}yjit.rbinc
 yjit.$(OBJEXT): {$(VPATH)}yjit_asm.c
 yjit.$(OBJEXT): {$(VPATH)}yjit_asm.h
-yjit.$(OBJEXT): {$(VPATH)}yjit_codegen.c
-yjit.$(OBJEXT): {$(VPATH)}yjit_codegen.h
-yjit.$(OBJEXT): {$(VPATH)}yjit_core.c
 yjit.$(OBJEXT): {$(VPATH)}yjit_core.h
 yjit.$(OBJEXT): {$(VPATH)}yjit_iface.c
 yjit.$(OBJEXT): {$(VPATH)}yjit_iface.h

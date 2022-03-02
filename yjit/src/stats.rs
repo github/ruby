@@ -267,6 +267,7 @@ pub extern "C" fn rb_yjit_collect_binding_set() {
 #[no_mangle]
 pub extern "C" fn rb_yjit_count_side_exit_op(exit_pc: *const VALUE) -> *const VALUE
 {
+    #[cfg(not(test))]
     unsafe {
         // Get the opcode from the encoded insn handler at this PC
         let opcode = rb_vm_insn_addr2opcode((*exit_pc).as_ptr());

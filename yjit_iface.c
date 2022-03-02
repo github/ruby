@@ -9,7 +9,6 @@
 #include "internal/class.h"
 #include "yjit.h"
 #include "yjit_iface.h"
-#include "yjit_codegen.h"
 #include "yjit_core.h"
 #include "darray.h"
 
@@ -157,7 +156,7 @@ block_set_invalidate_i(st_data_t key, st_data_t v, st_data_t ignore)
     block_t *version = (block_t *)key;
 
     // Thankfully, st_table supports deleting while iterating.
-    invalidate_block_version(version);
+    //invalidate_block_version(version);
 
     return ST_CONTINUE;
 }
