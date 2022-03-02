@@ -215,12 +215,8 @@ pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
         // For each entry in exit_op_count, add a stats entry with key "exit_INSTRUCTION_NAME"
         // and the value is the count of side exits for that instruction.
         for op_idx in 0..VM_INSTRUCTION_SIZE {
-
-            /*
             // Look up Ruby's NULL-terminated insn name string
-            let op_name = insn_name(VALUE::fixnum_from_usize(op_idx));
-
-            println!("{}: {}", op_idx, op_name.is_null());
+            let op_name = insn_name(VALUE(op_idx));
 
             let op_name = CStr::from_ptr(op_name).to_str().unwrap();
             let key_string = "exit_".to_owned() + op_name;
@@ -228,8 +224,6 @@ pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
             let key = str2sym(&key_string);
             let value = VALUE::fixnum_from_usize(EXIT_OP_COUNT[op_idx] as usize);
             rb_hash_aset(hash, key, value);
-            */
-
         }
 
         return hash;
