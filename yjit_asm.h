@@ -222,31 +222,6 @@ static const x86opnd_t R13B = { OPND_REG, 8, .as.reg = { REG_GP, 13 }};
 static const x86opnd_t R14B = { OPND_REG, 8, .as.reg = { REG_GP, 14 }};
 static const x86opnd_t R15B = { OPND_REG, 8, .as.reg = { REG_GP, 15 }};
 
-// C argument registers
-#define NUM_C_ARG_REGS 6
-#define C_ARG_REGS ( (x86opnd_t[]){ RDI, RSI, RDX, RCX, R8, R9 } )
-
-// Compute the number of bits needed to store a signed or unsigned value
-static uint32_t sig_imm_size(int64_t imm);
-
-// Constant pointer operand
-static x86opnd_t const_ptr_opnd(const void *ptr);
-
-// Struct member operand
-#define member_opnd(base_reg, struct_type, member_name) mem_opnd( \
-    8 * sizeof(((struct_type*)0)->member_name), \
-    base_reg,                                   \
-    offsetof(struct_type, member_name)          \
-)
-
-// Struct member operand with an array index
-#define member_opnd_idx(base_reg, struct_type, member_name, idx) mem_opnd( \
-    8 * sizeof(((struct_type*)0)->member_name[0]),     \
-    base_reg,                                       \
-    (offsetof(struct_type, member_name) +           \
-     sizeof(((struct_type*)0)->member_name[0]) * idx)  \
-)
-
 // Allocate executable memory
 static uint8_t *alloc_exec_mem(uint32_t mem_size);
 
@@ -254,17 +229,8 @@ static uint8_t *alloc_exec_mem(uint32_t mem_size);
 static void cb_init(codeblock_t *cb, uint8_t *mem_block, uint32_t mem_size);
 static void cb_set_pos(codeblock_t *cb, uint32_t pos);
 static uint8_t *cb_get_ptr(const codeblock_t *cb, uint32_t index);
-static uint8_t *cb_get_write_ptr(const codeblock_t *cb);
-static void cb_write_byte(codeblock_t *cb, uint8_t byte);
-static void cb_write_bytes(codeblock_t *cb, uint32_t num_bytes, ...);
-static void cb_write_int(codeblock_t *cb, uint64_t val, uint32_t num_bits);
 static void cb_mark_all_writeable(codeblock_t *cb);
-static void cb_mark_position_writeable(codeblock_t *cb, uint32_t write_pos);
+//static void cb_mark_position_writeable(codeblock_t *cb, uint32_t write_pos);
 static void cb_mark_all_executable(codeblock_t *cb);
-
-// Encode individual instructions into a code block
-static void call(codeblock_t *cb, x86opnd_t opnd);
-static void mov(codeblock_t *cb, x86opnd_t dst, x86opnd_t src);
-static inline void nop(codeblock_t *cb, uint32_t length);
 
 #endif

@@ -153,7 +153,7 @@ static const rb_data_type_t yjit_root_type = {
 static int
 block_set_invalidate_i(st_data_t key, st_data_t v, st_data_t ignore)
 {
-    block_t *version = (block_t *)key;
+    //block_t *version = (block_t *)key;
 
     // Thankfully, st_table supports deleting while iterating.
     //invalidate_block_version(version);
