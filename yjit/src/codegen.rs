@@ -434,7 +434,7 @@ fn gen_exit(exit_pc: *mut VALUE, ctx: &Context, cb: &mut CodeBlock) -> CodePtr
     #[cfg(feature = "stats")]
     if get_option!(gen_stats) {
         mov(cb, RDI, const_ptr_opnd(exit_pc as *const u8));
-        call_ptr(cb, RSI, yjit_count_side_exit_op as *const u8);
+        call_ptr(cb, RSI, rb_yjit_count_side_exit_op as *const u8);
     }
 
     pop(cb, REG_SP);

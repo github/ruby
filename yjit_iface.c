@@ -580,16 +580,6 @@ VALUE rb_yjit_reset_stats_bang(rb_execution_context_t *ec, VALUE self);
 // Preprocessed yjit.rb generated during build
 #include "yjit.rbinc"
 
-#if YJIT_STATS
-static const VALUE *
-yjit_count_side_exit_op(const VALUE *exit_pc)
-{
-    int insn = rb_vm_insn_addr2opcode((const void *)*exit_pc);
-    exit_op_count[insn]++;
-    return exit_pc; // This function must return exit_pc!
-}
-#endif
-
 void
 rb_yjit_iseq_mark(const struct rb_iseq_constant_body *body)
 {

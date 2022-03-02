@@ -265,11 +265,16 @@ pub extern "C" fn rb_yjit_collect_binding_set() {
 }
 
 #[no_mangle]
-pub extern "C" fn yjit_count_side_exit_op(exit_pc: *const VALUE) -> *const VALUE
+pub extern "C" fn rb_yjit_count_side_exit_op(exit_pc: *const VALUE) -> *const VALUE
 {
-    // FIXME
-    //int insn = rb_vm_insn_addr2opcode((const void *)*exit_pc);
-    //exit_op_count[insn]++;
+    unsafe {
+        // Get the opcode from the encoded insn handler at this PC
+        let opcode = rb_vm_insn_addr2opcode((*exit_pc).as_ptr());
 
-    return exit_pc; // This function must return exit_pc!
+        // Increment the exit op count for this opcode
+        EXIT_OP_COUNT[opcode as usize] += 1;
+    };
+
+    // This function must return exit_pc!
+    return exit_pc;
 }
