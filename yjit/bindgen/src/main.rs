@@ -63,6 +63,9 @@ fn main() {
         // From internal/array.h
         .allowlist_function("rb_ec_ary_new_from_values")
 
+        // From include/ruby/internal/intern/class.h
+        .allowlist_function("rb_singleton_class")
+
         // VALUE variables for Ruby class objects
         // From include/ruby/internal/globals.h
         .allowlist_var("rb_cBasicObject")
@@ -74,6 +77,7 @@ fn main() {
         .allowlist_var("rb_cSymbol")
         .allowlist_var("rb_cFloat")
         .allowlist_var("rb_cString")
+        .allowlist_var("rb_cThread")
 
         // From ruby/internal/globals.h
         .allowlist_var("rb_mKernel")

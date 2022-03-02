@@ -3331,26 +3331,25 @@ fn yjit_reg_method(klass: VALUE, mid_str: &str, gen_fn: MethodGenFn)
     CodegenGlobals::register_codegen_method(method_serial, gen_fn);
 }
 
-/*
 // Codegen for rb_obj_not().
 // Note, caller is responsible for generating all the right guards, including
 // arity guards.
 fn jit_rb_obj_not(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
 {
-    const val_type_t recv_opnd = ctx.get_opnd_type(StackOpnd(0));
+    let recv_opnd = ctx.get_opnd_type(StackOpnd(0));
 
-    if (recv_opnd == Type::Nil || recv_opnd == Type::False) {
+    if recv_opnd == Type::Nil || recv_opnd == Type::False {
         add_comment(cb, "rb_obj_not(nil_or_false)");
         ctx.stack_pop(1);
         let out_opnd = ctx.stack_push(Type::True);
-        mov(cb, out_opnd, imm_opnd(Qtrue));
+        mov(cb, out_opnd, uimm_opnd(Qtrue.into()));
     }
-    else if (recv_opnd.is_heap || recv_opnd != Type::Unknown) {
+    else if recv_opnd.is_heap() || recv_opnd != Type::Unknown {
         // Note: recv_opnd != Type::Nil && recv_opnd != Type::False.
         add_comment(cb, "rb_obj_not(truthy)");
         ctx.stack_pop(1);
         let out_opnd = ctx.stack_push(Type::False);
-        mov(cb, out_opnd, imm_opnd(Qfalse));
+        mov(cb, out_opnd, uimm_opnd(Qfalse.into()));
     }
     else {
         // jit_guard_known_klass() already ran on the receiver which should
@@ -3360,7 +3359,6 @@ fn jit_rb_obj_not(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
     }
     true
 }
-*/
 
 // Codegen for rb_true()
 fn jit_rb_true(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
@@ -3401,20 +3399,13 @@ fn jit_rb_obj_equal(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
     true
 }
 
-/*
-static VALUE
-yjit_str_bytesize(VALUE str)
-{
-    return LONG2NUM(RSTRING_LEN(str));
-}
-
 fn jit_rb_str_bytesize(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
 {
     add_comment(cb, "String#bytesize");
 
     let recv = ctx.stack_pop(1);
     mov(cb, C_ARG_REGS[0], recv);
-    call_ptr(cb, REG0, (void *)&yjit_str_bytesize);
+    call_ptr(cb, REG0, rb_str_bytesize as *const u8);
 
     let out_opnd = ctx.stack_push(Type::Fixnum);
     mov(cb, out_opnd, RAX);
@@ -3428,7 +3419,7 @@ fn jit_rb_str_bytesize(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock
 // this situation happens a lot in some workloads.
 fn jit_rb_str_to_s(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
 {
-    if (recv_known_klass && *recv_known_klass == rb_cString) {
+    if !known_recv_class.is_null() && unsafe { *known_recv_class == rb_cString } {
         add_comment(cb, "to_s on plain string");
         // The method returns the receiver, which is already on the stack.
         // No stack movement.
@@ -3443,16 +3434,18 @@ fn jit_thread_s_current(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBloc
     ctx.stack_pop(1);
 
     // ec->thread_ptr
-    mov(cb, REG0, member_opnd(REG_EC, rb_execution_context_t, thread_ptr));
+    let ec_thread_ptr = mem_opnd(64, REG_EC, RUBY_OFFSET_EC_THREAD_PTR);
+    mov(cb, REG0, ec_thread_ptr);
 
     // thread->self
-    mov(cb, REG0, member_opnd(REG0, rb_thread_t, self));
+    let thread_self = mem_opnd(64, REG0, RUBY_OFFSET_THREAD_SELF);
+    mov(cb, REG0, thread_self);
 
     let stack_ret = ctx.stack_push(Type::UnknownHeap);
     mov(cb, stack_ret, REG0);
     true
 }
-*/
+
 // Check if we know how to codegen for a particular cfunc method
 fn lookup_cfunc_codegen(def: *const rb_method_definition_t) -> Option<MethodGenFn>
 {
@@ -5172,7 +5165,7 @@ fn get_method_gen_fn()
     // All these class constants are mutable statics.
     unsafe {
         // Specialization for C methods. See yjit_reg_method() for details.
-        //yjit_reg_method(rb_cBasicObject, "!", jit_rb_obj_not);
+        yjit_reg_method(rb_cBasicObject, "!", jit_rb_obj_not);
 
         yjit_reg_method(rb_cNilClass, "nil?", jit_rb_true);
         yjit_reg_method(rb_mKernel, "nil?", jit_rb_false);
@@ -5183,7 +5176,7 @@ fn get_method_gen_fn()
         yjit_reg_method(rb_cModule, "==", jit_rb_obj_equal);
         yjit_reg_method(rb_cSymbol, "==", jit_rb_obj_equal);
         yjit_reg_method(rb_cSymbol, "===", jit_rb_obj_equal);
-        /*
+
         // rb_str_to_s() methods in string.c
         yjit_reg_method(rb_cString, "to_s", jit_rb_str_to_s);
         yjit_reg_method(rb_cString, "to_str", jit_rb_str_to_s);
@@ -5191,7 +5184,6 @@ fn get_method_gen_fn()
 
         // Thread.current
         yjit_reg_method(rb_singleton_class(rb_cThread), "current", jit_thread_s_current);
-        */
     }
 }
 

@@ -14,6 +14,9 @@ pub const FALSE_REDEFINED_OP_FLAG: u32 = 2048;
 pub const PROC_REDEFINED_OP_FLAG: u32 = 4096;
 pub const VM_BLOCK_HANDLER_NONE: u32 = 0;
 pub type ID = ::std::os::raw::c_ulong;
+extern "C" {
+    pub fn rb_singleton_class(obj: VALUE) -> VALUE;
+}
 pub type rb_alloc_func_t = ::std::option::Option<unsafe extern "C" fn(klass: VALUE) -> VALUE>;
 extern "C" {
     pub fn rb_get_alloc_func(klass: VALUE) -> rb_alloc_func_t;
@@ -80,6 +83,9 @@ extern "C" {
 }
 extern "C" {
     pub static mut rb_cSymbol: VALUE;
+}
+extern "C" {
+    pub static mut rb_cThread: VALUE;
 }
 extern "C" {
     pub static mut rb_cTrueClass: VALUE;

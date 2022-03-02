@@ -230,6 +230,8 @@ extern "C" {
 
     #[link_name = "rb_METHOD_ENTRY_VISI"]
     pub fn METHOD_ENTRY_VISI(me: * const rb_callable_method_entry_t) -> rb_method_visibility_t;
+
+    pub fn rb_str_bytesize(str:VALUE) -> VALUE;
 }
 
 pub fn insn_len(opcode:usize) -> u32
@@ -578,6 +580,9 @@ pub const RUBY_OFFSET_EC_CFP: i32 = 16;
 pub const RUBY_OFFSET_EC_INTERRUPT_FLAG: i32 = 32; // rb_atomic_t (u32)
 pub const RUBY_OFFSET_EC_INTERRUPT_MASK: i32 = 36; // rb_atomic_t (u32)
 pub const RUBY_OFFSET_EC_THREAD_PTR: i32 = 48;
+
+// Constants from rb_thread_t in vm_core.h
+pub const RUBY_OFFSET_THREAD_SELF: i32 = 16;
 
 // TODO: need to dynamically autogenerate constants for all the YARV opcodes from insns.def
 pub const OP_NOP:usize = 0;
