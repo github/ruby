@@ -326,6 +326,32 @@ yjit_block_assumptions_free(block_t *block)
 
 
 
+
+/*
+// When a block is deleted, remove the assumptions associated with it
+static void
+yjit_block_assumptions_free(block_t *block)
+{
+    /*
+    st_data_t as_st_data = (st_data_t)block;
+    if (blocks_assuming_stable_global_constant_state) {
+        st_delete(blocks_assuming_stable_global_constant_state, &as_st_data, NULL);
+    }
+
+    if (blocks_assuming_single_ractor_mode) {
+        st_delete(blocks_assuming_single_ractor_mode, &as_st_data, NULL);
+    }
+
+    if (blocks_assuming_bops) {
+        st_delete(blocks_assuming_bops, &as_st_data, NULL);
+    }
+    */
+}
+*/
+
+
+
+
 /*
 // Free the yjit resources associated with an iseq
 void
@@ -461,7 +487,9 @@ rb_yjit_before_ractor_spawn(void)
 #[no_mangle]
 pub extern "C" fn rb_yjit_tracing_invalidate_all()
 {
-    if !yjit_enabled_p() { return; }
+    if !yjit_enabled_p() {
+        return;
+    }
 
     todo!();
 /*

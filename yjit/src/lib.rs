@@ -10,6 +10,7 @@ mod cruby;
 mod core;
 mod codegen;
 mod invariants;
+mod disasm;
 mod utils;
 mod options;
 mod stats;

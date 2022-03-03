@@ -9,126 +9,18 @@
 # for which CRuby is built. There is also no API stability guarantee as to in
 # what situations this module is defined.
 module RubyVM::YJIT
-  if defined?(Disasm)
-    def self.disasm(iseq, tty: $stdout && $stdout.tty?)
-      iseq = RubyVM::InstructionSequence.of(iseq)
+  # Check if YJIT is enabled
+  def self.enabled?
+    Primitive.cexpr! 'RBOOL(rb_yjit_enabled_p())'
+  end
 
-      blocks = blocks_for(iseq)
-      return if blocks.empty?
+  def self.stats_enabled?
+    Primitive.rb_yjit_stats_enabled_p
+  end
 
-      str = String.new
-      str << iseq.disasm
-      str << "\n"
-
-      # Sort the blocks by increasing addresses
-      sorted_blocks = blocks.sort_by(&:address)
-
-      highlight = ->(str) {
-        if tty
-          "\x1b[1m#{str}\x1b[0m"
-        else
-          str
-        end
-      }
-
-      cs = Disasm.new
-      sorted_blocks.each_with_index do |block, i|
-        str << "== BLOCK #{i+1}/#{blocks.length}: #{block.code.length} BYTES, ISEQ RANGE [#{block.iseq_start_index},#{block.iseq_end_index}) ".ljust(80, "=")
-        str << "\n"
-
-        comments = comments_for(block.address, block.address + block.code.length)
-        comment_idx = 0
-        cs.disasm(block.code, block.address).each do |i|
-          while (comment = comments[comment_idx]) && comment.address <= i.address
-            str << "  ; #{highlight.call(comment.comment)}\n"
-            comment_idx += 1
-          end
-
-          str << sprintf(
-            "  %<address>08x:  %<instruction>s\t%<details>s\n",
-            address: i.address,
-            instruction: i.mnemonic,
-            details: i.op_str
-          )
-        end
-      end
-
-      block_sizes = blocks.map { |block| block.code.length }
-      total_bytes = block_sizes.sum
-      str << "\n"
-      str << "Total code size: #{total_bytes} bytes"
-      str << "\n"
-
-      str
-    end
-
-    def self.comments_for(start_address, end_address)
-      Primitive.comments_for(start_address, end_address)
-    end
-
-    def self.graphviz_for(iseq)
-      iseq = RubyVM::InstructionSequence.of(iseq)
-      cs = Disasm.new
-
-      highlight = ->(comment) { "<b>#{comment}</b>" }
-      linebreak = "<br align=\"left\"/>\n"
-
-      buff = +''
-      blocks = blocks_for(iseq).sort_by(&:id)
-      buff << "digraph g {\n"
-
-      # Write the iseq info as a legend
-      buff << "  legend [shape=record fontsize=\"30\" fillcolor=\"lightgrey\" style=\"filled\"];\n"
-      buff << "  legend [label=\"{ Instruction Disassembly For: | {#{iseq.base_label}@#{iseq.absolute_path}:#{iseq.first_lineno}}}\"];\n"
-
-      # Subgraph contains disassembly
-      buff << "  subgraph disasm {\n"
-      buff << "  node [shape=record fontname=\"courier\"];\n"
-      buff << "  edge [fontname=\"courier\" penwidth=3];\n"
-      blocks.each do |block|
-        disasm = disasm_block(cs, block, highlight)
-
-        # convert newlines to breaks that graphviz understands
-        disasm.gsub!(/\n/, linebreak)
-
-        # strip leading whitespace
-        disasm.gsub!(/^\s+/, '')
-
-        buff << "b#{block.id} [label=<#{disasm}>];\n"
-        buff << block.outgoing_ids.map { |id|
-          next_block = blocks.bsearch { |nb| id <=> nb.id }
-          if next_block.address == (block.address + block.code.length)
-            "b#{block.id} -> b#{id}[label=\"Fall\"];"
-          else
-            "b#{block.id} -> b#{id}[label=\"Jump\" style=dashed];"
-          end
-        }.join("\n")
-        buff << "\n"
-      end
-      buff << "  }"
-      buff << "}"
-      buff
-    end
-
-    def self.disasm_block(cs, block, highlight)
-      comments = comments_for(block.address, block.address + block.code.length)
-      comment_idx = 0
-      str = +''
-      cs.disasm(block.code, block.address).each do |i|
-        while (comment = comments[comment_idx]) && comment.address <= i.address
-          str << "  ; #{highlight.call(comment.comment)}\n"
-          comment_idx += 1
-        end
-
-        str << sprintf(
-          "  %<address>08x:  %<instruction>s\t%<details>s\n",
-          address: i.address,
-          instruction: i.mnemonic,
-          details: i.op_str
-        )
-      end
-      str
-    end
+  # Discard statistics collected for --yjit-stats.
+  def self.reset_stats!
+    Primitive.rb_yjit_reset_stats_bang
   end
 
   # Return a hash for statistics generated for the --yjit-stats command line option.
@@ -137,22 +29,14 @@ module RubyVM::YJIT
     Primitive.rb_yjit_get_stats
   end
 
-  # Discard statistics collected for --yjit-stats.
-  def self.reset_stats!
-    Primitive.rb_yjit_reset_stats_bang
+  # Produce disassembly for an iseq
+  def self.disasm(iseq)
+    Primitive.rb_yjit_disasm_iseq(iseq)
   end
 
-  def self.stats_enabled?
-    Primitive.rb_yjit_stats_enabled_p
-  end
-
-  def self.enabled?
-    Primitive.cexpr! 'RBOOL(rb_yjit_enabled_p())'
-  end
-
-  def self.simulate_oom!
-    Primitive.simulate_oom_bang
-  end
+  #def self.simulate_oom!
+  #  Primitive.simulate_oom_bang
+  #end
 
   # Avoid calling a method here to not interfere with compilation tests
   if Primitive.rb_yjit_stats_enabled_p
