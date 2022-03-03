@@ -12,7 +12,4 @@
 #include "vm_core.h"
 #include "yjit_core.h"
 
-static void yjit_unlink_method_lookup_dependency(block_t *block);
-static void yjit_block_assumptions_free(block_t *block);
-
 #endif // #ifndef YJIT_IFACE_H

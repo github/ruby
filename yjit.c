@@ -14,6 +14,14 @@
 #include "vm_sync.h"
 #include "yjit.h"
 
+// For mmapp(), sysconf()
+#ifndef _WIN32
+#include <unistd.h>
+#include <sys/mman.h>
+#endif
+
+#include <errno.h>
+
 // We need size_t to have a known size to simplify code generation and FFI.
 // TODO(alan): check this in configure.ac to fail fast on 32 bit platforms.
 STATIC_ASSERT(64b_size_t, SIZE_MAX == UINT64_MAX);
@@ -42,14 +50,6 @@ STATIC_ASSERT(size_t_no_padding_bits, sizeof(size_t) == sizeof(uint64_t));
 
 // Check if we need to include YJIT in the build
 #if JIT_ENABLED && PLATFORM_SUPPORTED_P
-
-#include "yjit_asm.c"
-
-// Code block into which we write machine code
-static codeblock_t *cb = NULL;
-
-// Code block into which we write out-of-line machine code
-static codeblock_t *ocb = NULL;
 
 // NOTE: We can trust that uint8_t has no "padding bits" since the C spec
 // guarantees it. Wording about padding bits is more explicit in C11 compared
@@ -90,6 +90,28 @@ rb_yjit_mark_executable(void *mem_block, uint32_t mem_size) {
     }
 }
 
+// TODO: not yet ported
+/*
+void rb_yjit_mark_position_writeable(codeblock_t * cb, uint32_t write_pos)
+{
+#ifdef _WIN32
+    uint32_t pagesize = 0x1000; // 4KB
+#else
+    uint32_t pagesize = (uint32_t)sysconf(_SC_PAGESIZE);
+#endif
+    uint32_t aligned_position = (write_pos / pagesize) * pagesize;
+
+    if (cb->current_aligned_write_pos != aligned_position) {
+        cb->current_aligned_write_pos = aligned_position;
+        void *const page_addr = cb_get_ptr(cb, aligned_position);
+        if (mprotect(page_addr, pagesize, PROT_READ | PROT_WRITE)) {
+            fprintf(stderr, "Couldn't make JIT page (%p) writeable, errno: %s", page_addr, strerror(errno));
+            abort();
+        }
+    }
+}
+*/
+
 uint32_t
 rb_yjit_get_page_size(void)
 {
@@ -108,24 +130,22 @@ rb_yjit_get_page_size(void)
 #endif
 }
 
-/*
-
 #if defined(MAP_FIXED_NOREPLACE) && defined(_SC_PAGESIZE)
-    // Align the current write position to a multiple of bytes
-    static uint8_t *align_ptr(uint8_t *ptr, uint32_t multiple)
-    {
-        // Compute the pointer modulo the given alignment boundary
-        uint32_t rem = ((uint32_t)(uintptr_t)ptr) % multiple;
+// Align the current write position to a multiple of bytes
+static uint8_t *align_ptr(uint8_t *ptr, uint32_t multiple)
+{
+    // Compute the pointer modulo the given alignment boundary
+    uint32_t rem = ((uint32_t)(uintptr_t)ptr) % multiple;
 
-        // If the pointer is already aligned, stop
-        if (rem == 0)
-            return ptr;
+    // If the pointer is already aligned, stop
+    if (rem == 0)
+        return ptr;
 
-        // Pad the pointer by the necessary amount to align it
-        uint32_t pad = multiple - rem;
+    // Pad the pointer by the necessary amount to align it
+    uint32_t pad = multiple - rem;
 
-        return ptr + pad;
-    }
+    return ptr + pad;
+}
 #endif
 
 // Allocate a block of executable memory
@@ -163,7 +183,7 @@ uint8_t *rb_yjit_alloc_exec_mem(uint32_t mem_size) {
     #else
         // Try to map a chunk of memory as executable
         mem_block = (uint8_t*)mmap(
-            (void*)yjit_alloc_exec_mem,
+            (void*)rb_yjit_alloc_exec_mem,
             mem_size,
             PROT_READ | PROT_EXEC,
             MAP_PRIVATE | MAP_ANONYMOUS,
@@ -194,23 +214,15 @@ uint8_t *rb_yjit_alloc_exec_mem(uint32_t mem_size) {
     // Fill the executable memory with PUSH DS (0x1E) so that
     // executing uninitialized memory will fault with #UD in
     // 64-bit mode.
-    yjit_mark_all_writable(mem_block, mem_size);
+    rb_yjit_mark_writable(mem_block, mem_size);
     memset(mem_block, 0x1E, mem_size);
-    yjit_mark_all_executable(mem_block, mem_size);
+    rb_yjit_mark_executable(mem_block, mem_size);
 
     return mem_block;
 #else
     // Windows not supported for now
     return NULL;
 #endif
-}
-*/
-
-uint8_t *
-rb_yjit_alloc_exec_mem(uint32_t mem_size)
-{
-    // It's a diff minimization move to wrap instead of rename to export.
-    return alloc_exec_mem(mem_size);
 }
 
 unsigned int
@@ -464,7 +476,7 @@ rb_iseq_t *
 rb_cfp_get_iseq(struct rb_control_frame_struct *cfp)
 {
     // TODO(alan) could assert frame type here to make sure that it's a ruby frame with an iseq.
-    return cfp->iseq;
+    return (rb_iseq_t*)cfp->iseq;
 }
 
 VALUE

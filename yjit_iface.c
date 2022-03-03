@@ -550,11 +550,14 @@ rb_yjit_get_stats(rb_execution_context_t *ec, VALUE self)
 static VALUE
 simulate_oom_bang(rb_execution_context_t *ec, VALUE self)
 {
+    /*
     if (RUBY_DEBUG && cb && ocb) {
         // Only simulate in debug builds for paranoia.
         cb_set_pos(cb, cb->mem_size-1);
         cb_set_pos(ocb, ocb->mem_size-1);
     }
+    */
+
     return Qnil;
 }
 
