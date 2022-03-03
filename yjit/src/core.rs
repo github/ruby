@@ -1590,7 +1590,7 @@ verify_blockid(const blockid_t blockid)
 */
 
 // Invalidate one specific block version
-fn invalidate_block_version(block: &BlockRef)
+pub fn invalidate_block_version(block: &BlockRef)
 {
     todo!("invalidate_block_version not yet implemented");
 

@@ -90,6 +90,10 @@ use std::os::raw::{c_int, c_uint, c_long, c_char, c_void};
 // static asserts. u64 and not usize to play nice with lowering to x86.
 pub type size_t = u64;
 
+/// A type alias for the redefinition flags coming from CRuby. These are just
+/// shifted 1s but not explicitly an enum.
+pub type RedefinitionFlag = u32;
+
 // Textually include output from rust-bindgen as suggested by its user guide.
 include!("cruby_bindings.inc.rs");
 
@@ -205,6 +209,9 @@ extern "C" {
 
     #[link_name = "rb_RB_TYPE_P"]
     pub fn RB_TYPE_P(obj: VALUE, t: ruby_value_type) -> bool;
+
+    #[link_name = "rb_BASIC_OP_UNREDEFINED_P"]
+    pub fn BASIC_OP_UNREDEFINED_P(bop: ruby_basic_operators, klass: RedefinitionFlag) -> bool;
 
     // Ruby only defines these in vm_insnhelper.c, not in any header.
     // Parsing it would result in a lot of duplicate definitions.

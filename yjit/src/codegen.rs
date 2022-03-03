@@ -492,12 +492,12 @@ fn get_side_exit(jit: &mut JITState, ocb: &mut OutlinedCb, ctx: &Context) -> Cod
     }
 }
 
-/*
 // Ensure that there is an exit for the start of the block being compiled.
 // Block invalidation uses this exit.
-static void
-jit_ensure_block_entry_exit(jitstate_t *jit)
-{
+pub fn jit_ensure_block_entry_exit(jit: &mut JITState) {
+    todo!();
+
+    /*
     block_t *block = jit->block;
     if (block->entry_exit) return;
 
@@ -511,8 +511,8 @@ jit_ensure_block_entry_exit(jitstate_t *jit)
         uint32_t pos = gen_exit(pc, &block->ctx, ocb);
         block->entry_exit = cb_get_ptr(ocb, pos);
     }
+    */
 }
-*/
 
 // Generate a runtime guard that ensures the PC is at the start of the iseq,
 // otherwise take a side exit.  This is to handle the situation of optional
@@ -1100,11 +1100,9 @@ fn gen_opt_plus(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         // Note: we generate the side-exit before popping operands from the stack
         let side_exit = get_side_exit(jit, ocb, ctx);
 
-        /*
-        if (!assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_PLUS)) {
-            return YJIT_CANT_COMPILE;
+        if !assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_PLUS) {
+            return CantCompile;
         }
-        */
 
         // Check that both operands are fixnums
         guard_two_fixnums(ctx, cb, side_exit);
@@ -2352,11 +2350,9 @@ fn gen_fixnum_cmp(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
         // Note: we generate the side-exit before popping operands from the stack
         let side_exit = get_side_exit(jit, ocb, ctx);
 
-        /*
-        if (!assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_LT)) {
+        if !assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_LT) {
             return CantCompile;
         }
-        */
 
         // Check that both operands are fixnums
         guard_two_fixnums(ctx, cb, side_exit);
@@ -2414,12 +2410,10 @@ fn gen_equality_specialized(jit: &mut JITState, ctx: &mut Context, cb: &mut Code
     let b_opnd = ctx.stack_opnd(0);
 
     if comptime_a.fixnum_p() && comptime_b.fixnum_p() {
-        /*
-        if (!assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_EQ)) {
+        if !assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_EQ) {
             // if overridden, emit the generic version
             return false;
         }
-        */
 
         guard_two_fixnums(ctx, cb, side_exit);
 
@@ -2730,11 +2724,9 @@ fn gen_opt_and(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &
         // Note: we generate the side-exit before popping operands from the stack
         let side_exit = get_side_exit(jit, ocb, ctx);
 
-        /*
-        if (!assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_AND)) {
+        if !assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_AND) {
             return CantCompile;
         }
-        */
 
         // Check that both operands are fixnums
         guard_two_fixnums(ctx, cb, side_exit);
@@ -2775,11 +2767,9 @@ fn gen_opt_or(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &m
         // Note: we generate the side-exit before popping operands from the stack
         let side_exit = get_side_exit(jit, ocb, ctx);
 
-        /*
-        if (!assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_OR)) {
+        if !assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_OR) {
             return CantCompile;
         }
-        */
 
         // Check that both operands are fixnums
         guard_two_fixnums(ctx, cb, side_exit);
@@ -2820,11 +2810,9 @@ fn gen_opt_minus(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
         // Note: we generate the side-exit before popping operands from the stack
         let side_exit = get_side_exit(jit, ocb, ctx);
 
-        /*
-        if (!assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_MINUS)) {
+        if !assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_MINUS) {
             return CantCompile;
         }
-        */
 
         // Check that both operands are fixnums
         guard_two_fixnums(ctx, cb, side_exit);

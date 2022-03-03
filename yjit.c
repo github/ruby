@@ -537,6 +537,12 @@ rb_yjit_branch_stub_hit(void *branch_ptr, uint32_t target_idx, rb_execution_cont
 
     return ret;
 }
+
+bool
+rb_BASIC_OP_UNREDEFINED_P(enum ruby_basic_operators bop, uint32_t klass) {
+    return BASIC_OP_UNREDEFINED_P(bop, klass);
+}
+
 #include "yjit_iface.c"
 
 #endif // if JIT_ENABLED && PLATFORM_SUPPORTED_P

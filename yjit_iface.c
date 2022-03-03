@@ -371,19 +371,6 @@ iseq_end_index(VALUE self)
 }
 */
 
-/* Called when a basic operation is redefined */
-void
-rb_yjit_bop_redefined(VALUE klass, const rb_method_entry_t *me, enum ruby_basic_operators bop)
-{
-    if (blocks_assuming_bops) {
-#if YJIT_STATS
-        yjit_runtime_counters.invalidate_bop_redefined += blocks_assuming_bops->num_entries;
-#endif
-
-        st_foreach(blocks_assuming_bops, block_set_invalidate_i, 0);
-    }
-}
-
 /* Called when the constant state changes */
 void
 rb_yjit_constant_state_changed(void)

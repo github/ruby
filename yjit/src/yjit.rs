@@ -1,6 +1,7 @@
 use crate::cruby::{EcPtr, IseqPtr};
 use crate::codegen::*;
 use crate::core::*;
+use crate::invariants::*;
 use crate::options::*;
 
 use std::sync::atomic::{AtomicBool,Ordering};
@@ -53,12 +54,8 @@ pub extern "C" fn rb_yjit_init_rust()
     // TODO: set a panic handler so the we don't print a message
     //       everytime we panic.
     let result = std::panic::catch_unwind(|| {
-
         CodegenGlobals::init();
-
-
-        // TODO:
-        //Invariants::init() ?
+        Invariants::init();
 
         YJIT_ENABLED.store(true, Ordering::Release);
     });

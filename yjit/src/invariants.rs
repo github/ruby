@@ -4,7 +4,9 @@
 use crate::core::*;
 use crate::cruby::*;
 use crate::codegen::*;
-use crate::yjit::{yjit_enabled_p};
+use crate::stats::*;
+use crate::yjit::yjit_enabled_p;
+use std::collections::HashMap;
 
 // Invariants to track:
 // assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_PLUS)
@@ -12,54 +14,75 @@ use crate::yjit::{yjit_enabled_p};
 // assume_single_ractor_mode(jit)
 // assume_stable_global_constant_state(jit);
 
+/// Used to track all of the various block references that contain assumptions
+/// about the state of the virtual machine.
+pub struct Invariants {
+    bops: HashMap<(RedefinitionFlag, ruby_basic_operators), Vec<BlockRef>>
+}
 
+/// Private singleton instance of the invariants global struct.
+static mut INVARIANTS: Option<Invariants> = None;
 
-
-
-
-// Hash table of BOP blocks
-//static st_table *blocks_assuming_bops;
-
-fn assume_bop_not_redefined(block: &BlockRef, redefined_flag: usize, bop: usize) -> bool
-{
-    todo!();
-
-    // TODO: we'll want to export
-    // BASIC_OP_UNREDEFINED_P(bop, redefined_flag)
-    // from the C side
-
-    /*
-    if (BASIC_OP_UNREDEFINED_P(bop, redefined_flag)) {
-        RUBY_ASSERT(blocks_assuming_bops);
-
-        jit_ensure_block_entry_exit(jit);
-        st_insert(blocks_assuming_bops, (st_data_t)jit->block, 0);
-        return true;
+impl Invariants {
+    pub fn init() {
+        // Wrapping this in unsafe to assign directly to a global.
+        unsafe { INVARIANTS = Some(Invariants { bops: HashMap::new() }); }
     }
-    else {
+
+    /// Get a mutable reference to the codegen globals instance
+    pub fn get_instance() -> &'static mut Invariants {
+        unsafe { INVARIANTS.as_mut().unwrap() }
+    }
+
+    /// Returns the vector of blocks that are currently assuming the given basic
+    /// operator on the given class has not been redefined.
+    pub fn get_bop_assumptions(klass: RedefinitionFlag, bop: ruby_basic_operators) -> &'static mut Vec<BlockRef> {
+        Invariants::get_instance().bops.entry((klass, bop)).or_insert(Vec::new())
+    }
+}
+
+/// A public function that can be called from within the code generation
+/// functions to ensure that the block being generated is invalidated when the
+/// basic operator is redefined.
+pub fn assume_bop_not_redefined(jit: &mut JITState, klass: RedefinitionFlag, bop: ruby_basic_operators) -> bool {
+    if unsafe { BASIC_OP_UNREDEFINED_P(bop, klass) } {
+        jit_ensure_block_entry_exit(jit);
+        Invariants::get_bop_assumptions(klass, bop).push(jit.get_block());
+        return true;
+    } else {
         return false;
     }
-    */
 }
 
-/*
-/// Called when a basic operation is redefined
-void
-rb_yjit_bop_redefined(VALUE klass, const rb_method_entry_t *me, enum ruby_basic_operators bop)
-{
-    if (blocks_assuming_bops) {
-#if YJIT_STATS
-        yjit_runtime_counters.invalidate_bop_redefined += blocks_assuming_bops->num_entries;
-#endif
-
-        st_foreach(blocks_assuming_bops, block_set_invalidate_i, 0);
+/// Called when a basic operation is redefined.
+#[no_mangle]
+pub extern "C" fn rb_yjit_bop_redefined(klass: RedefinitionFlag, bop: ruby_basic_operators) {
+    for block in Invariants::get_bop_assumptions(klass, bop).iter() {
+        invalidate_block_version(block);
+        incr_counter!(invalidate_bop_redefined);
     }
 }
-*/
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
+    #[test]
+    fn test_get_bop_assumptions() {
+        Invariants::init();
 
+        let block = Block::new(BLOCKID_NULL, &Context::default());
+        let bops = &mut Invariants::get_instance().bops;
 
+        // Configure the set of assumptions such that one block is assuming
+        // Integer#+ is not redefined and one block is assuming String#+ is not
+        // redefined.
+        bops.insert((INTEGER_REDEFINED_OP_FLAG, BOP_PLUS), vec![block.clone()]);
+        bops.insert((STRING_REDEFINED_OP_FLAG, BOP_PLUS), vec![block.clone()]);
+
+        assert_eq!(Invariants::get_bop_assumptions(INTEGER_REDEFINED_OP_FLAG, BOP_PLUS).len(), 1);
+    }
+}
 
 
 
