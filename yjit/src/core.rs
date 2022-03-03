@@ -9,6 +9,7 @@ use crate::options::*;
 use crate::stats::*;
 use InsnOpnd::*;
 use TempMapping::*;
+use core::ffi::{c_void};
 
 // Maximum number of temp value types we keep track of
 const MAX_TEMP_TYPES: usize = 8;
@@ -1219,37 +1220,45 @@ fn make_branch_entry(block: BlockRef, src_ctx: &Context, gen_fn: BranchGenFn) ->
 // Called by the generated code when a branch stub is executed
 // Triggers compilation of branches and code patching
 #[no_mangle]
-pub extern "C" fn branch_stub_hit(branch_ptr: *const u8, target_idx: u32, ec: EcPtr) -> *const u8
+pub extern "C" fn rb_yjit_rust_branch_stub_hit(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -> *const u8
 {
+    assert!(!branch_ptr.is_null());
+
     //branch_ptr is actually:
     //branch_ptr: *const RefCell<Branch>
+    let branch_rc = unsafe { BranchRef::from_raw(branch_ptr as *const RefCell<Branch>) };
+    let mut branch = branch_rc.borrow_mut();
 
-    todo!();
+    let branch_size_on_entry = branch.code_size();
 
-    // NOTE: here we need to take the VM lock. Should we call this function from C?
+    let target_idx: usize = target_idx as usize;
+    let target = branch.targets[target_idx];
+    let target_ctx = branch.target_ctxs[target_idx];
 
-    /*
-    uint8_t *dst_addr = NULL;
+    let target_branch_shape = match target_idx {
+        0 => BranchShape::Next0,
+        1 => BranchShape::Next1,
+        _ => unreachable!("target_idx < 2 must always hold")
+    };
 
-    // Stop other ractors since we are going to patch machine code.
-    // This is how the GC does it.
-    RB_VM_LOCK_ENTER();
-    rb_vm_barrier();
-
-    const ptrdiff_t branch_size_on_entry = branch_code_size(branch);
-
-    RUBY_ASSERT(branch != NULL);
-    RUBY_ASSERT(target_idx < 2);
-    blockid_t target = branch->targets[target_idx];
-    const ctx_t *target_ctx = &branch->target_ctxs[target_idx];
+    let cb = CodegenGlobals::get_inline_cb();
+    let ocb = CodegenGlobals::get_outlined_cb();
 
     // If this branch has already been patched, return the dst address
     // Note: ractors can cause the same stub to be hit multiple times
-    if (branch->blocks[target_idx]) {
-        dst_addr = branch->dst_addrs[target_idx];
+    if let Some(_) = branch.blocks[target_idx] {
+        return branch.dst_addrs[target_idx].unwrap().raw_ptr();
     }
-    else {
-        rb_vm_barrier();
+
+    let (cfp, original_interp_sp) = unsafe {
+        let cfp = get_ec_cfp(ec);
+        let original_interp_sp = get_cfp_sp(cfp);
+
+        let reconned_pc = rb_iseq_pc_at_idx(rb_cfp_get_iseq(cfp), target.idx);
+        let reconned_sp = original_interp_sp.add(target_ctx.sp_offset as usize);
+
+        // Update the PC in the current CFP, because it may be out of sync in JITted code
+        rb_set_cfp_pc(cfp, reconned_pc);
 
         // :stub-sp-flush:
         // Generated code do stack operations without modifying cfp->sp, while the
@@ -1257,71 +1266,77 @@ pub extern "C" fn branch_stub_hit(branch_ptr: *const u8, target_idx: u32, ec: Ec
         // generally takes care of updating cfp->sp when it calls runtime routines that
         // could trigger GC, but it's inconvenient to do it before calling this function.
         // So we do it here instead.
-        VALUE *const original_interp_sp = ec->cfp->sp;
-        ec->cfp->sp += target_ctx->sp_offset;
+        rb_set_cfp_sp(cfp, reconned_sp);
 
-        // Update the PC in the current CFP, because it
-        // may be out of sync in JITted code
-        ec->cfp->pc = yjit_iseq_pc_at_idx(target.iseq, target.idx);
+        (cfp, original_interp_sp)
+    };
 
-        // Try to find an existing compiled version of this block
-        block_t *p_block = find_block_version(target, target_ctx);
 
-        // If this block hasn't yet been compiled
-        if (!p_block) {
-            const uint8_t branch_old_shape = branch->shape;
-            bool branch_modified = false;
+    // Try to find an existing compiled version of this block
+    let mut block = find_block_version(target, &target_ctx);
 
-            // If the new block can be generated right after the branch (at cb->write_pos)
-            if (cb.get_write_ptr() == branch->end_addr) {
-                // This branch should be terminating its block
-                RUBY_ASSERT(branch->end_addr == branch->block->end_addr);
+    // If this block hasn't yet been compiled
+    if block.is_none() {
 
-                // Change the branch shape to indicate the target block will be placed next
-                branch->shape = (uint8_t)target_idx;
+        let branch_old_shape = branch.shape;
+        let mut branch_modified = false;
 
-                // Rewrite the branch with the new, potentially more compact shape
-                regenerate_branch(cb, branch);
-                branch_modified = true;
+        // If the new block can be generated right after the branch (at cb->write_pos)
+        if Some(cb.get_write_ptr()) == branch.end_addr {
+            let branch_end_addr = branch.end_addr.unwrap();
 
-                // Ensure that the branch terminates the codeblock just like
-                // before entering this if block. This drops bytes off the end
-                // in case we shrank the branch when regenerating.
-                cb_set_write_ptr(cb, branch->end_addr);
-            }
+            // This branch should be terminating its block
+            assert!(branch.end_addr == branch.block.borrow().end_addr);
 
-            // Compile the new block version
-            p_block = gen_block_series(target, target_ctx, ec);
+            // Change the branch shape to indicate the target block will be placed next
+            branch.shape = target_branch_shape;
 
-            if (!p_block && branch_modified) {
-                // We couldn't generate a new block for the branch, but we modified the branch.
-                // Restore the branch by regenerating it.
-                branch->shape = branch_old_shape;
-                regenerate_branch(cb, branch);
-            }
+            // Rewrite the branch with the new, potentially more compact shape
+            regenerate_branch(cb, &mut branch);
+            branch_modified = true;
+
+            // Ensure that the branch terminates the codeblock just like
+            // before entering this if block. This drops bytes off the end
+            // in case we shrank the branch when regenerating.
+            cb.set_write_ptr(branch_end_addr);
         }
 
-        if (p_block) {
+        // Compile the new block version
+        block = gen_block_series(target, &target_ctx, ec, cb, ocb);
+
+        if block.is_none() && branch_modified {
+            // We couldn't generate a new block for the branch, but we modified the branch.
+            // Restore the branch by regenerating it.
+            branch.shape = branch_old_shape;
+            regenerate_branch(cb, &mut branch);
+        }
+    }
+
+    let dst_addr = match block {
+        Some(block_rc) => {
+            let mut block = block_rc.borrow_mut();
             // Branch shape should reflect layout
-            RUBY_ASSERT(!(branch->shape == (uint8_t)target_idx && p_block->start_addr != branch->end_addr));
+            assert!(! (branch.shape == target_branch_shape && block.start_addr != branch.end_addr));
 
             // Add this branch to the list of incoming branches for the target
-            rb_darray_append(&p_block->incoming, branch);
+            block.incoming.push(branch_rc.clone());
 
             // Update the branch target address
-            dst_addr = p_block->start_addr;
-            branch->dst_addrs[target_idx] = dst_addr;
+            let dst_addr = block.start_addr;
+            branch.dst_addrs[target_idx] = dst_addr;
 
             // Mark this branch target as patched (no longer a stub)
-            branch->blocks[target_idx] = p_block;
+            branch.blocks[target_idx] = Some(block_rc.clone());
 
             // Rewrite the branch with the new jump target address
-            regenerate_branch(cb, branch);
+            regenerate_branch(cb, &mut branch);
 
             // Restore interpreter sp, since the code hitting the stub expects the original.
-            ec->cfp->sp = original_interp_sp;
+            unsafe { rb_set_cfp_sp(cfp, original_interp_sp) };
+
+            block.start_addr.unwrap()
         }
-        else {
+        None => {
             // Failed to service the stub by generating a new block so now we
             // need to exit to the interpreter at the stubbed location. We are
             // intentionally *not* restoring original_interp_sp. At the time of
@@ -1329,22 +1344,18 @@ pub extern "C" fn branch_stub_hit(branch_ptr: *const u8, target_idx: u32, ec: Ec
             // cfp->sp and cfp->pc. We set both before trying to generate the
             // block. All there is left to do to exit is to pop the native
             // frame. We do that in code_for_exit_from_stub.
-            dst_addr = code_for_exit_from_stub;
+            todo!("code_for_exit_from_stub");
         }
+    };
 
-        cb_mark_all_executable(ocb);
-        cb_mark_all_executable(cb);
-    }
+    ocb.unwrap().mark_all_executable();
+    cb.mark_all_executable();
 
-    const ptrdiff_t new_branch_size = branch_code_size(branch);
-    RUBY_ASSERT_ALWAYS(new_branch_size >= 0);
-    RUBY_ASSERT_ALWAYS(new_branch_size <= branch_size_on_entry && "branch stubs should not enlarge branches");
-
-    RB_VM_LOCK_LEAVE();
+    let new_branch_size = branch.code_size();
+    assert!(new_branch_size <= branch_size_on_entry, "branch stubs should not enlarge branches");
 
     // Return a pointer to the compiled block version
-    return dst_addr;
-    */
+    dst_addr.raw_ptr()
 }
 
 // Get a version or stub corresponding to a branch target
@@ -1384,7 +1395,7 @@ fn get_branch_target(
     mov(ocb, C_ARG_REGS[2], REG_EC);
     mov(ocb, C_ARG_REGS[1], uimm_opnd(target_idx as u64));
     mov(ocb, C_ARG_REGS[0], const_ptr_opnd(branch_ptr as *const u8));
-    call_ptr(ocb, REG0, branch_stub_hit as *mut u8);
+    call_ptr(ocb, REG0, rb_yjit_branch_stub_hit as *mut u8);
 
     // Jump to the address returned by the
     // branch_stub_hit call

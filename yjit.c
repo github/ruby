@@ -4,6 +4,8 @@
 
 #include "internal.h"
 #include "internal/string.h"
+#include "internal/hash.h"
+#include "internal/variable.h"
 #include "vm_core.h"
 #include "vm_callinfo.h"
 #include "builtin.h"
@@ -446,6 +448,25 @@ rb_get_cfp_sp(struct rb_control_frame_struct *cfp) {
     return cfp->sp;
 }
 
+void
+rb_set_cfp_pc(struct rb_control_frame_struct *cfp, const VALUE *pc)
+{
+    cfp->pc = pc;
+}
+
+void
+rb_set_cfp_sp(struct rb_control_frame_struct *cfp, VALUE *sp)
+{
+    cfp->sp = sp;
+}
+
+rb_iseq_t *
+rb_cfp_get_iseq(struct rb_control_frame_struct *cfp)
+{
+    // TODO(alan) could assert frame type here to make sure that it's a ruby frame with an iseq.
+    return cfp->iseq;
+}
+
 VALUE
 rb_get_cfp_self(struct rb_control_frame_struct *cfp) {
     return cfp->self;
@@ -496,6 +517,26 @@ rb_get_call_data_ci(struct rb_call_data* cd) {
     return cd->ci;
 }
 
+const uint8_t *
+rb_yjit_branch_stub_hit(void *branch_ptr, uint32_t target_idx, rb_execution_context_t *ec)
+{
+    const uint8_t *ret;
+    // Acquire the VM lock and then signal all other Ruby threads (ractors) to
+    // contend for the VM lock, putting them to sleep. YJIT uses this to evict
+    // threads running inside generated code so among other things, it can
+    // safely change memory protection of regions housing generated code.
+    RB_VM_LOCK_ENTER();
+    rb_vm_barrier();
+
+    const uint8_t *rb_yjit_rust_branch_stub_hit(void *branch_ptr, uint32_t target_idx, rb_execution_context_t *ec);
+    ret = rb_yjit_rust_branch_stub_hit(branch_ptr, target_idx, ec);
+
+    // Release the VM lock. Note, watch out for Ruby exceptions and Rust panics
+    // to ensure that the lock is properly released in exceptional situations.
+    RB_VM_LOCK_LEAVE();
+
+    return ret;
+}
 #include "yjit_iface.c"
 
 #endif // if JIT_ENABLED && PLATFORM_SUPPORTED_P

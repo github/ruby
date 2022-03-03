@@ -150,6 +150,8 @@ fn main() {
         // Opaque types from vm_core.h
         .blocklist_type("rb_execution_context_.*")
         .opaque_type("rb_execution_context_.*")
+        .blocklist_type("rb_control_frame_struct")
+        .opaque_type("rb_control_frame_struct")
 
         // From yjit.c
         .allowlist_function("rb_iseq_(get|set)_yjit_payload")
@@ -160,6 +162,8 @@ fn main() {
         .allowlist_function("rb_yjit_get_page_size")
         .allowlist_function("rb_leaf_invokebuiltin_iseq_p")
         .allowlist_function("rb_leaf_builtin_function")
+        .allowlist_function("rb_set_cfp_(pc|sp)")
+        .allowlist_function("rb_cfp_get_iseq")
 
         // Not sure why it's picking these up, but don't.
         .blocklist_type("FILE")

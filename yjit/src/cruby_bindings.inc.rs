@@ -495,6 +495,21 @@ extern "C" {
 extern "C" {
     pub fn rb_ec_str_resurrect(ec: *mut rb_execution_context_struct, str_: VALUE) -> VALUE;
 }
+extern "C" {
+    pub fn rb_hash_new_with_size(size: st_index_t) -> VALUE;
+}
+extern "C" {
+    pub fn rb_hash_resurrect(hash: VALUE) -> VALUE;
+}
+extern "C" {
+    pub fn rb_obj_ensure_iv_index_mapping(obj: VALUE, id: ID) -> u32;
+}
+extern "C" {
+    pub fn rb_gvar_get(arg1: ID) -> VALUE;
+}
+extern "C" {
+    pub fn rb_gvar_set(arg1: ID, arg2: VALUE) -> VALUE;
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rb_builtin_function {
@@ -541,6 +556,15 @@ extern "C" {
 extern "C" {
     pub fn rb_leaf_builtin_function(iseq: *const rb_iseq_t) -> *const rb_builtin_function;
 }
+extern "C" {
+    pub fn rb_set_cfp_pc(cfp: *mut rb_control_frame_struct, pc: *const VALUE);
+}
+extern "C" {
+    pub fn rb_set_cfp_sp(cfp: *mut rb_control_frame_struct, sp: *mut VALUE);
+}
+extern "C" {
+    pub fn rb_cfp_get_iseq(cfp: *mut rb_control_frame_struct) -> *mut rb_iseq_t;
+}
 #[repr(C)]
 pub struct rb_iv_index_tbl_entry {
     pub index: u32,
@@ -552,19 +576,4 @@ pub struct rb_cvar_class_tbl_entry {
     pub index: u32,
     pub global_cvar_state: rb_serial_t,
     pub class_value: VALUE,
-}
-extern "C" {
-    pub fn rb_hash_new_with_size(size: st_index_t) -> VALUE;
-}
-extern "C" {
-    pub fn rb_hash_resurrect(hash: VALUE) -> VALUE;
-}
-extern "C" {
-    pub fn rb_obj_ensure_iv_index_mapping(obj: VALUE, id: ID) -> u32;
-}
-extern "C" {
-    pub fn rb_gvar_get(arg1: ID) -> VALUE;
-}
-extern "C" {
-    pub fn rb_gvar_set(arg1: ID, arg2: VALUE) -> VALUE;
 }

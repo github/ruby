@@ -742,7 +742,7 @@ pub fn gen_single_block(blockref: &BlockRef, ec: EcPtr, cb: &mut CodeBlock, ocb:
     let iseq_size = unsafe { get_iseq_encoded_size(iseq) };
     let mut insn_idx: c_uint = blockid.idx;
     let starting_insn_idx = insn_idx;
-    let mut ctx = Context::new();
+    let mut ctx = blockref.borrow().get_ctx();
 
     // Initialize a JIT state object
     let mut jit = JITState::new(blockref);

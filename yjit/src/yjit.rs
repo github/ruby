@@ -83,14 +83,3 @@ pub extern "C" fn rb_yjit_iseq_gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> *con
         None => std::ptr::null()
     }
 }
-
-/// Called from C code when a branch stub is hit
-/// NOTE: this should be wrapped in RB_VM_LOCK_ENTER(), rb_vm_barrier() on the C side
-#[no_mangle]
-pub extern "C" fn rb_yjit_branch_stub_hit(/* branch_t *branch, */ target_idx: u32, ec: EcPtr) -> *const u8
-{
-    // TODO: figure out what to pass instead of a branch pointer?
-
-    // TODO
-    todo!("branch_stub_hit not implemented");
-}

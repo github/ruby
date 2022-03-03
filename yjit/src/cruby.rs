@@ -84,7 +84,7 @@
 
 use std::ffi::CString;
 use std::convert::From;
-use std::os::raw::{c_int, c_uint, c_long, c_char};
+use std::os::raw::{c_int, c_uint, c_long, c_char, c_void};
 
 // We check that we can do this with the configure script and a couple of
 // static asserts. u64 and not usize to play nice with lowering to x86.
@@ -230,6 +230,8 @@ extern "C" {
 
     #[link_name = "rb_METHOD_ENTRY_VISI"]
     pub fn METHOD_ENTRY_VISI(me: * const rb_callable_method_entry_t) -> rb_method_visibility_t;
+
+    pub fn rb_yjit_branch_stub_hit(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -> *const c_void;
 
     pub fn rb_str_bytesize(str:VALUE) -> VALUE;
 }
