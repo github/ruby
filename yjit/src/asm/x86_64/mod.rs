@@ -1327,7 +1327,6 @@ pub fn test(cb: &mut CodeBlock, rm_opnd: X86Opnd, test_opnd: X86Opnd) {
         },
         X86Opnd::Imm(imm) => {
             // This mode only applies to 64-bit R/M operands with 32-bit signed immediates
-            assert!(imm.value < 0);
             assert!(imm.num_bits <= 32);
             assert!(rm_num_bits == 64);
 

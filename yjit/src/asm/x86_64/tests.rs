@@ -381,6 +381,9 @@ fn test_test() {
     check_bytes("4885c0", |cb| test(cb, RAX, RAX));
     check_bytes("4885f0", |cb| test(cb, RAX, RSI));
     check_bytes("48f74640f7ffffff", |cb| test(cb, mem_opnd(64, RSI, 64), imm_opnd(!0x08)));
+    check_bytes("48f7464008000000", |cb| test(cb, mem_opnd(64, RSI, 64), imm_opnd(0x08)));
+    check_bytes("48f7c108000000", |cb| test(cb, RCX, imm_opnd(0x08)));
+    //check_bytes("48a9f7ffff0f", |cb| test(cb, RAX, imm_opnd(0x0FFFFFF7)));
 }
 
 #[test]
