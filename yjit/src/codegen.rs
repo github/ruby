@@ -4663,7 +4663,6 @@ fn gen_setglobal(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
     KeepCompiling
 }
 
-/*
 fn gen_anytostring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // Save the PC and SP because we might make a Ruby call for
@@ -4676,7 +4675,7 @@ fn gen_anytostring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
     mov(cb, C_ARG_REGS[0], str);
     mov(cb, C_ARG_REGS[1], val);
 
-    call_ptr(cb, REG0, (void *)&rb_obj_as_string_result);
+    call_ptr(cb, REG0, rb_obj_as_string_result as *const u8);
 
     // Push the return value
     let stack_ret = ctx.stack_push(Type::String);
@@ -4684,7 +4683,6 @@ fn gen_anytostring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
 
     KeepCompiling
 }
-*/
 
 fn gen_objtostring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
@@ -5131,9 +5129,7 @@ fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn>
 
         OP_GETGLOBAL => Some(gen_getglobal),
         OP_SETGLOBAL => Some(gen_setglobal),
-        /*
-        yjit_reg_op(BIN(anytostring), gen_anytostring);
-        */
+        OP_ANYTOSTRING => Some(gen_anytostring),
         OP_OBJTOSTRING => Some(gen_objtostring),
         OP_TOREGEXP => Some(gen_toregexp),
         OP_GETSPECIAL => Some(gen_getspecial),

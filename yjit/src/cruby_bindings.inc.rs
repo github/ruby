@@ -503,6 +503,9 @@ pub const VM_CALL_KW_SPLAT_MUT_bit: vm_call_flag_bits = 12;
 pub const VM_CALL__END: vm_call_flag_bits = 13;
 pub type vm_call_flag_bits = u32;
 extern "C" {
+    pub fn rb_obj_as_string_result(str_: VALUE, obj: VALUE) -> VALUE;
+}
+extern "C" {
     pub fn rb_str_concat_literals(num: size_t, strary: *const VALUE) -> VALUE;
 }
 extern "C" {

@@ -105,6 +105,7 @@ fn main() {
         // From internal/string.h
         .allowlist_function("rb_ec_str_resurrect")
         .allowlist_function("rb_str_concat_literals")
+        .allowlist_function("rb_obj_as_string_result")
 
         // From include/ruby/internal/intern/parse.h
         .allowlist_function("rb_backref_get")
