@@ -95,6 +95,9 @@ fn main() {
         .allowlist_var("VM_BLOCK_HANDLER_NONE")
         .allowlist_var("VM_ENV_FLAG_.*")
 
+        // From vm_insnhelper.h
+        .allowlist_var("ruby_vm_global_constant_state")
+
         // From include/ruby/internal/intern/range.h
         .allowlist_function("rb_range_new")
 
@@ -148,6 +151,12 @@ fn main() {
         .allowlist_type("rb_num_t")
         .allowlist_function("rb_callable_method_entry")
         .allowlist_type("IVC") // pointer to iseq_inline_iv_cache_entry
+        .allowlist_type("IC")  // pointer to iseq_inline_constant_cache
+        .allowlist_type("iseq_inline_constant_cache_entry")
+        .blocklist_type("ic_serial_entry.*") // don't need this directly, opaqued to allow IC import
+        .opaque_type("ic_serial_entry.*")
+        .blocklist_type("rb_cref_t")         // don't need this directly, opaqued to allow IC import
+        .opaque_type("rb_cref_t")
         .allowlist_type("iseq_inline_iv_cache_entry")
         .allowlist_type("ICVARC") // pointer to iseq_inline_cvar_cache_entry
         .allowlist_type("iseq_inline_cvar_cache_entry")

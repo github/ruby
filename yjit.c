@@ -13,6 +13,7 @@
 #include "insns_info.inc"
 #include "vm_sync.h"
 #include "yjit.h"
+#include "vm_insnhelper.h"
 
 // For mmapp(), sysconf()
 #ifndef _WIN32
@@ -522,6 +523,12 @@ bool
 rb_RB_TYPE_P(VALUE obj, enum ruby_value_type t)
 {
     return RB_TYPE_P(obj, t);
+}
+
+rb_serial_t
+rb_GET_IC_SERIAL(const struct iseq_inline_constant_cache_entry *ice)
+{
+    return GET_IC_SERIAL(ice);
 }
 
 const struct rb_callinfo*

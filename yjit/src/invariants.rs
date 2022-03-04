@@ -5,6 +5,7 @@ use crate::core::*;
 use crate::cruby::*;
 use crate::codegen::*;
 use crate::stats::*;
+use crate::asm::OutlinedCb;
 use crate::yjit::yjit_enabled_p;
 use std::collections::HashMap;
 
@@ -44,9 +45,9 @@ impl Invariants {
 /// A public function that can be called from within the code generation
 /// functions to ensure that the block being generated is invalidated when the
 /// basic operator is redefined.
-pub fn assume_bop_not_redefined(jit: &mut JITState, klass: RedefinitionFlag, bop: ruby_basic_operators) -> bool {
+pub fn assume_bop_not_redefined(jit: &mut JITState, ocb: &mut OutlinedCb, klass: RedefinitionFlag, bop: ruby_basic_operators) -> bool {
     if unsafe { BASIC_OP_UNREDEFINED_P(bop, klass) } {
-        jit_ensure_block_entry_exit(jit);
+        jit_ensure_block_entry_exit(jit, ocb);
         Invariants::get_bop_assumptions(klass, bop).push(jit.get_block());
         return true;
     } else {
@@ -195,38 +196,39 @@ pub fn assume_method_lookup_stable(receiver_klass:VALUE, cme: *const rb_callable
 
 
 
-/*
-static st_table *blocks_assuming_single_ractor_mode;
+//static st_table *blocks_assuming_single_ractor_mode;
 
 // Can raise NoMemoryError.
-RBIMPL_ATTR_NODISCARD()
-static bool
-assume_single_ractor_mode(jitstate_t *jit)
+//RBIMPL_ATTR_NODISCARD()
+pub fn assume_single_ractor_mode(jit: &JITState) -> bool
 {
+    todo!()
+    /*
     if (rb_multi_ractor_p()) return false;
 
     jit_ensure_block_entry_exit(jit);
 
-    st_insert(blocks_assuming_single_ractor_mode, (st_data_t)jit->block, 1);
-    return true;
+    //st_insert(blocks_assuming_single_ractor_mode, (st_data_t)jit->block, 1);
+    true
+    */
 }
-*/
 
 
 
 
-/*
-static st_table *blocks_assuming_stable_global_constant_state;
+
+//static st_table *blocks_assuming_stable_global_constant_state;
 
 // Assume that the global constant state has not changed since call to this function.
 // Can raise NoMemoryError.
-static void
-assume_stable_global_constant_state(jitstate_t *jit)
+pub fn assume_stable_global_constant_state(jit: &JITState)
 {
+    todo!()
+    /*
     jit_ensure_block_entry_exit(jit);
     st_insert(blocks_assuming_stable_global_constant_state, (st_data_t)jit->block, 1);
+    */
 }
-*/
 
 
 

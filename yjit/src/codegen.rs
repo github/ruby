@@ -495,24 +495,26 @@ fn get_side_exit(jit: &mut JITState, ocb: &mut OutlinedCb, ctx: &Context) -> Cod
 
 // Ensure that there is an exit for the start of the block being compiled.
 // Block invalidation uses this exit.
-pub fn jit_ensure_block_entry_exit(jit: &mut JITState) {
-    todo!();
+pub fn jit_ensure_block_entry_exit(jit: &mut JITState, ocb: &mut OutlinedCb)
+{
+    let blockref = jit.block.clone();
+    let mut block = blockref.borrow_mut();
+    let block_ctx = block.get_ctx();
+    let blockid = block.get_blockid();
 
-    /*
-    block_t *block = jit->block;
-    if (block->entry_exit) return;
+    if block.entry_exit.is_some() {
+        return;
+    }
 
-    if (jit->insn_idx == block->blockid.idx) {
+    if jit.insn_idx == blockid.idx {
         // We are compiling the first instruction in the block.
         // Generate the exit with the cache in jitstate.
-        block->entry_exit = get_side_exit(jit, &block->ctx);
+        block.entry_exit = Some(get_side_exit(jit, ocb, &block_ctx));
     }
     else {
-        VALUE *pc = yjit_iseq_pc_at_idx(block->blockid.iseq, block->blockid.idx);
-        uint32_t pos = gen_exit(pc, &block->ctx, ocb);
-        block->entry_exit = cb_get_ptr(ocb, pos);
+        let pc = unsafe { rb_iseq_pc_at_idx(blockid.iseq, blockid.idx) };
+        block.entry_exit = Some(gen_exit(pc, &block_ctx, ocb.unwrap()));
     }
-    */
 }
 
 // Generate a runtime guard that ensures the PC is at the start of the iseq,
@@ -1101,7 +1103,7 @@ fn gen_opt_plus(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         // Note: we generate the side-exit before popping operands from the stack
         let side_exit = get_side_exit(jit, ocb, ctx);
 
-        if !assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_PLUS) {
+        if !assume_bop_not_redefined(jit, ocb, INTEGER_REDEFINED_OP_FLAG, BOP_PLUS) {
             return CantCompile;
         }
 
@@ -2351,7 +2353,7 @@ fn gen_fixnum_cmp(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
         // Note: we generate the side-exit before popping operands from the stack
         let side_exit = get_side_exit(jit, ocb, ctx);
 
-        if !assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_LT) {
+        if !assume_bop_not_redefined(jit, ocb, INTEGER_REDEFINED_OP_FLAG, BOP_LT) {
             return CantCompile;
         }
 
@@ -2402,7 +2404,7 @@ fn gen_opt_gt(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &m
 
 // Implements specialized equality for either two fixnum or two strings
 // Returns true if code was generated, otherwise false
-fn gen_equality_specialized(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, side_exit: CodePtr) -> bool
+fn gen_equality_specialized(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, side_exit: CodePtr) -> bool
 {
     let comptime_a = jit_peek_at_stack(jit, ctx, 1);
     let comptime_b = jit_peek_at_stack(jit, ctx, 0);
@@ -2411,7 +2413,7 @@ fn gen_equality_specialized(jit: &mut JITState, ctx: &mut Context, cb: &mut Code
     let b_opnd = ctx.stack_opnd(0);
 
     if comptime_a.fixnum_p() && comptime_b.fixnum_p() {
-        if !assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_EQ) {
+        if !assume_bop_not_redefined(jit, ocb, INTEGER_REDEFINED_OP_FLAG, BOP_EQ) {
             // if overridden, emit the generic version
             return false;
         }
@@ -2435,7 +2437,7 @@ fn gen_equality_specialized(jit: &mut JITState, ctx: &mut Context, cb: &mut Code
     else if unsafe { comptime_a.class_of() == rb_cString &&
             comptime_b.class_of() == rb_cString } {
         /*
-        if (!assume_bop_not_redefined(jit, STRING_REDEFINED_OP_FLAG, BOP_EQ)) {
+        if (!assume_bop_not_redefined(jit, ocb, STRING_REDEFINED_OP_FLAG, BOP_EQ)) {
             // if overridden, emit the generic version
             return false;
         }
@@ -2497,7 +2499,7 @@ fn gen_opt_eq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &m
     // Create a side-exit to fall back to the interpreter
     let side_exit = get_side_exit(jit, ocb, ctx);
 
-    if gen_equality_specialized(jit, ctx, cb, side_exit) {
+    if gen_equality_specialized(jit, ctx, cb, ocb, side_exit) {
         jump_to_next_insn(jit, ctx, cb, ocb);
         EndBlock
     }
@@ -2725,7 +2727,7 @@ fn gen_opt_and(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &
         // Note: we generate the side-exit before popping operands from the stack
         let side_exit = get_side_exit(jit, ocb, ctx);
 
-        if !assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_AND) {
+        if !assume_bop_not_redefined(jit, ocb, INTEGER_REDEFINED_OP_FLAG, BOP_AND) {
             return CantCompile;
         }
 
@@ -2768,7 +2770,7 @@ fn gen_opt_or(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &m
         // Note: we generate the side-exit before popping operands from the stack
         let side_exit = get_side_exit(jit, ocb, ctx);
 
-        if !assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_OR) {
+        if !assume_bop_not_redefined(jit, ocb, INTEGER_REDEFINED_OP_FLAG, BOP_OR) {
             return CantCompile;
         }
 
@@ -2811,7 +2813,7 @@ fn gen_opt_minus(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
         // Note: we generate the side-exit before popping operands from the stack
         let side_exit = get_side_exit(jit, ocb, ctx);
 
-        if !assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_MINUS) {
+        if !assume_bop_not_redefined(jit, ocb, INTEGER_REDEFINED_OP_FLAG, BOP_MINUS) {
             return CantCompile;
         }
 
@@ -2901,7 +2903,7 @@ fn gen_opt_empty_p(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
 fn gen_opt_str_freeze(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     /*
-    if (!assume_bop_not_redefined(jit, STRING_REDEFINED_OP_FLAG, BOP_FREEZE)) {
+    if (!assume_bop_not_redefined(jit, ocb, STRING_REDEFINED_OP_FLAG, BOP_FREEZE)) {
         return CantCompile;
     }
     */
@@ -2919,7 +2921,7 @@ fn gen_opt_str_freeze(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock,
 fn gen_opt_str_uminus(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     /*
-    if (!assume_bop_not_redefined(jit, STRING_REDEFINED_OP_FLAG, BOP_UMINUS)) {
+    if (!assume_bop_not_redefined(jit, ocb, STRING_REDEFINED_OP_FLAG, BOP_UMINUS)) {
         return CantCompile;
     }
     */
@@ -4856,17 +4858,16 @@ fn gen_setclassvariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBloc
     KeepCompiling
 }
 
-/*
 fn gen_opt_getinlinecache(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    VALUE jump_offset = jit_get_arg(jit, 0);
-    VALUE const_cache_as_value = jit_get_arg(jit, 1);
-    IC ic = (IC)const_cache_as_value;
+    let jump_offset = jit_get_arg(jit, 0);
+    let const_cache_as_value = jit_get_arg(jit, 1);
+    let ic:*const iseq_inline_constant_cache = const_cache_as_value.as_ptr();
 
     // See vm_ic_hit_p(). The same conditions are checked in yjit_constant_ic_update().
-    struct iseq_inline_constant_cache_entry *ice = ic->entry;
-    if (!ice || // cache not filled
-        GET_IC_SERIAL(ice) != ruby_vm_global_constant_state /* cache out of date */) {
+    let ice = unsafe { (*ic).entry };
+    if ice.is_null() || // cache not filled
+        unsafe { GET_IC_SERIAL(ice) != ruby_vm_global_constant_state } /* cache out of date */ {
         // In these cases, leave a block that unconditionally side exits
         // for the interpreter to invalidate.
         return CantCompile;
@@ -4874,52 +4875,54 @@ fn gen_opt_getinlinecache(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBl
 
     // Make sure there is an exit for this block as the interpreter might want
     // to invalidate this block from yjit_constant_ic_update().
-    jit_ensure_block_entry_exit(jit);
+    jit_ensure_block_entry_exit(jit, ocb);
 
-    if (ice->ic_cref) {
+    if ! unsafe { (*ice).ic_cref }.is_null() {
         // Cache is keyed on a certain lexical scope. Use the interpreter's cache.
-        uint8_t *side_exit = get_side_exit(jit, ocb, ctx);
+        let side_exit = get_side_exit(jit, ocb, ctx);
 
         // Call function to verify the cache. It doesn't allocate or call methods.
-        bool rb_vm_ic_hit_p(IC ic, const VALUE *reg_ep);
-        mov(cb, C_ARG_REGS[0], const_ptr_opnd((void *)ic));
-        mov(cb, C_ARG_REGS[1], member_opnd(REG_CFP, rb_control_frame_t, ep));
-        call_ptr(cb, REG0, (void *)rb_vm_ic_hit_p);
+        mov(cb, C_ARG_REGS[0], const_ptr_opnd(ic as *const u8));
+        mov(cb, C_ARG_REGS[1], mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_EP));
+        call_ptr(cb, REG0, rb_vm_ic_hit_p as *const u8);
 
         // Check the result. _Bool is one byte in SysV.
         test(cb, AL, AL);
         jz_ptr(cb, counted_exit!(ocb, side_exit, opt_getinlinecache_miss));
 
         // Push ic->entry->value
-        mov(cb, REG0, const_ptr_opnd((void *)ic));
-        mov(cb, REG0, member_opnd(REG0, struct iseq_inline_constant_cache, entry));
+        mov(cb, REG0, const_ptr_opnd(ic as *mut u8));
+        mov(cb, REG0, mem_opnd(64, REG0, RUBY_OFFSET_IC_ENTRY));
         let stack_top = ctx.stack_push(Type::Unknown);
-        mov(cb, REG0, member_opnd(REG0, struct iseq_inline_constant_cache_entry, value));
+        mov(cb, REG0, mem_opnd(64, REG0, RUBY_OFFSET_ICE_VALUE));
         mov(cb, stack_top, REG0);
+        todo!()
     }
     else {
         // Optimize for single ractor mode.
         // FIXME: This leaks when st_insert raises NoMemoryError
-        if (!assume_single_ractor_mode(jit)) return CantCompile;
+        if !assume_single_ractor_mode(jit) {
+            return CantCompile;
+        }
 
         // Invalidate output code on any and all constant writes
         // FIXME: This leaks when st_insert raises NoMemoryError
         assume_stable_global_constant_state(jit);
 
-        jit_putobject(jit, ctx, ice->value);
+        jit_putobject(jit, ctx, cb, unsafe { (*ice).value });
     }
 
     // Jump over the code for filling the cache
-    uint32_t jump_idx = jit_next_insn_idx(jit) + (int32_t)jump_offset;
+    let jump_idx = jit_next_insn_idx(jit) + jump_offset.as_u32();
     gen_direct_jump(
         jit,
         ctx,
-        (blockid_t){ .iseq = jit->iseq, .idx = jump_idx }
+        BlockId { iseq: jit.iseq, idx: jump_idx },
     );
-
     EndBlock
 }
 
+/*
 // Push the explict block parameter onto the temporary stack. Part of the
 // interpreter's scheme for avoiding Proc allocations when delegating
 // explict block parameters.
@@ -5112,7 +5115,7 @@ fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn>
         OP_OPT_SIZE => Some(gen_opt_size),
         OP_OPT_LENGTH => Some(gen_opt_length),
         OP_OPT_REGEXPMATCH2 => Some(gen_opt_regexpmatch2),
-        //yjit_reg_op(BIN(opt_getinlinecache), gen_opt_getinlinecache);
+        OP_OPT_GETINLINECACHE => Some(gen_opt_getinlinecache),
         //yjit_reg_op(BIN(invokebuiltin), gen_invokebuiltin);
         //yjit_reg_op(BIN(opt_invokebuiltin_delegate), gen_opt_invokebuiltin_delegate);
         //yjit_reg_op(BIN(opt_invokebuiltin_delegate_leave), gen_opt_invokebuiltin_delegate);

@@ -213,6 +213,9 @@ extern "C" {
     #[link_name = "rb_BASIC_OP_UNREDEFINED_P"]
     pub fn BASIC_OP_UNREDEFINED_P(bop: ruby_basic_operators, klass: RedefinitionFlag) -> bool;
 
+    #[link_name = "rb_GET_IC_SERIAL"]
+    pub fn GET_IC_SERIAL(ice: *const iseq_inline_constant_cache_entry) -> rb_serial_t;
+
     // Ruby only defines these in vm_insnhelper.c, not in any header.
     // Parsing it would result in a lot of duplicate definitions.
     pub fn rb_vm_opt_mod(recv: VALUE, obj: VALUE) -> VALUE;
@@ -225,6 +228,7 @@ extern "C" {
     pub fn rb_iseq_only_kwparam_p(iseq: IseqPtr) -> bool;
     pub fn rb_vm_getclassvariable(iseq: IseqPtr, cfp: CfpPtr, id: ID, ic: ICVARC) -> VALUE;
     pub fn rb_vm_setclassvariable(iseq: IseqPtr, cfp: CfpPtr, id: ID, val: VALUE, ic: ICVARC) -> VALUE;
+    pub fn rb_vm_ic_hit_p(ic: IC, reg_ep: *const VALUE) -> bool;
 
     #[link_name = "rb_vm_ci_argc"]
     pub fn vm_ci_argc(ci: * const rb_callinfo) -> c_int;
@@ -346,6 +350,22 @@ pub struct rb_control_frame_struct {
 
 /// Pointer to a control frame pointer (CFP)
 pub type CfpPtr = *mut rb_control_frame_struct;
+
+/// Opaque struct from vm_core.h
+#[repr(C)]
+pub struct ic_serial_entry {
+    _data: [u8; 0],
+    _marker:
+    core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
+}
+
+/// Opaque struct from vm_core.h
+#[repr(C)]
+pub struct rb_cref_t {
+    _data: [u8; 0],
+    _marker:
+    core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
+}
 
 impl VALUE {
     // Return whether the value is truthy or falsy in Ruby -- only nil and false are falsy.
@@ -592,6 +612,10 @@ pub const RUBY_OFFSET_EC_THREAD_PTR: i32 = 48;
 
 // Constants from rb_thread_t in vm_core.h
 pub const RUBY_OFFSET_THREAD_SELF: i32 = 16;
+
+// Constants from iseq_inline_constant_cache (IC) and iseq_inline_constant_cache_entry (ICE) in vm_core.h
+pub const RUBY_OFFSET_IC_ENTRY: i32 = 0;
+pub const RUBY_OFFSET_ICE_VALUE: i32 = 8;
 
 // TODO: need to dynamically autogenerate constants for all the YARV opcodes from insns.def
 pub const OP_NOP:usize = 0;

@@ -423,6 +423,19 @@ extern "C" {
 }
 pub type rb_num_t = ::std::os::raw::c_ulong;
 #[repr(C)]
+pub struct iseq_inline_constant_cache_entry {
+    pub flags: VALUE,
+    pub value: VALUE,
+    pub ic_serial: ic_serial_entry,
+    pub ic_cref: *const rb_cref_t,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct iseq_inline_constant_cache {
+    pub entry: *mut iseq_inline_constant_cache_entry,
+    pub get_insn_idx: ::std::os::raw::c_uint,
+}
+#[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct iseq_inline_iv_cache_entry {
     pub entry: *mut rb_iv_index_tbl_entry,
@@ -463,6 +476,7 @@ pub const BOP_AND: ruby_basic_operators = 27;
 pub const BOP_OR: ruby_basic_operators = 28;
 pub const BOP_LAST_: ruby_basic_operators = 29;
 pub type ruby_basic_operators = u32;
+pub type IC = *mut iseq_inline_constant_cache;
 pub type IVC = *mut iseq_inline_iv_cache_entry;
 pub type ICVARC = *mut iseq_inline_cvar_cache_entry;
 pub const VM_FRAME_MAGIC_METHOD: u32 = 286326785;
@@ -544,6 +558,9 @@ pub struct rb_builtin_function {
 }
 extern "C" {
     pub fn rb_vm_insn_addr2opcode(addr: *const ::std::os::raw::c_void) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub static mut ruby_vm_global_constant_state: rb_serial_t;
 }
 extern "C" {
     pub fn rb_yjit_mark_writable(mem_block: *mut ::std::os::raw::c_void, mem_size: u32);
