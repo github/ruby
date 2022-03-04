@@ -4475,11 +4475,10 @@ fn gen_send(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut
     return gen_send_general(jit, ctx, cb, ocb, cd, Some(block));
 }
 
-/*
 fn gen_invokesuper(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    let cd = jit_get_arg(jit, 0).as_ptr();
-    let block = jit_get_arg(jit, 1).as_ptr();
+    let cd: *const rb_call_data = jit_get_arg(jit, 0).as_ptr();
+    let block:IseqPtr = jit_get_arg(jit, 1).as_ptr();
 
     // Defer compilation so we can specialize on class of receiver
     if !jit_at_current_insn(jit) {
@@ -4487,16 +4486,16 @@ fn gen_invokesuper(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
         return EndBlock;
     }
 
-    const rb_callable_method_entry_t *me = rb_vm_frame_method_entry(jit->ec->cfp);
-    if (!me) {
+    let me = unsafe { rb_vm_frame_method_entry(get_ec_cfp(jit.ec.unwrap())) };
+    if me.is_null() {
         return CantCompile;
     }
 
     // FIXME: We should track and invalidate this block when this cme is invalidated
-    VALUE current_defined_class = me->defined_class;
-    ID mid = me->def->original_id;
+    let current_defined_class = unsafe { (*me).defined_class };
+    let mid = unsafe { get_def_original_id((*me).def) };
 
-    if (me != rb_callable_method_entry(current_defined_class, me->called_id)) {
+    if me != unsafe { rb_callable_method_entry(current_defined_class, (*me).called_id) } {
         // Though we likely could generate this call, as we are only concerned
         // with the method entry remaining valid, assume_method_lookup_stable
         // below requires that the method lookup matches as well
@@ -4504,29 +4503,33 @@ fn gen_invokesuper(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
     }
 
     // vm_search_normal_superclass
-    if (BUILTIN_TYPE(current_defined_class) == T_ICLASS && FL_TEST_RAW(RBASIC(current_defined_class)->klass, RMODULE_IS_REFINEMENT)) {
+    let rbasic_ptr: *const RBasic = current_defined_class.as_ptr();
+    if current_defined_class.builtin_type() == RUBY_T_ICLASS &&
+        unsafe { FL_TEST_RAW((*rbasic_ptr).klass, VALUE(RMODULE_IS_REFINEMENT)) != VALUE(0) } {
         return CantCompile;
     }
-    VALUE comptime_superclass = RCLASS_SUPER(RCLASS_ORIGIN(current_defined_class));
+    let comptime_superclass = unsafe { rb_class_get_superclass(RCLASS_ORIGIN(current_defined_class)) };
 
-    const struct rb_callinfo *ci = cd->ci;
-    int32_t argc = (int32_t)vm_ci_argc(ci);
+    let ci = unsafe { get_call_data_ci(cd) };
+    let argc = unsafe { vm_ci_argc(ci) };
+
+    let ci_flags = unsafe { vm_ci_flag(ci) };
 
     // Don't JIT calls that aren't simple
     // Note, not using VM_CALL_ARGS_SIMPLE because sometimes we pass a block.
-    if ((vm_ci_flag(ci) & VM_CALL_ARGS_SPLAT) != 0) {
+    if ci_flags & VM_CALL_ARGS_SPLAT != 0 {
         gen_counter_incr!(cb, send_args_splat);
         return CantCompile;
     }
-    if ((vm_ci_flag(ci) & VM_CALL_KWARG) != 0) {
+    if ci_flags & VM_CALL_KWARG != 0 {
         gen_counter_incr!(cb, send_keywords);
         return CantCompile;
     }
-    if ((vm_ci_flag(ci) & VM_CALL_KW_SPLAT) != 0) {
+    if ci_flags & VM_CALL_KW_SPLAT != 0 {
         gen_counter_incr!(cb, send_kw_splat);
         return CantCompile;
     }
-    if ((vm_ci_flag(ci) & VM_CALL_ARGS_BLOCKARG) != 0) {
+    if ci_flags & VM_CALL_ARGS_BLOCKARG != 0 {
         gen_counter_incr!(cb, send_block_arg);
         return CantCompile;
     }
@@ -4536,44 +4539,45 @@ fn gen_invokesuper(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
     // cheaper calculations first, but since we specialize on the method entry
     // and so only have to do this once at compile time this is fine to always
     // check and side exit.
-    VALUE comptime_recv = jit_peek_at_stack(jit, ctx, argc);
-    if (!rb_obj_is_kind_of(comptime_recv, current_defined_class)) {
+    let comptime_recv = jit_peek_at_stack(jit, ctx, argc as isize);
+    if unsafe { rb_obj_is_kind_of(comptime_recv, current_defined_class) } == VALUE(0) {
         return CantCompile;
     }
 
     // Do method lookup
-    const rb_callable_method_entry_t *cme = rb_callable_method_entry(comptime_superclass, mid);
+    let cme = unsafe { rb_callable_method_entry(comptime_superclass, mid) };
 
-    if (!cme) {
+    if cme.is_null() {
         return CantCompile;
     }
 
     // Check that we'll be able to write this method dispatch before generating checks
-    switch (cme->def->type) {
-      case VM_METHOD_TYPE_ISEQ:
-      case VM_METHOD_TYPE_CFUNC:
-        break;
-      default:
+    let cme_def_type = unsafe { get_cme_def_type(cme) };
+    if cme_def_type != VM_METHOD_TYPE_ISEQ && cme_def_type != VM_METHOD_TYPE_CFUNC {
         // others unimplemented
         return CantCompile;
     }
 
     // Guard that the receiver has the same class as the one from compile time
-    uint8_t *side_exit = get_side_exit(jit, ocb, ctx);
+    let side_exit = get_side_exit(jit, ocb, ctx);
 
-    if (jit->ec->cfp->ep[VM_ENV_DATA_INDEX_ME_CREF] != (VALUE)me) {
+    let cfp = unsafe { get_ec_cfp(jit.ec.unwrap()) };
+    let ep = unsafe { get_cfp_ep(cfp) };
+    let cref_me = unsafe { *ep.offset(VM_ENV_DATA_INDEX_ME_CREF.try_into().unwrap()) };
+    let me_as_value = VALUE(me as usize);
+    if cref_me != me_as_value {
         // This will be the case for super within a block
         return CantCompile;
     }
 
     add_comment(cb, "guard known me");
-    mov(cb, REG0, member_opnd(REG_CFP, rb_control_frame_t, ep));
-    let ep_me_opnd = mem_opnd(64, REG0, SIZEOF_VALUE * VM_ENV_DATA_INDEX_ME_CREF);
-    jit_mov_gc_ptr(jit, cb, REG1, (VALUE)me);
+    mov(cb, REG0, mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_EP));
+    let ep_me_opnd = mem_opnd(64, REG0, (SIZEOF_VALUE as i32) * (VM_ENV_DATA_INDEX_ME_CREF as i32));
+    jit_mov_gc_ptr(jit, cb, REG1, me_as_value);
     cmp(cb, ep_me_opnd, REG1);
     jne_ptr(cb, counted_exit!(ocb, side_exit, invokesuper_me_changed));
 
-    if (!block) {
+    if block.is_null() {
         // Guard no block passed
         // rb_vm_frame_block_handler(GET_EC()->cfp) == VM_BLOCK_HANDLER_NONE
         // note, we assume VM_ASSERT(VM_ENV_LOCAL_P(ep))
@@ -4582,8 +4586,8 @@ fn gen_invokesuper(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
         // would require changes to gen_send_*
         add_comment(cb, "guard no block given");
         // EP is in REG0 from above
-        let ep_specval_opnd = mem_opnd(64, REG0, SIZEOF_VALUE * VM_ENV_DATA_INDEX_SPECVAL);
-        cmp(cb, ep_specval_opnd, imm_opnd(VM_BLOCK_HANDLER_NONE));
+        let ep_specval_opnd = mem_opnd(64, REG0, (SIZEOF_VALUE as i32) * (VM_ENV_DATA_INDEX_SPECVAL as i32));
+        cmp(cb, ep_specval_opnd, uimm_opnd(VM_BLOCK_HANDLER_NONE.into()));
         jne_ptr(cb, counted_exit!(ocb, side_exit, invokesuper_block));
     }
 
@@ -4599,18 +4603,12 @@ fn gen_invokesuper(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
     // Method calls may corrupt types
     ctx.clear_local_types();
 
-    switch (cme->def->type) {
-      case VM_METHOD_TYPE_ISEQ:
-        return gen_send_iseq(jit, ctx, cb, ocb, ci, cme, block, argc);
-      case VM_METHOD_TYPE_CFUNC:
-        return gen_send_cfunc(jit, ctx, ci, cme, block, argc, NULL);
-      default:
-        break;
+    match cme_def_type {
+        VM_METHOD_TYPE_ISEQ => gen_send_iseq(jit, ctx, cb, ocb, ci, cme, Some(block), argc),
+        VM_METHOD_TYPE_CFUNC => gen_send_cfunc(jit, ctx, cb, ocb, ci, cme, Some(block), argc, std::ptr::null()),
+        _ => unreachable!(),
     }
-
-    RUBY_ASSERT_ALWAYS(false);
 }
-*/
 
 fn gen_leave(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
@@ -5145,7 +5143,7 @@ fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn>
         //yjit_reg_op(BIN(getblockparamproxy), gen_getblockparamproxy);
         OP_OPT_SEND_WITHOUT_BLOCK => Some(gen_opt_send_without_block),
         OP_SEND => Some(gen_send),
-        //yjit_reg_op(BIN(invokesuper), gen_invokesuper);
+        OP_INVOKESUPER => Some(gen_invokesuper),
         OP_LEAVE => Some(gen_leave),
 
         OP_GETGLOBAL => Some(gen_getglobal),
