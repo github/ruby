@@ -18,7 +18,7 @@ repository root).
 ```sh
 cargo build                       # build the static library
 cargo test                        # run tests
-cargo test --features disassembly # run additional tests that use the optional libcapstone for verification
+cargo test --features disasm # run additional tests that use the optional libcapstone for verification
 cargo doc --document-private-items --open # build documentation site and open it in your browser
 cargo fmt                         # reformat the source code (idempotent)
 ```

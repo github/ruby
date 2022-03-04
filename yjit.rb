@@ -31,6 +31,10 @@ module RubyVM::YJIT
 
   # Produce disassembly for an iseq
   def self.disasm(iseq)
+    # If a method or proc is passed in, get its iseq
+    iseq = RubyVM::InstructionSequence.of(iseq)
+
+    # Produce the disassembly string
     Primitive.rb_yjit_disasm_iseq(iseq)
   end
 

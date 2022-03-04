@@ -1,24 +1,29 @@
 use crate::cruby::*;
+use crate::core::*;
 
 /// Primitive called in yjit.rb
 /// Produce a string representing the disassembly for an ISEQ
 #[no_mangle]
 pub extern "C" fn rb_yjit_disasm_iseq(ec: EcPtr, ruby_self: VALUE, iseq: VALUE) -> VALUE {
 
-    //#[cfg(feature = "disassembly")]
+    //#[cfg(feature = "disasm")]
     //disasm_iseq(IseqPtr: iseq);
     // TODO: convert to Ruby string
 
 
 
 
-    //#[cfg(not(feature = "disassembly"))]
+    //#[cfg(not(feature = "disasm"))]
     return Qnil;
 }
 
-// TODO
 fn disasm_iseq(iseq: IseqPtr) -> String {
-    return "foo".to_string();
+    let out: String = "".to_string();
+
+
+
+
+    return out;
 }
 
 

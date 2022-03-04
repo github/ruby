@@ -24,7 +24,7 @@ capstone = { version = "0.10.0", optional = true }
 # NOTE: By having the Capstone dependency behind a feature, we allow
 # building without needing to install it, but then I have to run
 # `cargo test --features disassembly` for tests...
-disassembly = ["capstone"]
+disasm = ["capstone"]
 stats = []
 asm_comments = []
 

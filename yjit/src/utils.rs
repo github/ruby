@@ -9,7 +9,7 @@
 /// for those casts but they both have undesirable consequences if and when
 /// we decide to support 32-bit platforms. Unfortunately we can't implement
 /// [::core::convert::From] for [usize] since both the trait and the type are
-/// external 😞. Naming the method `into()` also runs into naming conflicts.
+/// external. Naming the method `into()` also runs into naming conflicts.
 pub(crate) trait IntoUsize {
     /// Convert to usize. Implementation conditional on width of [usize].
     fn as_usize(self) -> usize;
@@ -65,7 +65,7 @@ mod tests {
 
 // TODO: we may want to move this function into yjit.c, maybe add a convenient Rust-side wrapper
 /*
-// For debugging. Print the disassembly of an iseq.
+// For debugging. Print the bytecode for an iseq.
 RBIMPL_ATTR_MAYBE_UNUSED()
 static void
 yjit_print_iseq(const rb_iseq_t *iseq)
