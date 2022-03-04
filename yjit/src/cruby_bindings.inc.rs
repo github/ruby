@@ -94,6 +94,9 @@ extern "C" {
     pub fn rb_ary_resurrect(ary: VALUE) -> VALUE;
 }
 extern "C" {
+    pub fn rb_ary_clear(ary: VALUE) -> VALUE;
+}
+extern "C" {
     pub fn rb_hash_new() -> VALUE;
 }
 extern "C" {
@@ -137,6 +140,9 @@ extern "C" {
 }
 extern "C" {
     pub fn rb_attr_get(obj: VALUE, name: ID) -> VALUE;
+}
+extern "C" {
+    pub fn rb_reg_new_ary(ary: VALUE, options: ::std::os::raw::c_int) -> VALUE;
 }
 pub const idDot2: ruby_method_ids = 128;
 pub const idDot3: ruby_method_ids = 129;
@@ -347,6 +353,13 @@ pub const idERROR_INFO: ruby_method_ids = 3831;
 pub const tLAST_OP_ID: ruby_method_ids = 169;
 pub const idLAST_OP_ID: ruby_method_ids = 10;
 pub type ruby_method_ids = u32;
+extern "C" {
+    pub fn rb_ary_tmp_new_from_values(
+        arg1: VALUE,
+        arg2: ::std::os::raw::c_long,
+        arg3: *const VALUE,
+    ) -> VALUE;
+}
 extern "C" {
     pub fn rb_ec_ary_new_from_values(
         ec: *mut rb_execution_context_struct,

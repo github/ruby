@@ -18,6 +18,7 @@ fn main() {
     let bindings = bindgen::builder()
         .clang_args(filtered_clang_args)
         .header("internal.h")
+        .header("internal/re.h")
         .header("include/ruby/ruby.h")
         .header("vm_core.h")
         .header("vm_callinfo.h")
@@ -59,9 +60,11 @@ fn main() {
 
         // From include/ruby/internal/intern/array.h
         .allowlist_function("rb_ary_resurrect")
+        .allowlist_function("rb_ary_clear")
 
         // From internal/array.h
         .allowlist_function("rb_ec_ary_new_from_values")
+        .allowlist_function("rb_ary_tmp_new_from_values")
 
         // From include/ruby/internal/intern/class.h
         .allowlist_function("rb_singleton_class")
@@ -112,6 +115,9 @@ fn main() {
         .allowlist_function("rb_reg_match_post")
         .allowlist_function("rb_reg_match_last")
         .allowlist_function("rb_reg_nth_match")
+
+        // From internal/re.h
+        .allowlist_function("rb_reg_new_ary")
 
         // `ruby_value_type` is a C enum and this stops it from
         // prefixing all the members with the name of the type

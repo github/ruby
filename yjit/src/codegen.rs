@@ -4710,30 +4710,29 @@ fn gen_objtostring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
     }
 }
 
-/*
 fn gen_toregexp(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    rb_num_t opt = jit_get_arg(jit, 0);
-    rb_num_t cnt = jit_get_arg(jit, 1);
+    let opt = jit_get_arg(jit, 0).as_i64();
+    let cnt = jit_get_arg(jit, 1).as_usize();
 
     // Save the PC and SP because this allocates an object and could
     // raise an exception.
     jit_prepare_routine_call(jit, ctx, cb, REG0);
 
-    let values_ptr = ctx.sp_opnd(-(SIZEOF_VALUE * (uint32_t)cnt));
+    let values_ptr = ctx.sp_opnd(-((SIZEOF_VALUE as isize) * (cnt as isize)));
     ctx.stack_pop(cnt);
 
     mov(cb, C_ARG_REGS[0], imm_opnd(0));
-    mov(cb, C_ARG_REGS[1], imm_opnd(cnt));
+    mov(cb, C_ARG_REGS[1], imm_opnd(cnt.try_into().unwrap()));
     lea(cb, C_ARG_REGS[2], values_ptr);
-    call_ptr(cb, REG0, (void *)&rb_ary_tmp_new_from_values);
+    call_ptr(cb, REG0, rb_ary_tmp_new_from_values as *const u8);
 
     // Save the array so we can clear it later
     push(cb, RAX);
     push(cb, RAX); // Alignment
     mov(cb, C_ARG_REGS[0], RAX);
     mov(cb, C_ARG_REGS[1], imm_opnd(opt));
-    call_ptr(cb, REG0, (void *)&rb_reg_new_ary);
+    call_ptr(cb, REG0, rb_reg_new_ary as *const u8);
 
     // The actual regex is in RAX now.  Pop the temp array from
     // rb_ary_tmp_new_from_values into C arg regs so we can clear it
@@ -4745,11 +4744,10 @@ fn gen_toregexp(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
     mov(cb, stack_ret, RAX);
 
     // Clear the temp array.
-    call_ptr(cb, REG0, (void *)&rb_ary_clear);
+    call_ptr(cb, REG0, rb_ary_clear as *const u8);
 
     KeepCompiling
 }
-*/
 
 fn gen_getspecial(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
@@ -5137,9 +5135,7 @@ fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn>
         yjit_reg_op(BIN(anytostring), gen_anytostring);
         */
         OP_OBJTOSTRING => Some(gen_objtostring),
-        /*
-        yjit_reg_op(BIN(toregexp), gen_toregexp);
-        */
+        OP_TOREGEXP => Some(gen_toregexp),
         OP_GETSPECIAL => Some(gen_getspecial),
         OP_GETCLASSVARIABLE => Some(gen_getclassvariable),
         OP_SETCLASSVARIABLE => Some(gen_setclassvariable),
