@@ -4937,29 +4937,29 @@ fn gen_opt_getinlinecache(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBl
     EndBlock
 }
 
-/*
-// Push the explict block parameter onto the temporary stack. Part of the
+// Push the explicit block parameter onto the temporary stack. Part of the
 // interpreter's scheme for avoiding Proc allocations when delegating
 // explict block parameters.
 fn gen_getblockparamproxy(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // A mirror of the interpreter code. Checking for the case
     // where it's pushing rb_block_param_proxy.
-    uint8_t *side_exit = get_side_exit(jit, ocb, ctx);
+    let side_exit = get_side_exit(jit, ocb, ctx);
 
     // EP level
-    uint32_t level = (uint32_t)jit_get_arg(jit, 1);
+    let level = jit_get_arg(jit, 1).as_u32();
 
     // Load environment pointer EP from CFP
     gen_get_ep(cb, REG0, level);
 
     // Bail when VM_ENV_FLAGS(ep, VM_FRAME_FLAG_MODIFIED_BLOCK_PARAM) is non zero
-    test(cb, mem_opnd(64, REG0, SIZEOF_VALUE * VM_ENV_DATA_INDEX_FLAGS), imm_opnd(VM_FRAME_FLAG_MODIFIED_BLOCK_PARAM));
+    let flag_check = mem_opnd(64, REG0, (SIZEOF_VALUE as i32) * (VM_ENV_DATA_INDEX_FLAGS as i32));
+    test(cb, flag_check, uimm_opnd(VM_FRAME_FLAG_MODIFIED_BLOCK_PARAM.into()));
     jnz_ptr(cb, counted_exit!(ocb, side_exit, gbpp_block_param_modified));
 
     // Load the block handler for the current frame
     // note, VM_ASSERT(VM_ENV_LOCAL_P(ep))
-    mov(cb, REG0, mem_opnd(64, REG0, SIZEOF_VALUE * VM_ENV_DATA_INDEX_SPECVAL));
+    mov(cb, REG0, mem_opnd(64, REG0, (SIZEOF_VALUE as i32) * (VM_ENV_DATA_INDEX_SPECVAL as i32)));
 
     // Block handler is a tagged pointer. Look at the tag. 0x03 is from VM_BH_ISEQ_BLOCK_P().
     and(cb, REG0_8, imm_opnd(0x3));
@@ -4969,8 +4969,8 @@ fn gen_getblockparamproxy(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBl
     jnz_ptr(cb, counted_exit!(ocb, side_exit, gbpp_block_handler_not_iseq));
 
     // Push rb_block_param_proxy. It's a root, so no need to use jit_mov_gc_ptr.
-    mov(cb, REG0, const_ptr_opnd((void *)rb_block_param_proxy));
-    RUBY_ASSERT(!SPECIAL_CONST_P(rb_block_param_proxy));
+    mov(cb, REG0, const_ptr_opnd(unsafe { rb_block_param_proxy }.as_ptr()));
+    assert!(! unsafe { rb_block_param_proxy }.special_const_p());
     let top = ctx.stack_push(Type::UnknownHeap);
     mov(cb, top, REG0);
 
@@ -4979,10 +4979,11 @@ fn gen_getblockparamproxy(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBl
 
 fn gen_invokebuiltin(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    const struct rb_builtin_function *bf = (struct rb_builtin_function *)jit_get_arg(jit, 0);
+    let bf: *const rb_builtin_function = jit_get_arg(jit, 0).as_ptr();
+    let bf_argc = unsafe { (*bf).argc };
 
     // ec, self, and arguments
-    if (bf->argc + 2 > NUM_C_ARG_REGS) {
+    if bf_argc + 2 > (C_ARG_REGS.len() as i32) {
         return CantCompile;
     }
 
@@ -4991,19 +4992,20 @@ fn gen_invokebuiltin(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, 
 
     // Call the builtin func (ec, recv, arg1, arg2, ...)
     mov(cb, C_ARG_REGS[0], REG_EC);
-    mov(cb, C_ARG_REGS[1], member_opnd(REG_CFP, rb_control_frame_t, self));
+    mov(cb, C_ARG_REGS[1], mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_SELF));
 
     // Copy arguments from locals
-    for (int32_t i = 0; i < bf->argc; i++) {
-        let stack_opnd = ctx.stack_opnd(bf->argc - i - 1);
-        let c_arg_reg = C_ARG_REGS[2 + i];
+    for i in 0..bf_argc {
+        let stack_opnd = ctx.stack_opnd(bf_argc - i - 1);
+        let idx: usize = (2 + i) as usize;
+        let c_arg_reg = C_ARG_REGS[idx];
         mov(cb, c_arg_reg, stack_opnd);
     }
 
-    call_ptr(cb, REG0, (void *)bf->func_ptr);
+    call_ptr(cb, REG0, unsafe { (*bf).func_ptr } as *const u8);
 
     // Push the return value
-    ctx.stack_pop(bf->argc);
+    ctx.stack_pop(bf_argc as usize);
     let stack_ret = ctx.stack_push(Type::Unknown);
     mov(cb, stack_ret, RAX);
 
@@ -5015,34 +5017,37 @@ fn gen_invokebuiltin(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, 
 // stack uses the argument locals (and self) from the current method.
 fn gen_opt_invokebuiltin_delegate(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    const struct rb_builtin_function *bf = (struct rb_builtin_function *)jit_get_arg(jit, 0);
-    int32_t start_index = (int32_t)jit_get_arg(jit, 1);
+    let bf: *const rb_builtin_function = jit_get_arg(jit, 0).as_ptr();
+    let bf_argc = unsafe { (*bf).argc };
+    let start_index = jit_get_arg(jit, 1).as_i32();
 
     // ec, self, and arguments
-    if (bf->argc + 2 > NUM_C_ARG_REGS) {
+    if bf_argc + 2 > (C_ARG_REGS.len() as i32) {
         return CantCompile;
     }
 
     // If the calls don't allocate, do they need up to date PC, SP?
     jit_prepare_routine_call(jit, ctx, cb, REG0);
 
-    if (bf->argc > 0) {
+    if bf_argc > 0 {
         // Load environment pointer EP from CFP
-        mov(cb, REG0, member_opnd(REG_CFP, rb_control_frame_t, ep));
+        mov(cb, REG0, mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_EP));
     }
 
     // Call the builtin func (ec, recv, arg1, arg2, ...)
     mov(cb, C_ARG_REGS[0], REG_EC);
-    mov(cb, C_ARG_REGS[1], member_opnd(REG_CFP, rb_control_frame_t, self));
+    mov(cb, C_ARG_REGS[1], mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_SELF));
 
     // Copy arguments from locals
-    for (int32_t i = 0; i < bf->argc; i++) {
-        const int32_t offs = -jit->iseq->body->local_table_size - VM_ENV_DATA_SIZE + 1 + start_index + i;
-        let local_opnd = mem_opnd(64, REG0, offs * SIZEOF_VALUE);
-        let c_arg_reg = C_ARG_REGS[i + 2];
+    for i in 0..bf_argc {
+        let table_size = unsafe { get_iseq_body_local_table_size(jit.iseq) };
+        let offs:i32 = -(table_size as i32) - (VM_ENV_DATA_SIZE as i32) + 1 + start_index + i;
+        let local_opnd = mem_opnd(64, REG0, offs * (SIZEOF_VALUE as i32));
+        let offs:usize = (i + 2) as usize;
+        let c_arg_reg = C_ARG_REGS[offs];
         mov(cb, c_arg_reg, local_opnd);
     }
-    call_ptr(cb, REG0, (void *)bf->func_ptr);
+    call_ptr(cb, REG0, unsafe { (*bf).func_ptr } as *const u8);
 
     // Push the return value
     let stack_ret = ctx.stack_push(Type::Unknown);
@@ -5050,11 +5055,6 @@ fn gen_opt_invokebuiltin_delegate(jit: &mut JITState, ctx: &mut Context, cb: &mu
 
     KeepCompiling
 }
-*/
-
-
-
-
 
 
 
@@ -5131,16 +5131,16 @@ fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn>
         OP_OPT_LENGTH => Some(gen_opt_length),
         OP_OPT_REGEXPMATCH2 => Some(gen_opt_regexpmatch2),
         OP_OPT_GETINLINECACHE => Some(gen_opt_getinlinecache),
-        //yjit_reg_op(BIN(invokebuiltin), gen_invokebuiltin);
-        //yjit_reg_op(BIN(opt_invokebuiltin_delegate), gen_opt_invokebuiltin_delegate);
-        //yjit_reg_op(BIN(opt_invokebuiltin_delegate_leave), gen_opt_invokebuiltin_delegate);
+        OP_INVOKEBUILTIN => Some(gen_invokebuiltin),
+        OP_OPT_INVOKEBUILTIN_DELEGATE => Some(gen_opt_invokebuiltin_delegate),
+        OP_OPT_INVOKEBUILTIN_DELEGATE_LEAVE => Some(gen_opt_invokebuiltin_delegate),
         OP_OPT_CASE_DISPATCH => Some(gen_opt_case_dispatch),
         OP_BRANCHIF => Some(gen_branchif),
         OP_BRANCHUNLESS => Some(gen_branchunless),
         OP_BRANCHNIL => Some(gen_branchnil),
         OP_JUMP => Some(gen_jump),
 
-        //yjit_reg_op(BIN(getblockparamproxy), gen_getblockparamproxy);
+        OP_GETBLOCKPARAMPROXY => Some(gen_getblockparamproxy),
         OP_OPT_SEND_WITHOUT_BLOCK => Some(gen_opt_send_without_block),
         OP_SEND => Some(gen_send),
         OP_INVOKESUPER => Some(gen_invokesuper),

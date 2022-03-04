@@ -105,6 +105,7 @@ fn main() {
         // From vm_insnhelper.h
         .allowlist_var("ruby_vm_global_constant_state")
         .allowlist_var("VM_ENV_DATA_INDEX_ME_CREF")
+        .allowlist_var("rb_block_param_proxy")
 
         // From include/ruby/internal/intern/range.h
         .allowlist_function("rb_range_new")
@@ -193,6 +194,9 @@ fn main() {
 
         // From iseq.h
         .allowlist_function("rb_vm_insn_addr2opcode")
+
+        // From builtin.h
+        .allowlist_type("rb_builtin_function.*")
 
         // From internal/variable.h
         .allowlist_function("rb_gvar_(get|set)")
