@@ -722,7 +722,8 @@ fn jump_to_next_insn(jit: &mut JITState, current_context: &Context, cb: &mut Cod
     gen_direct_jump(
         jit,
         &reset_depth,
-        jump_block
+        jump_block,
+        cb
     );
 }
 
@@ -730,25 +731,25 @@ fn jump_to_next_insn(jit: &mut JITState, current_context: &Context, cb: &mut Cod
 // Part of gen_block_version().
 // Note: this function will mutate its context while generating code,
 //       but the input start_ctx argument should remain immutable.
-pub fn gen_single_block(blockref: &BlockRef, ec: EcPtr, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> Result<(), ()>
+pub fn gen_single_block(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> Result<BlockRef, ()>
 {
-    let blockid = {
-        let block = blockref.borrow();
-        let blockid = block.get_blockid();
-        //verify_blockid(blockid);
+    // Limit the number of specialized versions for this block
+    let mut ctx = limit_block_versions(blockid, start_ctx);
 
-        assert!(!(blockid.idx == 0 && block.get_ctx().get_stack_size() > 0));
-        blockid
-    };
+    //verify_blockid(blockid);
+    assert!(!(blockid.idx == 0 && ctx.get_stack_size() > 0));
 
+    // Instruction sequence to compile
     let iseq = blockid.iseq;
     let iseq_size = unsafe { get_iseq_encoded_size(iseq) };
     let mut insn_idx: c_uint = blockid.idx;
     let starting_insn_idx = insn_idx;
-    let mut ctx = blockref.borrow().get_ctx();
+
+    // Allocate the new block
+    let blockref = Block::new(blockid, &ctx);
 
     // Initialize a JIT state object
-    let mut jit = JITState::new(blockref);
+    let mut jit = JITState::new(&blockref);
     jit.iseq = blockid.iseq;
     jit.ec = Some(ec);
 
@@ -883,7 +884,7 @@ pub fn gen_single_block(blockref: &BlockRef, ec: EcPtr, cb: &mut CodeBlock, ocb:
     */
 
     // Block compiled successfully
-    Ok(())
+    Ok(blockref)
 }
 
 fn gen_nop(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
@@ -3137,7 +3138,8 @@ fn gen_jump(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut
     gen_direct_jump(
         jit,
         ctx,
-        jump_block
+        jump_block,
+        cb
     );
 
     EndBlock
@@ -4166,7 +4168,8 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
     gen_direct_jump(
         jit,
         &callee_ctx,
-        BlockId { iseq: iseq, idx: start_pc_offset }
+        BlockId { iseq: iseq, idx: start_pc_offset },
+        cb
     );
 
     EndBlock
@@ -4933,6 +4936,7 @@ fn gen_opt_getinlinecache(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBl
         jit,
         ctx,
         BlockId { iseq: jit.iseq, idx: jump_idx },
+        cb,
     );
     EndBlock
 }

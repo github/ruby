@@ -457,7 +457,7 @@ fn find_block_version(blockid: BlockId, ctx: &Context) -> Option<BlockRef>
 }
 
 /// Produce a generic context when the block version limit is hit for a blockid
-fn limit_block_versions(blockid: BlockId, ctx: &Context) -> Context
+pub fn limit_block_versions(blockid: BlockId, ctx: &Context) -> Context
 {
     // Guard chains implement limits separately, do nothing
     if ctx.chain_depth > 0 {
@@ -1008,110 +1008,81 @@ impl Context {
     }
 }
 
-// Immediately compile a series of block versions at a starting point and
-// return the starting block.
+/// See [gen_block_series_body]. This simply counts compilation failures.
 fn gen_block_series(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> Option<BlockRef>
 {
-    // Limit the number of specialized versions for this block
-    let block_ctx = limit_block_versions(blockid, start_ctx);
+    let result = gen_block_series_body(blockid, start_ctx, ec, cb, ocb);
+    if result.is_none() {
+        incr_counter!(compilation_failure);
+    }
+
+    result
+}
+
+/// Immediately compile a series of block versions at a starting point and
+/// return the starting block.
+fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> Option<BlockRef>
+{
+    // Keep track of all blocks compiled in this batch
+    const EXPECTED_BATCH_SIZE: usize = 4;
+    let mut batch = Vec::with_capacity(EXPECTED_BATCH_SIZE);
 
     // Generate code for the first block
-    let block = Block::new(blockid, &block_ctx);
-    let result = gen_single_block(&block, ec, cb, ocb);
+    let first_block = gen_single_block(blockid, start_ctx, ec, cb, ocb).ok()?;
+    batch.push(first_block.clone()); // Keep track of this block version
 
-    // If compilation failed
-    if result.is_err() {
-        return None;
-    }
+    // Loop variable
+    let mut last_blockref = first_block.clone();
+    loop {
+        // Get the last outgoing branch from the previous block.
+        let last_branchref = {
+            let last_block = last_blockref.borrow();
+            match last_block.outgoing.last() {
+                Some(branch) => branch.clone(),
+                None => { break; } // If last block has no branches, stop.
+            }
+        };
+        let mut last_branch = last_branchref.borrow_mut();
 
-    // Keep track of this block version
-    add_block_version(&block);
+        // gen_direct_jump() can request a block to be placed immediately after by
+        // leaving `None`s in the `dst_addrs` array.
+        match &last_branch.dst_addrs {
+            [None, None] => (),
+            _ => { break; } // If there is no next block to compile, stop
+        };
 
-    return Some(block);
+        // Get id and context for the new block
+        let requested_id = last_branch.targets[0];
+        let requested_ctx = &last_branch.target_ctxs[0];
+        assert_ne!(last_branch.targets[0], BLOCKID_NULL, "block id must be filled");
 
-
-
-
-    // TODO: not yet implemented for multiple blocks
-
-
-    /*
-    // For each successor block to compile
-    while (batch_success) {
-        // If the previous block compiled doesn't have outgoing branches, stop
-        if (rb_darray_size(block->outgoing) == 0) {
-            break;
-        }
-
-        // Get the last outgoing branch from the previous block. Blocks can use
-        // gen_direct_jump() to request a block to be placed immediately after.
-        branch_t *last_branch = rb_darray_back(block->outgoing);
-
-        // If there is no next block to compile, stop
-        if (last_branch->dst_addrs[0] || last_branch->dst_addrs[1]) {
-            break;
-        }
-
-        if (last_branch->targets[0].iseq == NULL) {
-            rb_bug("invalid target for last branch");
-        }
-
-        // Generate code for the current block using context from the last branch.
-        blockid_t requested_id = last_branch->targets[0];
-        const ctx_t *requested_ctx = &last_branch->target_ctxs[0];
-
-        batch_success = compiled_count < MAX_PER_BATCH;
-        if (batch_success) {
-            // TODO: need to call limit_block_versions() here
-            //let block_ctx = limit_block_versions(requested_id, requested_ctx);
-
-            block = gen_single_block(requested_id, requested_ctx, ec);
-            batch_success = block;
-        }
-
-        // If the batch failed, stop
-        if (!batch_success) {
-            break;
-        }
+        // Generate new block using context from the last branch.
+        let new_blockref = gen_single_block(requested_id, requested_ctx, ec, cb, ocb).ok()?;
 
         // Connect the last branch and the new block
-        last_branch->dst_addrs[0] = block->start_addr;
-        rb_darray_append(&block->incoming, last_branch);
-        last_branch->blocks[0] = block;
+        last_branch.blocks[0] = Some(new_blockref.clone());
+        last_branch.dst_addrs[0] = new_blockref.borrow().start_addr;
+        new_blockref.borrow_mut().incoming.push(last_branchref.clone());
 
         // This block should immediately follow the last branch
-        RUBY_ASSERT(block->start_addr == last_branch->end_addr);
+        assert!(new_blockref.borrow().start_addr == last_branch.end_addr);
 
         // Track the block
-        add_block_version(block);
+        batch.push(new_blockref.clone());
 
-        batch[compiled_count] = block;
-        compiled_count++;
+        // Repeat with newest block
+        last_blockref = new_blockref;
     }
 
-    if (batch_success) {
-        // Success. Return first block in the batch.
-        RUBY_ASSERT(compiled_count > 0);
-        return batch[0];
+    // Install the block into the ISEQ payload for consideration in future LBBV code expansions.
+    // NOTE(alan): There is a slight deviation from C YJIT here. C YJIT runs add_block_version()
+    //             after generating each new block whereas we do it in one go at the end here.
+    //             This is simpler and let's see if the more complex setup is necessary.
+    for blockref in &batch {
+        add_block_version(blockref);
     }
-    else {
-        // The batch failed. Free everything in the batch
-        for (int block_idx = 0; block_idx < compiled_count; block_idx++) {
-            block_t *const to_free = batch[block_idx];
 
-            // Undo add_block_version()
-            rb_yjit_block_array_t versions = yjit_get_version_list(to_free->blockid.iseq, to_free->blockid.idx);
-            block_array_remove(versions, to_free);
-
-            // Deallocate
-            yjit_free_block(to_free);
-        }
-
-        incr_counter!(compilation_failure);
-
-        return None;
-    }
-    */
+    Some(first_block)
 }
 
 /// Generate a block version that is an entry point inserted into an iseq
@@ -1472,50 +1443,43 @@ fn gen_jump_branch(cb: &mut CodeBlock, target0: CodePtr, target1: Option<CodePtr
 pub fn gen_direct_jump(
     jit: &JITState,
     ctx: &Context,
-    target0: BlockId
+    target0: BlockId,
+    cb: &mut CodeBlock,
 )
 {
     assert!(target0 != BLOCKID_NULL);
 
-    /*
-    branch_t *branch = make_branch_entry(jit->block, ctx, gen_jump_branch);
-    branch->targets[0] = target0;
-    branch->target_ctxs[0] = *ctx;
-    */
+    let branchref = make_branch_entry(jit.get_block(), ctx, gen_jump_branch);
+    let mut branch = branchref.borrow_mut();
+
+    branch.targets[0] = target0;
+    branch.target_ctxs[0] = *ctx;
 
     let maybe_block = find_block_version(target0, ctx);
 
     // If the block already exists
     if let Some(blockref) = maybe_block {
+        let mut block = blockref.borrow_mut();
 
-        /*
-        rb_darray_append(&p_block->incoming, branch);
+        block.incoming.push(branchref.clone());
 
-        branch->dst_addrs[0] = p_block->start_addr;
-        branch->blocks[0] = p_block;
-        branch->shape = BranchShape::Default;
+        branch.dst_addrs[0] = block.start_addr;
+        branch.blocks[0] = Some(blockref.clone());
+        branch.shape = BranchShape::Default;
 
         // Call the branch generation function
-        branch->start_addr = cb.get_write_ptr();
-        gen_jump_branch(cb, branch->dst_addrs[0], NULL, BranchShape::Default);
-        branch->end_addr = cb.get_write_ptr();
-        */
-
+        branch.start_addr = Some(cb.get_write_ptr());
+        gen_jump_branch(cb, branch.dst_addrs[0].unwrap(), None, BranchShape::Default);
+        branch.end_addr = Some(cb.get_write_ptr());
     }
     else {
-
-        /*
-        // This NULL target address signals gen_block_series() to compile the
+        // This None target address signals gen_block_series() to compile the
         // target block right after this one (fallthrough).
-        branch->dst_addrs[0] = NULL;
-        branch->shape = BranchShape::Next0;
-        branch->start_addr = cb.get_write_ptr();
-        branch->end_addr = cb.get_write_ptr();
-        */
-
+        branch.dst_addrs[0] = None;
+        branch.shape = BranchShape::Next0;
+        branch.start_addr = Some(cb.get_write_ptr());
+        branch.end_addr = Some(cb.get_write_ptr());
     }
-
-    todo!("gen_direct_jump() unimplemented");
 }
 
 pub fn defer_compilation(jit: &JITState, cur_ctx: &Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb)
