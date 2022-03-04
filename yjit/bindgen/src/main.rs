@@ -69,6 +69,9 @@ fn main() {
         // From include/ruby/internal/intern/class.h
         .allowlist_function("rb_singleton_class")
 
+        // From include/ruby/internal/core/rclass.h
+        .allowlist_function("rb_class_get_superclass")
+
         // VALUE variables for Ruby class objects
         // From include/ruby/internal/globals.h
         .allowlist_var("rb_cBasicObject")
@@ -101,6 +104,7 @@ fn main() {
 
         // From vm_insnhelper.h
         .allowlist_var("ruby_vm_global_constant_state")
+        .allowlist_var("VM_ENV_DATA_INDEX_ME_CREF")
 
         // From include/ruby/internal/intern/range.h
         .allowlist_function("rb_range_new")
@@ -153,6 +157,7 @@ fn main() {
         .allowlist_var(".*_REDEFINED_OP_FLAG")
         .allowlist_type("rb_num_t")
         .allowlist_function("rb_callable_method_entry")
+        .allowlist_function("rb_vm_frame_method_entry")
         .allowlist_type("IVC") // pointer to iseq_inline_iv_cache_entry
         .allowlist_type("IC")  // pointer to iseq_inline_constant_cache
         .allowlist_type("iseq_inline_constant_cache_entry")

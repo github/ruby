@@ -150,6 +150,9 @@ extern "C" {
     /// While this returns a uintptr_t in C, we always use it as a Rust u64
     pub fn get_def_method_serial(def: * const rb_method_definition_t) -> u64;
 
+    #[link_name = "rb_get_def_original_id"]
+    pub fn get_def_original_id(def: * const rb_method_definition_t) -> ID;
+
     #[link_name = "rb_get_mct_argc"]
     pub fn get_mct_argc(mct: * const rb_method_cfunc_t) -> c_int;
 
@@ -254,6 +257,9 @@ extern "C" {
     pub fn rb_yjit_branch_stub_hit(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -> *const c_void;
 
     pub fn rb_str_bytesize(str:VALUE) -> VALUE;
+
+    #[link_name = "rb_RCLASS_ORIGIN"]
+    pub fn RCLASS_ORIGIN(v: VALUE) -> VALUE;
 }
 
 pub fn insn_len(opcode:usize) -> u32
@@ -561,6 +567,8 @@ pub const RUBY_FL_SINGLETON:usize = RUBY_FL_USER_0;
 
 pub const ROBJECT_EMBED:usize = RUBY_FL_USER_1;
 pub const ROBJECT_EMBED_LEN_MAX:usize = 3; // This is a complex calculation in ruby/internal/core/robject.h
+
+pub const RMODULE_IS_REFINEMENT:usize = RUBY_FL_USER_3;
 
 // Constants from include/ruby/internal/fl_type.h
 pub const RUBY_FL_USHIFT:usize = 12;

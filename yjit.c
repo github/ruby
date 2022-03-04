@@ -6,6 +6,7 @@
 #include "internal/string.h"
 #include "internal/hash.h"
 #include "internal/variable.h"
+#include "internal/class.h"
 #include "vm_core.h"
 #include "vm_callinfo.h"
 #include "builtin.h"
@@ -362,6 +363,12 @@ rb_get_def_method_serial(rb_method_definition_t *def)
     return def->method_serial;
 }
 
+ID
+rb_get_def_original_id(rb_method_definition_t *def)
+{
+    return def->original_id;
+}
+
 int
 rb_get_mct_argc(rb_method_cfunc_t *mct)
 {
@@ -583,6 +590,12 @@ rb_yjit_branch_stub_hit(void *branch_ptr, uint32_t target_idx, rb_execution_cont
 bool
 rb_BASIC_OP_UNREDEFINED_P(enum ruby_basic_operators bop, uint32_t klass) {
     return BASIC_OP_UNREDEFINED_P(bop, klass);
+}
+
+VALUE
+rb_RCLASS_ORIGIN(VALUE c)
+{
+    return RCLASS_ORIGIN(c);
 }
 
 #include "yjit_iface.c"

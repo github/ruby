@@ -12,6 +12,7 @@ pub const NIL_REDEFINED_OP_FLAG: u32 = 512;
 pub const TRUE_REDEFINED_OP_FLAG: u32 = 1024;
 pub const FALSE_REDEFINED_OP_FLAG: u32 = 2048;
 pub const PROC_REDEFINED_OP_FLAG: u32 = 4096;
+pub const VM_ENV_DATA_INDEX_ME_CREF: i32 = -2;
 pub const VM_BLOCK_HANDLER_NONE: u32 = 0;
 pub type ID = ::std::os::raw::c_ulong;
 extern "C" {
@@ -57,6 +58,9 @@ pub const RUBY_T_MASK: ruby_value_type = 31;
 pub type ruby_value_type = u32;
 pub type st_data_t = ::std::os::raw::c_ulong;
 pub type st_index_t = st_data_t;
+extern "C" {
+    pub fn rb_class_get_superclass(klass: VALUE) -> VALUE;
+}
 extern "C" {
     pub static mut rb_mKernel: VALUE;
 }
@@ -490,6 +494,7 @@ pub const BOP_OR: ruby_basic_operators = 28;
 pub const BOP_LAST_: ruby_basic_operators = 29;
 pub type ruby_basic_operators = u32;
 pub type IC = *mut iseq_inline_constant_cache;
+pub type rb_control_frame_t = rb_control_frame_struct;
 pub type IVC = *mut iseq_inline_iv_cache_entry;
 pub type ICVARC = *mut iseq_inline_cvar_cache_entry;
 pub const VM_FRAME_MAGIC_METHOD: u32 = 286326785;
@@ -514,6 +519,11 @@ pub const VM_ENV_FLAG_ESCAPED: u32 = 4;
 pub const VM_ENV_FLAG_WB_REQUIRED: u32 = 8;
 pub const VM_ENV_FLAG_ISOLATED: u32 = 16;
 pub type _bindgen_ty_12 = u32;
+extern "C" {
+    pub fn rb_vm_frame_method_entry(
+        cfp: *const rb_control_frame_t,
+    ) -> *const rb_callable_method_entry_t;
+}
 pub const VM_CALL_ARGS_SPLAT_bit: vm_call_flag_bits = 0;
 pub const VM_CALL_ARGS_BLOCKARG_bit: vm_call_flag_bits = 1;
 pub const VM_CALL_FCALL_bit: vm_call_flag_bits = 2;
@@ -560,6 +570,18 @@ extern "C" {
 }
 extern "C" {
     pub fn rb_gvar_set(arg1: ID, arg2: VALUE) -> VALUE;
+}
+#[repr(C)]
+pub struct rb_iv_index_tbl_entry {
+    pub index: u32,
+    pub class_serial: rb_serial_t,
+    pub class_value: VALUE,
+}
+#[repr(C)]
+pub struct rb_cvar_class_tbl_entry {
+    pub index: u32,
+    pub global_cvar_state: rb_serial_t,
+    pub class_value: VALUE,
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -619,16 +641,4 @@ extern "C" {
 }
 extern "C" {
     pub fn rb_cfp_get_iseq(cfp: *mut rb_control_frame_struct) -> *mut rb_iseq_t;
-}
-#[repr(C)]
-pub struct rb_iv_index_tbl_entry {
-    pub index: u32,
-    pub class_serial: rb_serial_t,
-    pub class_value: VALUE,
-}
-#[repr(C)]
-pub struct rb_cvar_class_tbl_entry {
-    pub index: u32,
-    pub global_cvar_state: rb_serial_t,
-    pub class_value: VALUE,
 }
