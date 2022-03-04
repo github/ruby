@@ -4980,10 +4980,10 @@ fn gen_getblockparamproxy(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBl
 fn gen_invokebuiltin(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let bf: *const rb_builtin_function = jit_get_arg(jit, 0).as_ptr();
-    let bf_argc = unsafe { (*bf).argc };
+    let bf_argc: usize = unsafe { (*bf).argc }.try_into().expect("non negative argc");
 
     // ec, self, and arguments
-    if bf_argc + 2 > (C_ARG_REGS.len() as i32) {
+    if bf_argc + 2 > C_ARG_REGS.len() {
         return CantCompile;
     }
 
@@ -4996,16 +4996,15 @@ fn gen_invokebuiltin(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, 
 
     // Copy arguments from locals
     for i in 0..bf_argc {
-        let stack_opnd = ctx.stack_opnd(bf_argc - i - 1);
-        let idx: usize = (2 + i) as usize;
-        let c_arg_reg = C_ARG_REGS[idx];
+        let stack_opnd = ctx.stack_opnd((bf_argc - i - 1) as i32);
+        let c_arg_reg = C_ARG_REGS[2 + i];
         mov(cb, c_arg_reg, stack_opnd);
     }
 
     call_ptr(cb, REG0, unsafe { (*bf).func_ptr } as *const u8);
 
     // Push the return value
-    ctx.stack_pop(bf_argc as usize);
+    ctx.stack_pop(bf_argc);
     let stack_ret = ctx.stack_push(Type::Unknown);
     mov(cb, stack_ret, RAX);
 
