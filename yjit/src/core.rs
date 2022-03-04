@@ -377,7 +377,7 @@ fn get_iseq_payload(iseq: IseqPtr) -> &'static mut IseqPayload
     unsafe { payload_non_null.as_mut() }.unwrap()
 }
 
-// Get all blocks for a particular place in an iseq.
+/// Get all blocks for a particular place in an iseq.
 fn get_version_list(blockid: BlockId) -> &'static mut VersionList
 {
     let payload = get_iseq_payload(blockid.iseq);
@@ -391,13 +391,35 @@ fn get_version_list(blockid: BlockId) -> &'static mut VersionList
     return payload.version_map.get_mut(insn_idx).unwrap();
 }
 
-// Count the number of block versions matching a given blockid
+/// Count the number of block versions matching a given blockid
 fn get_num_versions(blockid: BlockId) -> usize
 {
     let insn_idx = blockid.idx.as_usize();
     let payload = get_iseq_payload(blockid.iseq);
 
     payload.version_map.get(insn_idx).map(|versions| versions.len()).unwrap_or(0)
+}
+
+/// Get a list of block versions generated for an iseq
+/// This is used for disassembly (see disasm.rs)
+pub fn get_iseq_block_list(iseq: IseqPtr) -> Vec<BlockRef> {
+
+    let payload = get_iseq_payload(iseq);
+
+    let mut blocks = Vec::<BlockRef>::new();
+
+    // For each instruction index
+    for insn_idx in 0..payload.version_map.len() {
+        let version_list = &payload.version_map[insn_idx];
+
+        // For each version at this instruction index
+        for version in version_list {
+            // Clone the block ref and add it to the list
+            blocks.push(version.clone());
+        }
+    }
+
+    return blocks;
 }
 
 /// Retrieve a basic block version for an (iseq, idx) tuple

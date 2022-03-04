@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use crate::cruby::*;
 use crate::core::*;
 
@@ -6,19 +7,47 @@ use crate::core::*;
 #[no_mangle]
 pub extern "C" fn rb_yjit_disasm_iseq(ec: EcPtr, ruby_self: VALUE, iseq: VALUE) -> VALUE {
 
+    // TODO
     //#[cfg(feature = "disasm")]
     //disasm_iseq(IseqPtr: iseq);
-    // TODO: convert to Ruby string
+
+
+
+    let iseq: IseqPtr = iseq.as_ptr();
+    println!("iseq: {:?}", iseq);
+
+    //FIXME: Assertion Failed: yjit.c:239:rb_iseq_get_yjit_payload:IMEMO_TYPE_P(iseq, imemo_iseq)
 
 
 
 
+    //let out_string = disasm_iseq(iseq);
+
+    // TODO: convert Rust string to Ruby string
+    // may want a utility function for this
+
+
+
+
+
+
+
+    // TODO: return Qnil iff disasm feature disabled
     //#[cfg(not(feature = "disasm"))]
     return Qnil;
 }
 
 fn disasm_iseq(iseq: IseqPtr) -> String {
-    let out: String = "".to_string();
+    let mut out = String::from("");
+
+    // Get a list of block versions generated for this iseq
+    let block_list = get_iseq_block_list(iseq);
+
+    out.push_str(&format!("NUM BLOCK VERSIONS: {}", block_list.len()));
+
+    // TODO: compute total code size in bytes for all blocks
+
+
 
 
 
@@ -89,29 +118,6 @@ yjit_disasm_init(VALUE klass)
 */
 
 
-
-/*
-static VALUE
-yjit_disasm(VALUE self, VALUE code, VALUE from)
-{
-    size_t count;
-    csh * handle;
-    cs_insn *insns;
-
-    TypedData_Get_Struct(self, csh, &yjit_disasm_type, handle);
-    count = cs_disasm(*handle, (uint8_t*)StringValuePtr(code), RSTRING_LEN(code), NUM2ULL(from), 0, &insns);
-    VALUE insn_list = rb_ary_new_capa(count);
-
-    for (size_t i = 0; i < count; i++) {
-        VALUE vals = rb_ary_new_from_args(3, LONG2NUM(insns[i].address),
-                rb_str_new2(insns[i].mnemonic),
-                rb_str_new2(insns[i].op_str));
-        rb_ary_push(insn_list, rb_struct_alloc(cYjitDisasmInsn, vals));
-    }
-    cs_free(insns, count);
-    return insn_list;
-}
-*/
 
 
 
