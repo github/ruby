@@ -24,7 +24,7 @@
 //! You might be wondering about why this is different from the [FFI example]
 //! in the Nomicon, an official book about Unsafe Rust.
 //!
-//! There is no #[link] attribute because we are not linking against an external
+//! There is no `#[link]` attribute because we are not linking against an external
 //! library, but rather implicitly asserting that we'll supply a concrete definition
 //! for all C functions we call, similar to how pure C projects put functions
 //! across different compilation units and link them together.
@@ -269,7 +269,7 @@ pub fn get_ruby_vm_frozen_core() -> VALUE
 }
 
 /// Opaque iseq type for opaque iseq pointers from vm_core.h
-/// See: https://doc.rust-lang.org/nomicon/ffi.html#representing-opaque-structs
+/// See: <https://doc.rust-lang.org/nomicon/ffi.html#representing-opaque-structs>
 #[repr(C)]
 pub struct rb_iseq_t {
     _data: [u8; 0],

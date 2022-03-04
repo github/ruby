@@ -7,6 +7,7 @@ use crate::asm::x86_64::*;
 use crate::codegen::*;
 use crate::options::*;
 use crate::stats::*;
+use crate::utils::IntoUsize;
 use InsnOpnd::*;
 use TempMapping::*;
 use core::ffi::{c_void};
@@ -380,7 +381,7 @@ fn get_iseq_payload(iseq: IseqPtr) -> &'static mut IseqPayload
 fn get_version_list(blockid: BlockId) -> &'static mut VersionList
 {
     let payload = get_iseq_payload(blockid.iseq);
-    let insn_idx = blockid.idx as usize;
+    let insn_idx = blockid.idx.as_usize();
 
     // Expand the version map as necessary
     if insn_idx >= payload.version_map.len() {
@@ -393,7 +394,7 @@ fn get_version_list(blockid: BlockId) -> &'static mut VersionList
 // Count the number of block versions matching a given blockid
 fn get_num_versions(blockid: BlockId) -> usize
 {
-    let insn_idx = blockid.idx as usize;
+    let insn_idx = blockid.idx.as_usize();
     let payload = get_iseq_payload(blockid.iseq);
 
     payload.version_map.get(insn_idx).map(|versions| versions.len()).unwrap_or(0)
@@ -633,7 +634,7 @@ impl Context {
             return self.stack_push_mapping((mapping, Type::Unknown));
         }
 
-        let stack_size = self.stack_size as usize;
+        let stack_size: usize = self.stack_size.into();
 
         // Keep track of the type and mapping of the value
         if stack_size < MAX_TEMP_TYPES {
@@ -690,7 +691,7 @@ impl Context {
 
         // Clear the types of the popped values
         for i in 0..n {
-            let idx = ((self.stack_size as usize) - i - 1) as usize;
+            let idx: usize = (self.stack_size as usize) - i - 1;
 
             if idx < MAX_TEMP_TYPES {
                 self.temp_types[idx] = Type::Unknown;
@@ -723,7 +724,7 @@ impl Context {
             StackOpnd(idx) => {
                 let idx = idx as u16;
                 assert!(idx < self.stack_size);
-                let stack_idx = (self.stack_size - 1 - idx) as usize;
+                let stack_idx: usize = (self.stack_size - 1 - idx).into();
 
                 // If outside of tracked range, do nothing
                 if stack_idx >= MAX_TEMP_TYPES {
@@ -1231,7 +1232,7 @@ pub extern "C" fn rb_yjit_rust_branch_stub_hit(branch_ptr: *const c_void, target
 
     let branch_size_on_entry = branch.code_size();
 
-    let target_idx: usize = target_idx as usize;
+    let target_idx: usize = target_idx.as_usize();
     let target = branch.targets[target_idx];
     let target_ctx = branch.target_ctxs[target_idx];
 
@@ -1255,7 +1256,7 @@ pub extern "C" fn rb_yjit_rust_branch_stub_hit(branch_ptr: *const c_void, target
         let original_interp_sp = get_cfp_sp(cfp);
 
         let reconned_pc = rb_iseq_pc_at_idx(rb_cfp_get_iseq(cfp), target.idx);
-        let reconned_sp = original_interp_sp.add(target_ctx.sp_offset as usize);
+        let reconned_sp = original_interp_sp.offset(target_ctx.sp_offset.into());
 
         // Update the PC in the current CFP, because it may be out of sync in JITted code
         rb_set_cfp_pc(cfp, reconned_pc);
@@ -1376,7 +1377,7 @@ fn get_branch_target(
         // Add an incoming branch for this version
         block.incoming.push(branchref.clone());
         let mut branch = branchref.borrow_mut();
-        branch.blocks[target_idx as usize] = Some(blockref.clone());
+        branch.blocks[target_idx.as_usize()] = Some(blockref.clone());
 
         // Return a pointer to the compiled code for the block
         return block.start_addr.unwrap();

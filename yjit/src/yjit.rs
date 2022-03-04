@@ -9,7 +9,7 @@ use std::os::raw;
 
 /// For tracking whether the user enabled YJIT through command line arguments or environment
 /// variables. AtomicBool to avoid `unsafe`. On x86 it compiles to simple movs.
-/// See https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html
+/// See <https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html>
 /// See [rb_yjit_enabled_p]
 static YJIT_ENABLED: AtomicBool = AtomicBool::new(false);
 
