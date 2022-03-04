@@ -995,7 +995,9 @@ pub fn mov(cb: &mut CodeBlock, dst: X86Opnd, src: X86Opnd) {
                 write_rm(cb, mem.num_bits == 16, mem.num_bits == 64, X86Opnd::None, dst, 0, &[0xc7]);
             }
 
-            cb.write_int(imm.value as u64, if mem.num_bits > 32 { 32 } else { mem.num_bits.into() });
+            let output_num_bits:u32 = if mem.num_bits > 32 { 32 } else { mem.num_bits.into() };
+            assert!(sig_imm_size(imm.value) <= (output_num_bits as u8));
+            cb.write_int(imm.value as u64, output_num_bits);
         },
         // M + UImm
         (X86Opnd::Mem(mem), X86Opnd::UImm(uimm)) => {
@@ -1007,7 +1009,9 @@ pub fn mov(cb: &mut CodeBlock, dst: X86Opnd, src: X86Opnd) {
                 write_rm(cb, mem.num_bits == 16, mem.num_bits == 64, X86Opnd::None, dst, 0, &[0xc7]);
             }
 
-            cb.write_int(uimm.value, if mem.num_bits > 32 { 32 } else { mem.num_bits.into() });
+            let output_num_bits = if mem.num_bits > 32 { 32 } else { mem.num_bits.into() };
+            assert!(unsig_imm_size(uimm.value) <= (output_num_bits as u8));
+            cb.write_int(uimm.value, output_num_bits);
         },
         // * + Imm/UImm
         (_, X86Opnd::Imm(_) | X86Opnd::UImm(_)) => unreachable!(),

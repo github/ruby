@@ -90,10 +90,14 @@ fn main() {
         .allowlist_type("vm_call_flag_bits") // So instead we include the other enum and do the bit-shift ourselves
         .blocklist_type("rb_call_data")
         .opaque_type("rb_call_data")
+        .blocklist_type("rb_callinfo_kwarg") // Contains a VALUE[] array of undefined size
+        .opaque_type("rb_callinfo_kwarg")
+        .allowlist_type("rb_callinfo")
 
         // From vm_core.h
         .allowlist_var("VM_BLOCK_HANDLER_NONE")
         .allowlist_var("VM_ENV_FLAG_.*")
+        .allowlist_type("rb_seq_param_keyword_struct")
 
         // From vm_insnhelper.h
         .allowlist_var("ruby_vm_global_constant_state")
@@ -104,6 +108,7 @@ fn main() {
         // From include/ruby/internal/symbol.h
         .allowlist_function("rb_intern")
         .allowlist_function("rb_id2sym")
+        .allowlist_function("rb_sym2id")
 
         // From internal/string.h
         .allowlist_function("rb_ec_str_resurrect")
@@ -141,8 +146,6 @@ fn main() {
         .allowlist_type("rb_callable_method_entry_struct")
         .allowlist_function("rb_method_entry_at")
         .allowlist_type("rb_method_entry_t")
-
-        // Opaque types from method.h
         .blocklist_type("rb_method_cfunc_t")
 
         // From vm_core.h
@@ -162,8 +165,6 @@ fn main() {
         .allowlist_type("iseq_inline_cvar_cache_entry")
         .blocklist_type("rb_method_definition_.*")
         .opaque_type("rb_method_definition_.*")
-
-        // Opaque types from vm_core.h
         .blocklist_type("rb_execution_context_.*")
         .opaque_type("rb_execution_context_.*")
         .blocklist_type("rb_control_frame_struct")

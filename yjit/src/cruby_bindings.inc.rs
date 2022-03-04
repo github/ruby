@@ -106,6 +106,9 @@ extern "C" {
     pub fn rb_hash_bulk_insert(argc: ::std::os::raw::c_long, argv: *const VALUE, hash: VALUE);
 }
 extern "C" {
+    pub fn rb_sym2id(obj: VALUE) -> ID;
+}
+extern "C" {
     pub fn rb_id2sym(id: ID) -> VALUE;
 }
 extern "C" {
@@ -445,6 +448,16 @@ pub struct iseq_inline_iv_cache_entry {
 pub struct iseq_inline_cvar_cache_entry {
     pub entry: *mut rb_cvar_class_tbl_entry,
 }
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rb_iseq_constant_body__bindgen_ty_1_rb_iseq_param_keyword {
+    pub num: ::std::os::raw::c_int,
+    pub required_num: ::std::os::raw::c_int,
+    pub bits_start: ::std::os::raw::c_int,
+    pub rest_start: ::std::os::raw::c_int,
+    pub table: *const ID,
+    pub default_values: *mut VALUE,
+}
 pub const BOP_PLUS: ruby_basic_operators = 0;
 pub const BOP_MINUS: ruby_basic_operators = 1;
 pub const BOP_MULT: ruby_basic_operators = 2;
@@ -516,6 +529,14 @@ pub const VM_CALL_OPT_SEND_bit: vm_call_flag_bits = 11;
 pub const VM_CALL_KW_SPLAT_MUT_bit: vm_call_flag_bits = 12;
 pub const VM_CALL__END: vm_call_flag_bits = 13;
 pub type vm_call_flag_bits = u32;
+#[repr(C)]
+pub struct rb_callinfo {
+    pub flags: VALUE,
+    pub kwarg: *const rb_callinfo_kwarg,
+    pub mid: VALUE,
+    pub flag: VALUE,
+    pub argc: VALUE,
+}
 extern "C" {
     pub fn rb_obj_as_string_result(str_: VALUE, obj: VALUE) -> VALUE;
 }
@@ -583,6 +604,7 @@ extern "C" {
 extern "C" {
     pub fn rb_iseq_opcode_at_pc(iseq: *const rb_iseq_t, pc: *const VALUE) -> ::std::os::raw::c_int;
 }
+pub type rb_seq_param_keyword_struct = rb_iseq_constant_body__bindgen_ty_1_rb_iseq_param_keyword;
 extern "C" {
     pub fn rb_leaf_invokebuiltin_iseq_p(iseq: *const rb_iseq_t) -> bool;
 }

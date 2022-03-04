@@ -1860,7 +1860,7 @@ fn gen_checkkeyword(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
 {
     // When a keyword is unspecified past index 32, a hash will be used
     // instead. This can only happen in iseqs taking more than 32 keywords.
-    if unsafe { get_iseq_body_param_keyword_num(jit.iseq) >= 32 } {
+    if unsafe { (*get_iseq_body_param_keyword(jit.iseq)).num >= 32 } {
         return CantCompile;
     }
 
@@ -3685,6 +3685,7 @@ fn gen_return_branch(cb: &mut CodeBlock, target0: CodePtr, target1: Option<CodeP
 fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: * const rb_callinfo, cme: * const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32) -> CodegenStatus
 {
     let iseq = unsafe { get_def_iseq_ptr((*cme).def) };
+    let mut argc = argc;
 
     // When you have keyword arguments, there is an extra object that gets
     // placed on the stack the represents a bitmap of the keywords that were not
@@ -3759,19 +3760,14 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
         // Here we're calling a method with keyword arguments and specifying
         // keyword arguments at this call site.
 
-        todo!();
-
-        /*
         // This struct represents the metadata about the caller-specified
         // keyword arguments.
-        //const struct rb_callinfo_kwarg *kw_arg = vm_ci_kwarg(ci);
         let kw_arg = unsafe { vm_ci_kwarg(ci) };
 
-        // This struct represents the metadata about the callee-specified
-        // keyword parameters.
-        const struct rb_iseq_param_keyword *keyword = iseq->body->param.keyword;
+        let keyword = unsafe { get_iseq_body_param_keyword(iseq) };
+        let keyword_num = unsafe { (*keyword).num };
 
-        if (keyword->num > 30) {
+        if keyword_num > 30 {
             // We have so many keywords that (1 << num) encoded as a FIXNUM
             // (which shifts it left one more) no longer fits inside a 32-bit
             // immediate.
@@ -3781,32 +3777,36 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
 
         if unsafe { vm_ci_flag(ci) } & VM_CALL_KWARG != 0 {
             // Check that the size of non-keyword arguments matches
-            if lead_num != argc - kw_arg->keyword_len {
+            if lead_num != argc - unsafe { get_cikw_keyword_len(kw_arg) } {
                 gen_counter_incr!(cb, send_iseq_complex_callee);
                 return CantCompile;
             }
 
             // This is the list of keyword arguments that the callee specified
             // in its initial declaration.
-            const ID *callee_kwargs = keyword->table;
+            let callee_kwargs = unsafe { (*keyword).table };
 
             // Here we're going to build up a list of the IDs that correspond to
             // the caller-specified keyword arguments. If they're not in the
             // same order as the order specified in the callee declaration, then
             // we're going to need to generate some code to swap values around
             // on the stack.
-            ID *caller_kwargs = ALLOCA_N(VALUE, kw_arg->keyword_len);
-            for (int kwarg_idx = 0; kwarg_idx < kw_arg->keyword_len; kwarg_idx++)
-                caller_kwargs[kwarg_idx] = SYM2ID(kw_arg->keywords[kwarg_idx]);
+            let kw_arg_keyword_len:usize = unsafe { get_cikw_keyword_len(kw_arg) }.try_into().unwrap();
+            let mut caller_kwargs: Vec<ID> = vec![0; kw_arg_keyword_len];
+            for kwarg_idx in 0..kw_arg_keyword_len {
+                let sym = unsafe { get_cikw_keywords_idx(kw_arg, kwarg_idx.try_into().unwrap()) };
+                caller_kwargs[kwarg_idx as usize] = unsafe { rb_sym2id(sym) };
+            }
 
             // First, we're going to be sure that the names of every
             // caller-specified keyword argument correspond to a name in the
             // list of callee-specified keyword parameters.
-            for (int caller_idx = 0; caller_idx < kw_arg->keyword_len; caller_idx++) {
-                int callee_idx;
-
-                for (callee_idx = 0; callee_idx < keyword->num; callee_idx++) {
-                    if (caller_kwargs[caller_idx] == callee_kwargs[callee_idx]) {
+            let mut callee_idx = keyword_num + 1; // will never be equal to keyword_num
+            for caller_idx in 0..kw_arg_keyword_len {
+                for tmp_callee_idx in 0..keyword_num {
+                    let callee_arg_id = unsafe { *(callee_kwargs.offset(tmp_callee_idx as isize)) };
+                    if caller_kwargs[caller_idx] == callee_arg_id {
+                        callee_idx = tmp_callee_idx;
                         break;
                     }
                 }
@@ -3814,18 +3814,18 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
                 // If the keyword was never found, then we know we have a
                 // mismatch in the names of the keyword arguments, so we need to
                 // bail.
-                if (callee_idx == keyword->num) {
+                if callee_idx == keyword_num {
                     gen_counter_incr!(cb, send_iseq_kwargs_mismatch);
                     return CantCompile;
                 }
             }
         }
-        else if (argc == lead_num) {
+        else if argc == lead_num {
             // Here we are calling a method that accepts keyword arguments
             // (optional or required) but we're not passing any keyword
             // arguments at this call site
 
-            if (keyword->required_num != 0) {
+            if unsafe { (*keyword).required_num } != 0 {
                 // If any of the keywords are required this is a mismatch
                 gen_counter_incr!(cb, send_iseq_kwargs_mismatch);
                 return CantCompile;
@@ -3837,7 +3837,6 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
             gen_counter_incr!(cb, send_iseq_complex_callee);
             return CantCompile;
         }
-        */
     }
     else {
         // Only handle iseqs that have simple parameter setup.
@@ -3901,105 +3900,123 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
     jle_ptr(cb, counted_exit!(ocb, side_exit, send_se_cf_overflow));
 
     if doing_kw_call {
-        todo!()
-
-        /*
         // Here we're calling a method with keyword arguments and specifying
         // keyword arguments at this call site.
-        const int lead_num = iseq->body->param.lead_num;
+        let lead_num = unsafe { get_iseq_body_param_lead_num(iseq) };
 
         // This struct represents the metadata about the caller-specified
         // keyword arguments.
-        int caller_keyword_len = 0;
-        const VALUE *caller_keywords = NULL;
-        if (vm_ci_kwarg(ci)) {
-            caller_keyword_len = vm_ci_kwarg(ci)->keyword_len;
-            caller_keywords = &vm_ci_kwarg(ci)->keywords[0];
-        }
+        let ci_kwarg = unsafe { vm_ci_kwarg(ci) };
+        let caller_keyword_len:usize = if ci_kwarg.is_null() { 0 }
+        else {
+            unsafe { get_cikw_keyword_len(ci_kwarg) }.try_into().unwrap()
+        };
 
         // This struct represents the metadata about the callee-specified
         // keyword parameters.
-        const struct rb_iseq_param_keyword *keyword = iseq->body->param.keyword;
+        let keyword = unsafe { get_iseq_body_param_keyword(iseq) };
 
         add_comment(cb, "keyword args");
 
         // This is the list of keyword arguments that the callee specified
         // in its initial declaration.
-        const ID *callee_kwargs = keyword->table;
-
-        int total_kwargs = keyword->num;
+        let callee_kwargs = unsafe { (*keyword).table };
+        let total_kwargs:usize = unsafe { (*keyword).num }.try_into().unwrap();
 
         // Here we're going to build up a list of the IDs that correspond to
         // the caller-specified keyword arguments. If they're not in the
         // same order as the order specified in the callee declaration, then
         // we're going to need to generate some code to swap values around
         // on the stack.
-        ID *caller_kwargs = ALLOCA_N(VALUE, total_kwargs);
-        int kwarg_idx;
-        for (kwarg_idx = 0; kwarg_idx < caller_keyword_len; kwarg_idx++) {
-                caller_kwargs[kwarg_idx] = SYM2ID(caller_keywords[kwarg_idx]);
+        let mut caller_kwargs: Vec<ID> = vec![0; total_kwargs];
+
+        for kwarg_idx in 0..caller_keyword_len {
+            let sym = unsafe { get_cikw_keywords_idx(ci_kwarg, kwarg_idx.try_into().unwrap()) };
+            let kwarg_idx_usize:usize = kwarg_idx.try_into().unwrap();
+            caller_kwargs[kwarg_idx_usize] = unsafe { rb_sym2id(sym) };
         }
+        let mut kwarg_idx = caller_keyword_len;
 
-        int unspecified_bits = 0;
+        let mut unspecified_bits = 0;
 
-        for (int callee_idx = keyword->required_num; callee_idx < total_kwargs; callee_idx++) {
-            bool already_passed = false;
-            ID callee_kwarg = callee_kwargs[callee_idx];
+        let keyword_required_num:usize = unsafe { (*keyword).required_num }.try_into().unwrap();
+        for callee_idx in keyword_required_num..total_kwargs {
+            let mut already_passed = false;
+            let callee_kwarg = unsafe { *(callee_kwargs.offset(callee_idx.try_into().unwrap())) };
 
-            for (int caller_idx = 0; caller_idx < caller_keyword_len; caller_idx++) {
-                if (caller_kwargs[caller_idx] == callee_kwarg) {
+            for caller_idx in 0..caller_keyword_len {
+                if caller_kwargs[caller_idx] == callee_kwarg {
                     already_passed = true;
                     break;
                 }
             }
 
-            if (!already_passed) {
+            if !already_passed {
                 // Reserve space on the stack for each default value we'll be
                 // filling in (which is done in the next loop). Also increments
                 // argc so that the callee's SP is recorded correctly.
-                argc++;
+                argc += 1;
                 let default_arg = ctx.stack_push(Type::Unknown);
-                VALUE default_value = keyword->default_values[callee_idx - keyword->required_num];
 
-                if (default_value == Qundef) {
+                // callee_idx - keyword->required_num is used in a couple of places below.
+                let req_num:isize = unsafe { (*keyword).required_num }.try_into().unwrap();
+                let callee_idx_isize:isize = callee_idx.try_into().unwrap();
+                let extra_args = callee_idx_isize - req_num;
+
+                //VALUE default_value = keyword->default_values[callee_idx - keyword->required_num];
+                let mut default_value = unsafe {
+                    *((*keyword).default_values.offset(extra_args))
+                };
+
+                if default_value == Qundef {
                     // Qundef means that this value is not constant and must be
                     // recalculated at runtime, so we record it in unspecified_bits
                     // (Qnil is then used as a placeholder instead of Qundef).
-                    unspecified_bits |= 0x01 << (callee_idx - keyword->required_num);
+                    unspecified_bits |= 0x01 << extra_args;
                     default_value = Qnil;
                 }
 
-                mov(cb, default_arg, imm_opnd(default_value));
+                jit_mov_gc_ptr(jit, cb, REG0, default_value);
+                mov(cb, default_arg, REG0);
 
-                caller_kwargs[kwarg_idx++] = callee_kwarg;
+                caller_kwargs[kwarg_idx] = callee_kwarg;
+                kwarg_idx += 1;
             }
         }
-        RUBY_ASSERT(kwarg_idx == total_kwargs);
+
+        assert!(kwarg_idx == total_kwargs);
 
         // Next, we're going to loop through every keyword that was
         // specified by the caller and make sure that it's in the correct
         // place. If it's not we're going to swap it around with another one.
-        for (kwarg_idx = 0; kwarg_idx < total_kwargs; kwarg_idx++) {
-            ID callee_kwarg = callee_kwargs[kwarg_idx];
+        for kwarg_idx in 0..total_kwargs {
+            let kwarg_idx_isize:isize = kwarg_idx.try_into().unwrap();
+            let callee_kwarg = unsafe { *(callee_kwargs.offset(kwarg_idx_isize)) };
 
             // If the argument is already in the right order, then we don't
             // need to generate any code since the expected value is already
             // in the right place on the stack.
-            if (callee_kwarg == caller_kwargs[kwarg_idx]) continue;
+            if callee_kwarg == caller_kwargs[kwarg_idx] {
+                continue;
+            }
 
             // In this case the argument is not in the right place, so we
             // need to find its position where it _should_ be and swap with
             // that location.
-            for (int swap_idx = kwarg_idx + 1; swap_idx < total_kwargs; swap_idx++) {
-                if (callee_kwarg == caller_kwargs[swap_idx]) {
+            for swap_idx in (kwarg_idx + 1)..total_kwargs {
+                if callee_kwarg == caller_kwargs[swap_idx] {
                     // First we're going to generate the code that is going
                     // to perform the actual swapping at runtime.
-                    stack_swap(ctx, cb, argc - 1 - swap_idx - lead_num, argc - 1 - kwarg_idx - lead_num, REG1, REG0);
+                    let swap_idx_i32:i32 = swap_idx.try_into().unwrap();
+                    let kwarg_idx_i32:i32 = kwarg_idx.try_into().unwrap();
+                    let offset0:u16 = (argc - 1 - swap_idx_i32 - lead_num).try_into().unwrap();
+                    let offset1:u16 = (argc - 1 - kwarg_idx_i32 - lead_num).try_into().unwrap();
+                    stack_swap(ctx, cb, offset0, offset1, REG1, REG0);
 
                     // Next we're going to do some bookkeeping on our end so
                     // that we know the order that the arguments are
                     // actually in now.
-                    ID tmp = caller_kwargs[kwarg_idx];
+                    let tmp = caller_kwargs[kwarg_idx];
                     caller_kwargs[kwarg_idx] = caller_kwargs[swap_idx];
                     caller_kwargs[swap_idx] = tmp;
 
@@ -4011,8 +4028,8 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
         // Keyword arguments cause a special extra local variable to be
         // pushed onto the stack that represents the parameters that weren't
         // explicitly given a value and have a non-constant default.
-        mov(cb, ctx.stack_opnd(-1), imm_opnd(INT2FIX(unspecified_bits)));
-        */
+        let unspec_opnd = uimm_opnd(VALUE::fixnum_from_usize(unspecified_bits).as_u64());
+        mov(cb, ctx.stack_opnd(-1), unspec_opnd);
     }
 
     // Points to the receiver operand on the stack

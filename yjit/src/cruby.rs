@@ -177,8 +177,8 @@ extern "C" {
     #[link_name = "rb_get_iseq_body_local_table_size"]
     pub fn get_iseq_body_local_table_size(iseq: IseqPtr) -> c_uint;
 
-    #[link_name = "rb_get_iseq_body_param_keyword_num"]
-    pub fn get_iseq_body_param_keyword_num(iseq: IseqPtr) -> c_int;
+    #[link_name = "rb_get_iseq_body_param_keyword"]
+    pub fn get_iseq_body_param_keyword(iseq: IseqPtr) -> *const rb_seq_param_keyword_struct;
 
     #[link_name = "rb_get_iseq_body_param_size"]
     pub fn get_iseq_body_param_size(iseq: IseqPtr) -> c_uint;
@@ -191,6 +191,12 @@ extern "C" {
 
     #[link_name = "rb_get_iseq_body_param_opt_table"]
     pub fn get_iseq_body_param_opt_table(iseq: IseqPtr) -> *const VALUE;
+
+    #[link_name = "rb_get_cikw_keyword_len"]
+    pub fn get_cikw_keyword_len(cikw: *const rb_callinfo_kwarg) -> c_int;
+
+    #[link_name = "rb_get_cikw_keywords_idx"]
+    pub fn get_cikw_keywords_idx(cikw: *const rb_callinfo_kwarg, idx: c_int) -> VALUE;
 
     #[link_name = "rb_iseq_needs_lead_args_only"]
     pub fn iseq_needs_lead_args_only(iseq: *const rb_iseq_t) -> bool;
@@ -238,6 +244,9 @@ extern "C" {
 
     #[link_name = "rb_vm_ci_flag"]
     pub fn vm_ci_flag(ci: * const rb_callinfo) -> c_uint;
+
+    #[link_name = "rb_vm_ci_kwarg"]
+    pub fn vm_ci_kwarg(ci: * const rb_callinfo) -> *const rb_callinfo_kwarg;
 
     #[link_name = "rb_METHOD_ENTRY_VISI"]
     pub fn METHOD_ENTRY_VISI(me: * const rb_callable_method_entry_t) -> rb_method_visibility_t;
@@ -334,7 +343,7 @@ pub struct rb_call_data {
 
 /// Opaque call-info type from vm_callinfo.h
 #[repr(C)]
-pub struct rb_callinfo {
+pub struct rb_callinfo_kwarg {
     _data: [u8; 0],
     _marker:
     core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,

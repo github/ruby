@@ -276,6 +276,11 @@ rb_str_bytesize(VALUE str)
     return LONG2NUM(RSTRING_LEN(str));
 }
 
+// This is defined only as a named struct inside rb_iseq_constant_body.
+// By giving it a separate typedef, we make it nameable by rust-bindgen.
+// Bindgen's temp/anon name isn't guaranteed stable.
+typedef struct rb_iseq_param_keyword rb_seq_param_keyword_struct;
+
 const char*
 rb_insn_name(VALUE insn)
 {
@@ -302,6 +307,24 @@ rb_vm_ci_mid(const struct rb_callinfo *ci) {
 unsigned int
 rb_vm_ci_flag(const struct rb_callinfo *ci) {
     return vm_ci_flag(ci);
+}
+
+const struct rb_callinfo_kwarg *
+rb_vm_ci_kwarg(const struct rb_callinfo *ci)
+{
+    return vm_ci_kwarg(ci);
+}
+
+int
+rb_get_cikw_keyword_len(const struct rb_callinfo_kwarg* cikw)
+{
+    return cikw->keyword_len;
+}
+
+VALUE
+rb_get_cikw_keywords_idx(const struct rb_callinfo_kwarg* cikw, int idx)
+{
+    return cikw->keywords[idx];
 }
 
 rb_method_visibility_t
@@ -382,9 +405,9 @@ rb_get_iseq_flags_has_opt(rb_iseq_t* iseq) {
     return iseq->body->param.flags.has_opt;
 }
 
-int
-rb_get_iseq_body_param_keyword_num(rb_iseq_t* iseq) {
-    return iseq->body->param.keyword->num;
+const rb_seq_param_keyword_struct*
+rb_get_iseq_body_param_keyword(rb_iseq_t* iseq) {
+    return iseq->body->param.keyword;
 }
 
 unsigned
