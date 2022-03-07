@@ -259,7 +259,10 @@ impl std::fmt::Debug for Branch
     {
         // TODO: expand this if needed. #[derive(Debug)] on Branch gave a
         // strange error related to BranchGenFn
-        formatter.pad("Branch")
+        formatter.debug_struct("Branch")
+            .field("start", &self.start_addr)
+            .field("end", &self.end_addr)
+            .finish()
     }
 }
 
@@ -1285,8 +1288,6 @@ pub extern "C" fn rb_yjit_rust_branch_stub_hit(branch_ptr: *const c_void, target
 
         // If the new block can be generated right after the branch (at cb->write_pos)
         if Some(cb.get_write_ptr()) == branch.end_addr {
-            let branch_end_addr = branch.end_addr.unwrap();
-
             // This branch should be terminating its block
             assert!(branch.end_addr == branch.block.borrow().end_addr);
 
@@ -1300,7 +1301,7 @@ pub extern "C" fn rb_yjit_rust_branch_stub_hit(branch_ptr: *const c_void, target
             // Ensure that the branch terminates the codeblock just like
             // before entering this if block. This drops bytes off the end
             // in case we shrank the branch when regenerating.
-            cb.set_write_ptr(branch_end_addr);
+            cb.set_write_ptr(branch.end_addr.unwrap());
         }
 
         // Compile the new block version
