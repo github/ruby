@@ -4606,8 +4606,8 @@ fn gen_invokesuper(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
 
     // We need to assume that both our current method entry and the super
     // method entry we invoke remain stable
-    assume_method_lookup_stable(current_defined_class, me, jit);
-    assume_method_lookup_stable(comptime_superclass, cme, jit);
+    assume_method_lookup_stable(jit, ocb, current_defined_class, me);
+    assume_method_lookup_stable(jit, ocb, comptime_superclass, cme);
 
     // Method calls may corrupt types
     ctx.clear_local_types();
