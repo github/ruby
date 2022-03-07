@@ -116,6 +116,11 @@ pub extern "C" fn rb_yjit_bop_redefined(klass: RedefinitionFlag, bop: ruby_basic
 /// This needs to be wrapped on the C side with RB_VM_LOCK_ENTER().
 #[no_mangle]
 pub extern "C" fn rb_yjit_method_lookup_change(klass: VALUE, mid: ID) {
+    // If YJIT isn't enabled, do nothing
+    if !yjit_enabled_p() {
+        return;
+    }
+
     Invariants::get_instance().method_lookup.entry(klass).and_modify(|deps| {
         deps.remove(&mid).map(|deps| {
             for dep in deps.iter() {

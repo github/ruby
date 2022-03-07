@@ -54,12 +54,12 @@ pub extern "C" fn rb_yjit_init_rust()
     // TODO: set a panic handler so the we don't print a message
     //       everytime we panic.
     let result = std::panic::catch_unwind(|| {
-        CodegenGlobals::init();
         Invariants::init();
+        CodegenGlobals::init();
 
+        // YJIT enabled and initialized successfully
         YJIT_ENABLED.store(true, Ordering::Release);
     });
-
 
     if let Err(_) = result {
         println!("YJIT: rb_yjit_init_rust() panicked. Aborting.");
