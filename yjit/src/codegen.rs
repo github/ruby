@@ -676,7 +676,7 @@ pub fn gen_entry_prologue(cb: &mut CodeBlock, iseq: IseqPtr) -> Option<CodePtr>
     // has optional parameters, we'll add a runtime check that the PC we've
     // compiled for is the same PC that the interpreter wants us to run with.
     // If they don't match, then we'll take a side exit.
-    if unsafe { get_iseq_flags_has_opt(iseq) } != 0 {
+    if unsafe { get_iseq_flags_has_opt(iseq) } {
         gen_pc_guard(cb, iseq);
     }
 
@@ -3696,7 +3696,8 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
     // specified at the call site. We need to keep track of the fact that this
     // value is present on the stack in order to properly set up the callee's
     // stack pointer.
-    let mut doing_kw_call = false;
+    let doing_kw_call = unsafe { get_iseq_flags_has_kw(iseq) };
+    let supplying_kws = unsafe { vm_ci_flag(ci) & VM_CALL_KWARG } != 0;
 
     if unsafe{ vm_ci_flag(ci) } & VM_CALL_TAILCALL != 0 {
         // We can't handle tailcalls
@@ -3704,72 +3705,91 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
         return CantCompile;
     }
 
-    // Arity handling and optional parameter setup
-    let mut num_params = unsafe { get_iseq_body_param_size(iseq) as i32 };
-    let mut start_pc_offset:u32 = 0;
-
-    if unsafe { iseq_needs_lead_args_only(iseq) } {
-        // If we have keyword arguments being passed to a callee that only takes
-        // positionals, then we need to allocate a hash. For now we're going to
-        // call that too complex and bail.
-        if unsafe { vm_ci_flag(ci) } & VM_CALL_KWARG != 0 {
+    // No support for callees with these parameters yet as they require allocation
+    // or complex handling.
+    if unsafe { get_iseq_flags_has_rest(iseq) ||
+        get_iseq_flags_has_post(iseq) ||
+        get_iseq_flags_has_kwrest(iseq) } {
             gen_counter_incr!(cb, send_iseq_complex_callee);
             return CantCompile;
-        }
+    }
 
-        num_params = unsafe { get_iseq_body_param_lead_num(iseq) };
+    // If we have keyword arguments being passed to a callee that only takes
+    // positionals, then we need to allocate a hash. For now we're going to
+    // call that too complex and bail.
+    if supplying_kws && ! unsafe { get_iseq_flags_has_kw(iseq) } {
+        gen_counter_incr!(cb, send_iseq_complex_callee);
+        return CantCompile;
+    }
 
-        if num_params != argc {
-            gen_counter_incr!(cb, send_iseq_arity_error);
+    // If we have a method accepting no kwargs (**nil), exit if we have passed
+    // it any kwargs.
+    if supplying_kws && unsafe { get_iseq_flags_has_accepts_no_kwarg(iseq) } {
+        gen_counter_incr!(cb, send_iseq_complex_callee);
+        return CantCompile;
+    }
+
+    // For computing number of locals to set up for the callee
+    let mut num_params = unsafe { get_iseq_body_param_size(iseq) };
+
+    // Block parameter handling. This mirrors setup_parameters_complex().
+    if unsafe { get_iseq_flags_has_block(iseq) } {
+        if unsafe { get_iseq_body_local_iseq(iseq) == iseq } {
+            num_params -= 1;
+        } else {
+            // In this case (param.flags.has_block && local_iseq != iseq),
+            // the block argument is setup as a local variable and requires
+            // materialization (allocation). Bail.
+            gen_counter_incr!(cb, send_iseq_complex_callee);
             return CantCompile;
         }
     }
-    else if unsafe { rb_iseq_only_optparam_p(iseq) } {
-        // If we have keyword arguments being passed to a callee that only takes
-        // positionals and optionals, then we need to allocate a hash. For now
-        // we're going to call that too complex and bail.
-        if unsafe { vm_ci_flag(ci) } & VM_CALL_KWARG != 0 {
-            gen_counter_incr!(cb, send_iseq_complex_callee);
-            return CantCompile;
-        }
 
-        // These are iseqs with 0 or more required parameters followed by 1
-        // or more optional parameters.
-        // We follow the logic of vm_call_iseq_setup_normal_opt_start()
-        // and these are the preconditions required for using that fast path.
-        //RUBY_ASSERT(vm_ci_markable(ci) && ((vm_ci_flag(ci) &
-        //                (VM_CALL_KW_SPLAT | VM_CALL_KWARG | VM_CALL_ARGS_SPLAT)) == 0));
+    let mut start_pc_offset = 0;
+    let required_num = unsafe { get_iseq_body_param_lead_num(iseq) };
 
-        let required_num = unsafe { get_iseq_body_param_lead_num(iseq) };
-        let opts_filled = argc - required_num;
-        let opt_num = unsafe { get_iseq_body_param_opt_num(iseq) };
+    // This struct represents the metadata about the caller-specified
+    // keyword arguments.
+    let kw_arg = unsafe { vm_ci_kwarg(ci) };
+    let kw_arg_num = if kw_arg.is_null() { 0 } else { unsafe { get_cikw_keyword_len(kw_arg) } };
 
-        if opts_filled < 0 || opts_filled > opt_num {
-            gen_counter_incr!(cb, send_iseq_arity_error);
-            return CantCompile;
-        }
+    // Arity handling and optional parameter setup
+    let opts_filled = argc - required_num - kw_arg_num;
+    let opt_num = unsafe { get_iseq_body_param_opt_num(iseq) };
+    let opts_missing:u32 = (opt_num - opts_filled).try_into().unwrap();
 
-        num_params -= opt_num - opts_filled;
+    if opts_filled < 0 || opts_filled > opt_num {
+        gen_counter_incr!(cb, send_iseq_arity_error);
+        return CantCompile;
+    }
+
+    // If we have unfilled optional arguments and keyword arguments then we
+    // would need to move adjust the arguments location to account for that.
+    // For now we aren't handling this case.
+    if doing_kw_call && opts_missing > 0 {
+        gen_counter_incr!(cb, send_iseq_complex_callee);
+        return CantCompile;
+    }
+
+    if opt_num > 0 {
+        num_params -= opts_missing;
         unsafe {
             let opt_table = get_iseq_body_param_opt_table(iseq);
             start_pc_offset = (*opt_table.offset(opts_filled as isize)).as_u32();
         }
     }
 
-    else if unsafe { rb_iseq_only_kwparam_p(iseq) } {
-        let lead_num = unsafe { get_iseq_body_param_lead_num(iseq) };
-
-        doing_kw_call = true;
-
+    if doing_kw_call {
         // Here we're calling a method with keyword arguments and specifying
         // keyword arguments at this call site.
 
-        // This struct represents the metadata about the caller-specified
-        // keyword arguments.
-        let kw_arg = unsafe { vm_ci_kwarg(ci) };
-
+        // This struct represents the metadata about the callee-specified
+        // keyword parameters.
         let keyword = unsafe { get_iseq_body_param_keyword(iseq) };
         let keyword_num = unsafe { (*keyword).num };
+        let keyword_required_num = unsafe { (*keyword).required_num };
+
+        let mut required_kwargs_filled = 0;
 
         if keyword_num > 30 {
             // We have so many keywords that (1 << num) encoded as a FIXNUM
@@ -3779,13 +3799,8 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
             return CantCompile;
         }
 
-        if unsafe { vm_ci_flag(ci) } & VM_CALL_KWARG != 0 {
-            // Check that the size of non-keyword arguments matches
-            if lead_num != argc - unsafe { get_cikw_keyword_len(kw_arg) } {
-                gen_counter_incr!(cb, send_iseq_complex_callee);
-                return CantCompile;
-            }
-
+        // Check that the kwargs being passed are valid
+        if supplying_kws {
             // This is the list of keyword arguments that the callee specified
             // in its initial declaration.
             let callee_kwargs = unsafe { (*keyword).table };
@@ -3822,35 +3837,22 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
                     gen_counter_incr!(cb, send_iseq_kwargs_mismatch);
                     return CantCompile;
                 }
+
+                // Keep a count to ensure all required kwargs are specified
+                if callee_idx < keyword_required_num {
+                    required_kwargs_filled += 1;
+                }
             }
         }
-        else if argc == lead_num {
-            // Here we are calling a method that accepts keyword arguments
-            // (optional or required) but we're not passing any keyword
-            // arguments at this call site
-
-            if unsafe { (*keyword).required_num } != 0 {
-                // If any of the keywords are required this is a mismatch
-                gen_counter_incr!(cb, send_iseq_kwargs_mismatch);
-                return CantCompile;
-            }
-
-            doing_kw_call = true;
-        }
-        else {
-            gen_counter_incr!(cb, send_iseq_complex_callee);
+        assert!(required_kwargs_filled <= keyword_required_num);
+        if required_kwargs_filled != keyword_required_num {
+            gen_counter_incr!(cb, send_iseq_kwargs_mismatch);
             return CantCompile;
         }
     }
-    else {
-        // Only handle iseqs that have simple parameter setup.
-        // See vm_callee_setup_arg().
-        gen_counter_incr!(cb, send_iseq_complex_callee);
-        return CantCompile;
-    }
 
     // Number of locals that are not parameters
-    let num_locals = unsafe { get_iseq_body_local_table_size(iseq) as i32 } - num_params;
+    let num_locals = unsafe { get_iseq_body_local_table_size(iseq) as i32 } - (num_params as i32);
 
     // Create a side-exit to fall back to the interpreter
     let side_exit = get_side_exit(jit, ocb, ctx);
@@ -3906,7 +3908,10 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
     if doing_kw_call {
         // Here we're calling a method with keyword arguments and specifying
         // keyword arguments at this call site.
-        let lead_num = unsafe { get_iseq_body_param_lead_num(iseq) };
+
+        // Number of positional arguments the callee expects before the first
+        // keyword argument
+        let args_before_kw = required_num + opt_num;
 
         // This struct represents the metadata about the caller-specified
         // keyword arguments.
@@ -4013,8 +4018,8 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
                     // to perform the actual swapping at runtime.
                     let swap_idx_i32:i32 = swap_idx.try_into().unwrap();
                     let kwarg_idx_i32:i32 = kwarg_idx.try_into().unwrap();
-                    let offset0:u16 = (argc - 1 - swap_idx_i32 - lead_num).try_into().unwrap();
-                    let offset1:u16 = (argc - 1 - kwarg_idx_i32 - lead_num).try_into().unwrap();
+                    let offset0:u16 = (argc - 1 - swap_idx_i32 - args_before_kw).try_into().unwrap();
+                    let offset1:u16 = (argc - 1 - kwarg_idx_i32 - args_before_kw).try_into().unwrap();
                     stack_swap(ctx, cb, offset0, offset1, REG1, REG0);
 
                     // Next we're going to do some bookkeeping on our end so

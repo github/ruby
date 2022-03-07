@@ -393,6 +393,11 @@ rb_get_def_iseq_ptr(rb_method_definition_t *def)
     return def_iseq_ptr(def);
 }
 
+rb_iseq_t *
+rb_get_iseq_body_local_iseq(rb_iseq_t * iseq) {
+    return iseq->body->local_iseq;
+}
+
 unsigned int
 rb_get_iseq_body_local_table_size(rb_iseq_t* iseq) {
     return iseq->body->local_table_size;
@@ -413,9 +418,39 @@ rb_get_iseq_body_stack_max(rb_iseq_t* iseq) {
     return iseq->body->stack_max;
 }
 
-int
+bool
 rb_get_iseq_flags_has_opt(rb_iseq_t* iseq) {
     return iseq->body->param.flags.has_opt;
+}
+
+bool
+rb_get_iseq_flags_has_kw(rb_iseq_t* iseq) {
+    return iseq->body->param.flags.has_kw;
+}
+
+bool
+rb_get_iseq_flags_has_post(rb_iseq_t* iseq) {
+    return iseq->body->param.flags.has_post;
+}
+
+bool
+rb_get_iseq_flags_has_kwrest(rb_iseq_t* iseq) {
+    return iseq->body->param.flags.has_kwrest;
+}
+
+bool
+rb_get_iseq_flags_has_rest(rb_iseq_t *iseq) {
+    return iseq->body->param.flags.has_rest;
+}
+
+bool
+rb_get_iseq_flags_has_block(rb_iseq_t* iseq) {
+    return iseq->body->param.flags.has_block;
+}
+
+bool
+rb_get_iseq_flags_has_accepts_no_kwarg(rb_iseq_t* iseq) {
+    return iseq->body->param.flags.accepts_no_kwarg;
 }
 
 const rb_seq_param_keyword_struct*
@@ -441,22 +476,6 @@ rb_get_iseq_body_param_opt_num(rb_iseq_t* iseq) {
 const VALUE*
 rb_get_iseq_body_param_opt_table(rb_iseq_t* iseq) {
     return iseq->body->param.opt_table;
-}
-
-// Returns whether the iseq only needs positional (lead) argument setup.
-bool
-rb_iseq_needs_lead_args_only(const rb_iseq_t *iseq)
-{
-    // When iseq->body->local_iseq == iseq, setup_parameters_complex()
-    // doesn't do anything to setup the block parameter.
-    bool takes_block = iseq->body->param.flags.has_block;
-    return (!takes_block || iseq->body->local_iseq == iseq) &&
-        iseq->body->param.flags.has_opt          == false &&
-        iseq->body->param.flags.has_rest         == false &&
-        iseq->body->param.flags.has_post         == false &&
-        iseq->body->param.flags.has_kw           == false &&
-        iseq->body->param.flags.has_kwrest       == false &&
-        iseq->body->param.flags.accepts_no_kwarg == false;
 }
 
 // If true, the iseq is leaf and it can be replaced by a single C call.

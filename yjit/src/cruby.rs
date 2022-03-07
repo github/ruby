@@ -168,6 +168,9 @@ extern "C" {
     #[link_name = "rb_iseq_encoded_size"]
     pub fn get_iseq_encoded_size(iseq: IseqPtr) -> c_uint;
 
+    #[link_name = "rb_get_iseq_body_local_iseq"]
+    pub fn get_iseq_body_local_iseq(iseq: IseqPtr) -> IseqPtr;
+
     #[link_name = "rb_get_iseq_body_iseq_encoded"]
     pub fn get_iseq_body_iseq_encoded(iseq: IseqPtr) -> *mut VALUE;
 
@@ -178,7 +181,25 @@ extern "C" {
     pub fn get_iseq_body_stack_max(iseq:IseqPtr) -> c_uint;
 
     #[link_name = "rb_get_iseq_flags_has_opt"]
-    pub fn get_iseq_flags_has_opt(iseq: IseqPtr) -> c_int;
+    pub fn get_iseq_flags_has_opt(iseq: IseqPtr) -> bool;
+
+    #[link_name = "rb_get_iseq_flags_has_kw"]
+    pub fn get_iseq_flags_has_kw(iseq: IseqPtr) -> bool;
+
+    #[link_name = "rb_get_iseq_flags_has_rest"]
+    pub fn get_iseq_flags_has_rest(iseq: IseqPtr) -> bool;
+
+    #[link_name = "rb_get_iseq_flags_has_post"]
+    pub fn get_iseq_flags_has_post(iseq: IseqPtr) -> bool;
+
+    #[link_name = "rb_get_iseq_flags_has_kwrest"]
+    pub fn get_iseq_flags_has_kwrest(iseq: IseqPtr) -> bool;
+
+    #[link_name = "rb_get_iseq_flags_has_block"]
+    pub fn get_iseq_flags_has_block(iseq: IseqPtr) -> bool;
+
+    #[link_name = "rb_get_iseq_flags_has_accepts_no_kwarg"]
+    pub fn get_iseq_flags_has_accepts_no_kwarg(iseq: IseqPtr) -> bool;
 
     #[link_name = "rb_get_iseq_body_local_table_size"]
     pub fn get_iseq_body_local_table_size(iseq: IseqPtr) -> c_uint;
@@ -203,9 +224,6 @@ extern "C" {
 
     #[link_name = "rb_get_cikw_keywords_idx"]
     pub fn get_cikw_keywords_idx(cikw: *const rb_callinfo_kwarg, idx: c_int) -> VALUE;
-
-    #[link_name = "rb_iseq_needs_lead_args_only"]
-    pub fn iseq_needs_lead_args_only(iseq: *const rb_iseq_t) -> bool;
 
     #[link_name = "rb_get_call_data_ci"]
     pub fn get_call_data_ci(cd: * const rb_call_data) -> *const rb_callinfo;
