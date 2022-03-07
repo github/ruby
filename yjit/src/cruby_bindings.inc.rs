@@ -505,8 +505,11 @@ pub const BOP_AND: ruby_basic_operators = 27;
 pub const BOP_OR: ruby_basic_operators = 28;
 pub const BOP_LAST_: ruby_basic_operators = 29;
 pub type ruby_basic_operators = u32;
-pub type IC = *mut iseq_inline_constant_cache;
 pub type rb_control_frame_t = rb_control_frame_struct;
+extern "C" {
+    pub static mut rb_block_param_proxy: VALUE;
+}
+pub type IC = *mut iseq_inline_constant_cache;
 pub type IVC = *mut iseq_inline_iv_cache_entry;
 pub type ICVARC = *mut iseq_inline_cvar_cache_entry;
 pub const VM_FRAME_MAGIC_METHOD: u32 = 286326785;
