@@ -15,10 +15,25 @@ use std::collections::HashMap;
 // assume_single_ractor_mode(jit)
 // assume_stable_global_constant_state(jit);
 
+struct MethodLookupDependency {
+    block: BlockRef,
+    mid: ID
+}
+
 /// Used to track all of the various block references that contain assumptions
 /// about the state of the virtual machine.
 pub struct Invariants {
-    bops: HashMap<(RedefinitionFlag, ruby_basic_operators), Vec<BlockRef>>
+    /// Tracks block assumptions about the stability of a basic operator on a
+    /// given class.
+    basic_operators: HashMap<(RedefinitionFlag, ruby_basic_operators), Vec<BlockRef>>,
+
+    /// Tracks block assumptions about callable method entry validity.
+    cme_validity: HashMap<*const rb_callable_method_entry_t, Vec<BlockRef>>,
+
+    /// Tracks block assumptions about method lookup. Maps a class to a table of
+    /// method ID points to a set of blocks. While a block `b` is in the table,
+    /// b->callee_cme == rb_callable_method_entry(klass, mid).
+    method_lookup: HashMap<VALUE, HashMap<ID, Vec<MethodLookupDependency>>>
 }
 
 /// Private singleton instance of the invariants global struct.
@@ -27,7 +42,13 @@ static mut INVARIANTS: Option<Invariants> = None;
 impl Invariants {
     pub fn init() {
         // Wrapping this in unsafe to assign directly to a global.
-        unsafe { INVARIANTS = Some(Invariants { bops: HashMap::new() }); }
+        unsafe {
+            INVARIANTS = Some(Invariants {
+                basic_operators: HashMap::new(),
+                cme_validity: HashMap::new(),
+                method_lookup: HashMap::new()
+            });
+        }
     }
 
     /// Get a mutable reference to the codegen globals instance
@@ -38,7 +59,7 @@ impl Invariants {
     /// Returns the vector of blocks that are currently assuming the given basic
     /// operator on the given class has not been redefined.
     pub fn get_bop_assumptions(klass: RedefinitionFlag, bop: ruby_basic_operators) -> &'static mut Vec<BlockRef> {
-        Invariants::get_instance().bops.entry((klass, bop)).or_insert(Vec::new())
+        Invariants::get_instance().basic_operators.entry((klass, bop)).or_insert(Vec::new())
     }
 }
 
@@ -55,6 +76,32 @@ pub fn assume_bop_not_redefined(jit: &mut JITState, ocb: &mut OutlinedCb, klass:
     }
 }
 
+// Remember that a block assumes that
+// `rb_callable_method_entry(receiver_klass, cme->called_id) == cme` and that
+// `cme` is valid.
+// When either of these assumptions becomes invalid, rb_yjit_method_lookup_change() or
+// rb_yjit_cme_invalidate() invalidates the block.
+//
+// @raise NoMemoryError
+pub fn assume_method_lookup_stable(jit: &mut JITState, ocb: &mut OutlinedCb, receiver_klass: VALUE, callee_cme: *const rb_callable_method_entry_t) {
+    // RUBY_ASSERT(rb_callable_method_entry(receiver_klass, cme->called_id) == cme);
+    // RUBY_ASSERT_ALWAYS(RB_TYPE_P(receiver_klass, T_CLASS) || RB_TYPE_P(receiver_klass, T_ICLASS));
+    // RUBY_ASSERT_ALWAYS(!rb_objspace_garbage_object_p(receiver_klass));
+
+    jit_ensure_block_entry_exit(jit, ocb);
+
+    let block = jit.get_block();
+    block.borrow_mut().add_cme_dependency(receiver_klass, callee_cme);
+
+    Invariants::get_instance().cme_validity.entry(callee_cme).or_insert(Vec::new()).push(block.clone());
+
+    let mid = unsafe { (*callee_cme).called_id };
+    Invariants::get_instance().method_lookup
+        .entry(receiver_klass).or_insert(HashMap::new())
+        .entry(mid).or_insert(Vec::new())
+        .push(MethodLookupDependency { block: block.clone(), mid });
+}
+
 /// Called when a basic operation is redefined.
 #[no_mangle]
 pub extern "C" fn rb_yjit_bop_redefined(klass: RedefinitionFlag, bop: ruby_basic_operators) {
@@ -62,6 +109,21 @@ pub extern "C" fn rb_yjit_bop_redefined(klass: RedefinitionFlag, bop: ruby_basic
         invalidate_block_version(block);
         incr_counter!(invalidate_bop_redefined);
     }
+}
+
+/// Callback for when rb_callable_method_entry(klass, mid) is going to change.
+/// Invalidate blocks that assume stable method lookup of `mid` in `klass` when this happens.
+/// This needs to be wrapped on the C side with RB_VM_LOCK_ENTER().
+#[no_mangle]
+pub extern "C" fn rb_yjit_method_lookup_change(klass: VALUE, mid: ID) {
+    Invariants::get_instance().method_lookup.entry(klass).and_modify(|deps| {
+        deps.remove(&mid).map(|deps| {
+            for dep in deps.iter() {
+                invalidate_block_version(&dep.block);
+                incr_counter!(invalidate_method_lookup);
+            }
+        });
+    });
 }
 
 #[cfg(test)]
@@ -73,7 +135,7 @@ mod tests {
         Invariants::init();
 
         let block = Block::new(BLOCKID_NULL, &Context::default());
-        let bops = &mut Invariants::get_instance().bops;
+        let bops = &mut Invariants::get_instance().basic_operators;
 
         // Configure the set of assumptions such that one block is assuming
         // Integer#+ is not redefined and one block is assuming String#+ is not
@@ -83,112 +145,6 @@ mod tests {
 
         assert_eq!(Invariants::get_bop_assumptions(INTEGER_REDEFINED_OP_FLAG, BOP_PLUS).len(), 1);
     }
-}
-
-
-
-
-/*
-// Map klass => id_table[mid, set of blocks]
-// While a block `b` is in the table, b->callee_cme == rb_callable_method_entry(klass, mid).
-// See assume_method_lookup_stable()
-static st_table *method_lookup_dependency;
-
-// For adding to method_lookup_dependency data with st_update
-struct lookup_dependency_insertion {
-    block_t *block;
-    ID mid;
-};
-
-// Map cme => set of blocks
-// See assume_method_lookup_stable()
-static st_table *cme_validity_dependency;
-
-static int
-add_cme_validity_dependency_i(st_data_t *key, st_data_t *value, st_data_t new_block, int existing)
-{
-    st_table *block_set;
-    if (existing) {
-        block_set = (st_table *)*value;
-    }
-    else {
-        // Make the set and put it into cme_validity_dependency
-        block_set = st_init_numtable();
-        *value = (st_data_t)block_set;
-    }
-
-    // Put block into set
-    st_insert(block_set, new_block, 1);
-
-    return ST_CONTINUE;
-}
-
-static int
-add_lookup_dependency_i(st_data_t *key, st_data_t *value, st_data_t data, int existing)
-{
-    struct lookup_dependency_insertion *info = (void *)data;
-
-    // Find or make an id table
-    struct rb_id_table *id2blocks;
-    if (existing) {
-        id2blocks = (void *)*value;
-    }
-    else {
-        // Make an id table and put it into the st_table
-        id2blocks = rb_id_table_create(1);
-        *value = (st_data_t)id2blocks;
-    }
-
-    // Find or make a block set
-    st_table *block_set;
-    {
-        VALUE blocks;
-        if (rb_id_table_lookup(id2blocks, info->mid, &blocks)) {
-            // Take existing set
-            block_set = (st_table *)blocks;
-        }
-        else {
-            // Make new block set and put it into the id table
-            block_set = st_init_numtable();
-            rb_id_table_insert(id2blocks, info->mid, (VALUE)block_set);
-        }
-    }
-
-    st_insert(block_set, (st_data_t)info->block, 1);
-
-    return ST_CONTINUE;
-}
-*/
-
-// Remember that a block assumes that
-// `rb_callable_method_entry(receiver_klass, cme->called_id) == cme` and that
-// `cme` is valid.
-// When either of these assumptions becomes invalid, rb_yjit_method_lookup_change() or
-// rb_yjit_cme_invalidate() invalidates the block.
-//
-// @raise NoMemoryError
-pub fn assume_method_lookup_stable(receiver_klass:VALUE, cme: *const rb_callable_method_entry_t, jit: &JITState)
-{
-    todo!();
-    /*
-    RUBY_ASSERT(cme_validity_dependency);
-    RUBY_ASSERT(method_lookup_dependency);
-    RUBY_ASSERT(rb_callable_method_entry(receiver_klass, cme->called_id) == cme);
-    RUBY_ASSERT_ALWAYS(RB_TYPE_P(receiver_klass, T_CLASS) || RB_TYPE_P(receiver_klass, T_ICLASS));
-    RUBY_ASSERT_ALWAYS(!rb_objspace_garbage_object_p(receiver_klass));
-
-    jit_ensure_block_entry_exit(jit);
-
-    block_t *block = jit->block;
-
-    cme_dependency_t cme_dep = { receiver_klass, (VALUE)cme };
-    rb_darray_append(&block->cme_dependencies, cme_dep);
-
-    st_update(cme_validity_dependency, (st_data_t)cme, add_cme_validity_dependency_i, (st_data_t)block);
-
-    struct lookup_dependency_insertion info = { block, cme->called_id };
-    st_update(method_lookup_dependency, (st_data_t)receiver_klass, add_lookup_dependency_i, (st_data_t)&info);
-    */
 }
 
 
@@ -229,48 +185,6 @@ pub fn assume_stable_global_constant_state(jit: &JITState)
     st_insert(blocks_assuming_stable_global_constant_state, (st_data_t)jit->block, 1);
     */
 }
-
-
-
-
-
-
-
-/*
-// Callback for when rb_callable_method_entry(klass, mid) is going to change.
-// Invalidate blocks that assume stable method lookup of `mid` in `klass` when this happens.
-void
-rb_yjit_method_lookup_change(VALUE klass, ID mid)
-{
-    if (!method_lookup_dependency) return;
-
-    RB_VM_LOCK_ENTER();
-
-    st_data_t image;
-    st_data_t key = (st_data_t)klass;
-    if (st_lookup(method_lookup_dependency, key, &image)) {
-        struct rb_id_table *id2blocks = (void *)image;
-        VALUE blocks;
-
-        // Invalidate all blocks in method_lookup_dependency[klass][mid]
-        if (rb_id_table_lookup(id2blocks, mid, &blocks)) {
-            rb_id_table_delete(id2blocks, mid);
-
-            st_table *block_set = (st_table *)blocks;
-
-#if YJIT_STATS
-            yjit_runtime_counters.invalidate_method_lookup += block_set->num_entries;
-#endif
-
-            st_foreach(block_set, block_set_invalidate_i, 0);
-
-            st_free_table(block_set);
-        }
-    }
-
-    RB_VM_LOCK_LEAVE();
-}
-*/
 
 
 

@@ -276,10 +276,9 @@ impl Branch
 // In case this block is invalidated, these two pieces of info
 // help to remove all pointers to this block in the system.
 #[derive(Debug)]
-struct CmeDependency
-{
+struct CmeDependency {
     receiver_klass: VALUE,
-    callee_cme : VALUE,
+    callee_cme: *const rb_callable_method_entry_t,
 }
 
 /// Basic block version
@@ -595,6 +594,15 @@ impl Block {
 
     pub fn add_gc_object_offset(self:&mut Block, ptr_offset:u32) {
         self.gc_object_offsets.push(ptr_offset);
+    }
+
+    /// Instantiate a new CmeDependency struct and add it to the list of
+    /// dependencies for this block.
+    pub fn add_cme_dependency(&mut self, receiver_klass: VALUE, callee_cme: *const rb_callable_method_entry_t) {
+        self.cme_dependencies.push(CmeDependency {
+            receiver_klass,
+            callee_cme,
+        });
     }
 }
 

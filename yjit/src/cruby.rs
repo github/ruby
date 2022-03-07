@@ -326,7 +326,7 @@ pub struct rb_iseq_t {
         core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
 #[repr(C)]
 pub struct VALUE(pub usize);
 

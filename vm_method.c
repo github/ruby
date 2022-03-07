@@ -236,9 +236,9 @@ clear_method_cache_by_id_in_class(VALUE klass, ID mid)
             invalidate_negative_cache(mid);
         }
     }
-    RB_VM_LOCK_LEAVE();
 
     rb_yjit_method_lookup_change(klass, mid);
+    RB_VM_LOCK_LEAVE();
 }
 
 static void

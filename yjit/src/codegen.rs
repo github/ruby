@@ -4344,7 +4344,7 @@ fn gen_send_general(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
 
     // Register block for invalidation
     //assert!(cme->called_id == mid);
-    assume_method_lookup_stable(comptime_recv_klass, cme, jit);
+    assume_method_lookup_stable(jit, ocb, comptime_recv_klass, cme);
 
     // To handle the aliased method case (VM_METHOD_TYPE_ALIAS)
     loop {
