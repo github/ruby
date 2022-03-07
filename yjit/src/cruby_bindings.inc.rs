@@ -155,6 +155,12 @@ extern "C" {
     pub fn rb_reg_match_last(md: VALUE) -> VALUE;
 }
 extern "C" {
+    pub fn rb_utf8_str_new(
+        ptr: *const ::std::os::raw::c_char,
+        len: ::std::os::raw::c_long,
+    ) -> VALUE;
+}
+extern "C" {
     pub fn rb_ivar_get(obj: VALUE, name: ID) -> VALUE;
 }
 extern "C" {

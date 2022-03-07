@@ -192,18 +192,18 @@ pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
             let ocb = CodegenGlobals::get_outlined_cb();
 
             // Inline code size
-            let key = str2sym("inline_code_size");
+            let key = rust_str_to_sym("inline_code_size");
             let value = VALUE::fixnum_from_usize(cb.get_write_pos());
             rb_hash_aset(hash, key, value);
 
             // Outlined code size
-            let key = str2sym("outlined_code_size");
+            let key = rust_str_to_sym("outlined_code_size");
             let value = VALUE::fixnum_from_usize(ocb.unwrap().get_write_pos());
             rb_hash_aset(hash, key, value);
         }
 
         // Indicate that the complete set of stats is available
-        rb_hash_aset(hash, str2sym("all_stats"), Qtrue);
+        rb_hash_aset(hash, rust_str_to_sym("all_stats"), Qtrue);
 
         // For each counter we track
         for counter_idx in 0..COUNTER_NAMES.len() {
@@ -214,7 +214,7 @@ pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
             let counter_val = *counter_ptr;
 
             // Put counter into hash
-            let key = str2sym(counter_name);
+            let key = rust_str_to_sym(counter_name);
             let value = VALUE::fixnum_from_usize(counter_val as usize);
             rb_hash_aset(hash, key, value);
         }
@@ -229,7 +229,7 @@ pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
             let op_name = CStr::from_ptr(op_name).to_str().unwrap();
             let key_string = "exit_".to_owned() + op_name;
 
-            let key = str2sym(&key_string);
+            let key = rust_str_to_sym(&key_string);
             let value = VALUE::fixnum_from_usize(EXIT_OP_COUNT[op_idx] as usize);
             rb_hash_aset(hash, key, value);
         }

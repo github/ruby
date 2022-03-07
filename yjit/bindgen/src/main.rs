@@ -40,6 +40,9 @@ fn main() {
         // Prune these types since they are system dependant and we don't use them
         .blocklist_type("__.*")
 
+        // From include/ruby/internal/intern/string.h
+        .allowlist_function("rb_utf8_str_new")
+
         // This struct is public to Ruby C extensions
         // From include/ruby/internal/core/rbasic.h
         .allowlist_type("RBasic")

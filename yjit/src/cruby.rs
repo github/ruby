@@ -292,7 +292,7 @@ extern "C" {
     pub fn RCLASS_ORIGIN(v: VALUE) -> VALUE;
 }
 
-pub fn insn_len(opcode:usize) -> u32
+pub fn insn_len(opcode: usize) -> u32
 {
     #[cfg(test)]
     panic!("insn_len is a CRuby function, and we don't link against CRuby for Rust testing!");
@@ -539,8 +539,19 @@ impl From<VALUE> for i32 {
     }
 }
 
+/// Produce a Ruby string from a Rust string slice
+pub fn rust_str_to_ruby(str: &str) -> VALUE
+{
+    unsafe {
+        rb_utf8_str_new(
+            str.as_ptr() as *const i8,
+            str.len() as i64
+        )
+    }
+}
+
 /// Produce a Ruby symbol from a Rust string slice
-pub fn str2sym(str: &str) -> VALUE
+pub fn rust_str_to_sym(str: &str) -> VALUE
 {
     let c_str = CString::new(str).unwrap();
     let c_ptr: *const c_char = c_str.as_ptr();
