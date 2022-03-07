@@ -149,40 +149,6 @@ block_set_invalidate_i(st_data_t key, st_data_t v, st_data_t ignore)
     return ST_CONTINUE;
 }
 
-// Callback for when rb_callable_method_entry(klass, mid) is going to change.
-// Invalidate blocks that assume stable method lookup of `mid` in `klass` when this happens.
-void
-rb_yjit_method_lookup_change(VALUE klass, ID mid)
-{
-    if (!method_lookup_dependency) return;
-
-    RB_VM_LOCK_ENTER();
-
-    st_data_t image;
-    st_data_t key = (st_data_t)klass;
-    if (st_lookup(method_lookup_dependency, key, &image)) {
-        struct rb_id_table *id2blocks = (void *)image;
-        VALUE blocks;
-
-        // Invalidate all blocks in method_lookup_dependency[klass][mid]
-        if (rb_id_table_lookup(id2blocks, mid, &blocks)) {
-            rb_id_table_delete(id2blocks, mid);
-
-            st_table *block_set = (st_table *)blocks;
-
-#if YJIT_STATS
-            yjit_runtime_counters.invalidate_method_lookup += block_set->num_entries;
-#endif
-
-            st_foreach(block_set, block_set_invalidate_i, 0);
-
-            st_free_table(block_set);
-        }
-    }
-
-    RB_VM_LOCK_LEAVE();
-}
-
 // Callback for when a cme becomes invalid.
 // Invalidate all blocks that depend on cme being valid.
 void
