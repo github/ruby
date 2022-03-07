@@ -68,10 +68,16 @@ extern "C" {
     pub static mut rb_cBasicObject: VALUE;
 }
 extern "C" {
+    pub static mut rb_cArray: VALUE;
+}
+extern "C" {
     pub static mut rb_cFalseClass: VALUE;
 }
 extern "C" {
     pub static mut rb_cFloat: VALUE;
+}
+extern "C" {
+    pub static mut rb_cHash: VALUE;
 }
 extern "C" {
     pub static mut rb_cInteger: VALUE;
@@ -95,6 +101,9 @@ extern "C" {
     pub static mut rb_cTrueClass: VALUE;
 }
 extern "C" {
+    pub fn rb_ary_store(ary: VALUE, key: ::std::os::raw::c_long, val: VALUE);
+}
+extern "C" {
     pub fn rb_ary_resurrect(ary: VALUE) -> VALUE;
 }
 extern "C" {
@@ -102,6 +111,9 @@ extern "C" {
 }
 extern "C" {
     pub fn rb_hash_new() -> VALUE;
+}
+extern "C" {
+    pub fn rb_hash_aref(hash: VALUE, key: VALUE) -> VALUE;
 }
 extern "C" {
     pub fn rb_hash_aset(hash: VALUE, key: VALUE, val: VALUE) -> VALUE;
@@ -546,6 +558,12 @@ pub struct rb_callinfo {
     pub mid: VALUE,
     pub flag: VALUE,
     pub argc: VALUE,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rb_call_data {
+    pub ci: *const rb_callinfo,
+    pub cc: *const rb_callcache,
 }
 extern "C" {
     pub fn rb_obj_as_string_result(str_: VALUE, obj: VALUE) -> VALUE;

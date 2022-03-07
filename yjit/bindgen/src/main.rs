@@ -56,11 +56,13 @@ fn main() {
 
         // From include/ruby/internal/intern/hash.h
         .allowlist_function("rb_hash_aset")
+        .allowlist_function("rb_hash_aref")
         .allowlist_function("rb_hash_bulk_insert")
 
         // From include/ruby/internal/intern/array.h
         .allowlist_function("rb_ary_resurrect")
         .allowlist_function("rb_ary_clear")
+        .allowlist_function("rb_ary_store")
 
         // From internal/array.h
         .allowlist_function("rb_ec_ary_new_from_values")
@@ -84,16 +86,19 @@ fn main() {
         .allowlist_var("rb_cFloat")
         .allowlist_var("rb_cString")
         .allowlist_var("rb_cThread")
+        .allowlist_var("rb_cArray")
+        .allowlist_var("rb_cHash")
 
         // From ruby/internal/globals.h
         .allowlist_var("rb_mKernel")
 
         // From vm_callinfo.h
-        .allowlist_type("VM_CALL.*") // This doesn't work, possibly due to the odd structure of the #defines
-        .allowlist_type("vm_call_flag_bits") // So instead we include the other enum and do the bit-shift ourselves
-        .blocklist_type("rb_call_data")
-        .opaque_type("rb_call_data")
-        .blocklist_type("rb_callinfo_kwarg") // Contains a VALUE[] array of undefined size
+        .allowlist_type("VM_CALL.*")         // This doesn't work, possibly due to the odd structure of the #defines
+        .allowlist_type("vm_call_flag_bits") // So instead we include the other enum and do the bit-shift ourselves.
+        .allowlist_type("rb_call_data")
+        .blocklist_type("rb_callcache.*")      // Not used yet - opaque to make it easy to import rb_call_data
+        .opaque_type("rb_callcache.*")
+        .blocklist_type("rb_callinfo_kwarg") // Contains a VALUE[] array of undefined size, so we don't import
         .opaque_type("rb_callinfo_kwarg")
         .allowlist_type("rb_callinfo")
 
@@ -151,6 +156,8 @@ fn main() {
         .allowlist_function("rb_method_entry_at")
         .allowlist_type("rb_method_entry_t")
         .blocklist_type("rb_method_cfunc_t")
+        .blocklist_type("rb_method_definition_.*") // Large struct with a bitfield and union of many types - don't import (yet?)
+        .opaque_type("rb_method_definition_.*")
 
         // From vm_core.h
         .allowlist_type("ruby_basic_operators")
@@ -168,9 +175,7 @@ fn main() {
         .allowlist_type("iseq_inline_iv_cache_entry")
         .allowlist_type("ICVARC") // pointer to iseq_inline_cvar_cache_entry
         .allowlist_type("iseq_inline_cvar_cache_entry")
-        .blocklist_type("rb_method_definition_.*")
-        .opaque_type("rb_method_definition_.*")
-        .blocklist_type("rb_execution_context_.*")
+        .blocklist_type("rb_execution_context_.*") // Large struct with various-type fields and an ifdef, so we don't import
         .opaque_type("rb_execution_context_.*")
         .blocklist_type("rb_control_frame_struct")
         .opaque_type("rb_control_frame_struct")
