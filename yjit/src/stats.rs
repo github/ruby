@@ -225,6 +225,7 @@ pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
             // Look up Ruby's NULL-terminated insn name string
             let op_name = insn_name(VALUE(op_idx));
 
+            // Convert the op name C string to a Rust string and concat
             let op_name = CStr::from_ptr(op_name).to_str().unwrap();
             let key_string = "exit_".to_owned() + op_name;
 

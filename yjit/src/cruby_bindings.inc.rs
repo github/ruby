@@ -624,6 +624,9 @@ extern "C" {
     pub fn rb_vm_insn_addr2opcode(addr: *const ::std::os::raw::c_void) -> ::std::os::raw::c_int;
 }
 extern "C" {
+    pub fn rb_iseqw_to_iseq(iseqw: VALUE) -> *const rb_iseq_t;
+}
+extern "C" {
     pub static mut ruby_vm_global_constant_state: rb_serial_t;
 }
 extern "C" {

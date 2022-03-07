@@ -5,23 +5,32 @@ use crate::core::*;
 /// Primitive called in yjit.rb
 /// Produce a string representing the disassembly for an ISEQ
 #[no_mangle]
-pub extern "C" fn rb_yjit_disasm_iseq(ec: EcPtr, ruby_self: VALUE, iseq: VALUE) -> VALUE {
+pub extern "C" fn rb_yjit_disasm_iseq(ec: EcPtr, ruby_self: VALUE, iseqw: VALUE) -> VALUE {
 
     // TODO
     //#[cfg(feature = "disasm")]
     //disasm_iseq(IseqPtr: iseq);
 
 
+    // TODO:
+    //if unsafe { CLASS_OF(iseqw) != rb_cISeq } {
+    //    return Qnil;
+    //}
 
-    let iseq: IseqPtr = iseq.as_ptr();
-    println!("iseq: {:?}", iseq);
+
+
+    // Get the iseq pointer from the wrapper
+    let iseq = unsafe { rb_iseqw_to_iseq(iseqw) };
+
+
 
     //FIXME: Assertion Failed: yjit.c:239:rb_iseq_get_yjit_payload:IMEMO_TYPE_P(iseq, imemo_iseq)
 
 
+    let out_string = disasm_iseq(iseq);
 
 
-    //let out_string = disasm_iseq(iseq);
+
 
     // TODO: convert Rust string to Ruby string
     // may want a utility function for this
@@ -42,6 +51,9 @@ fn disasm_iseq(iseq: IseqPtr) -> String {
 
     // Get a list of block versions generated for this iseq
     let block_list = get_iseq_block_list(iseq);
+
+    println!("block list len: {}", block_list.len());
+
 
     out.push_str(&format!("NUM BLOCK VERSIONS: {}", block_list.len()));
 

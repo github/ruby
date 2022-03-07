@@ -199,6 +199,7 @@ fn main() {
 
         // From iseq.h
         .allowlist_function("rb_vm_insn_addr2opcode")
+        .allowlist_function("rb_iseqw_to_iseq")
 
         // From builtin.h
         .allowlist_type("rb_builtin_function.*")
