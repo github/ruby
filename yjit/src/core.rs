@@ -105,8 +105,6 @@ impl Type {
     /// Returns usize::MAX if incompatible
     fn diff(self, dst: Self) -> usize
     {
-        println!("diff {:?}, {:?}", self, dst);
-
         // Perfect match, difference is zero
         if self == dst {
             return 0;

@@ -73,8 +73,6 @@ pub extern "C" fn rb_yjit_init_rust()
 pub extern "C" fn rb_yjit_iseq_gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> *const u8 {
     let maybe_code_ptr = gen_entry_point(iseq, 0, ec);
 
-    dbg!(maybe_code_ptr);
-
     match maybe_code_ptr {
         Some(ptr) => ptr.raw_ptr(),
         None => std::ptr::null()
