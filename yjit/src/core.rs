@@ -1408,6 +1408,8 @@ fn get_branch_target(
 pub fn gen_branch(
     jit: &JITState,
     src_ctx: &Context,
+    cb: &mut CodeBlock,
+    ocb: &mut OutlinedCb,
     target0: BlockId,
     ctx0: &Context,
     target1: Option<BlockId>,
@@ -1417,23 +1419,23 @@ pub fn gen_branch(
 {
     //assert!(target0 != BLOCKID_NULL);
 
-    todo!("gen_branch() unimplemented");
+    let branchref = make_branch_entry(jit.get_block(), src_ctx, gen_jump_branch);
+    let mut branch = branchref.borrow_mut();
 
-    /*
-    branch_t *branch = make_branch_entry(jit->block, src_ctx, gen_fn);
-    branch->targets[0] = target0;
-    branch->targets[1] = target1;
-    branch->target_ctxs[0] = *ctx0;
-    branch->target_ctxs[1] = ctx1? *ctx1:DEFAULT_CTX;
+    branch.targets[0] = target0;
+    if target1.is_some() {
+        branch.targets[1] = target1.unwrap();
+    }
+    branch.target_ctxs[0] = *ctx0;
+    branch.target_ctxs[1] = if ctx1.is_some() { *ctx1.unwrap() } else { Context::default() };
 
     // Get the branch targets or stubs
-    branch->dst_addrs[0] = get_branch_target(target0, ctx0, branch, 0);
-    branch->dst_addrs[1] = ctx1? get_branch_target(target1, ctx1, branch, 1):NULL;
+    branch.dst_addrs[0] = Some(get_branch_target(target0, ctx0, &branchref, 0, ocb));
+    branch.dst_addrs[1] = if ctx1.is_some() { Some(get_branch_target(target1.unwrap(), ctx1.unwrap(), &branchref, 1, ocb)) } else { None };
 
     // Call the branch generation function
-    branch->start_addr = cb.get_write_ptr();
-    regenerate_branch(cb, branch);
-    */
+    branch.start_addr = Some(cb.get_write_ptr());
+    regenerate_branch(cb, &mut branch);
 }
 
 fn gen_jump_branch(cb: &mut CodeBlock, target0: CodePtr, target1: Option<CodePtr>, shape: BranchShape)
