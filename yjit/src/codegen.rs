@@ -4920,7 +4920,6 @@ fn gen_opt_getinlinecache(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBl
         let stack_top = ctx.stack_push(Type::Unknown);
         mov(cb, REG0, mem_opnd(64, REG0, RUBY_OFFSET_ICE_VALUE));
         mov(cb, stack_top, REG0);
-        todo!()
     }
     else {
         // Optimize for single ractor mode.
