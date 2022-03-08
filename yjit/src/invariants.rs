@@ -130,6 +130,11 @@ pub extern "C" fn rb_yjit_bop_redefined(klass: RedefinitionFlag, bop: ruby_basic
 /// on the given cme being valid.
 #[no_mangle]
 pub extern "C" fn rb_yjit_cme_invalidate(callee_cme: *const rb_callable_method_entry_t) {
+    // If YJIT isn't enabled, do nothing
+    if !yjit_enabled_p() {
+        return;
+    }
+
     Invariants::get_instance().cme_validity.remove(&callee_cme).map(|blocks| {
         for block in blocks.iter() {
             invalidate_block_version(block);
