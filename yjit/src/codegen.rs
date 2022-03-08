@@ -3025,7 +3025,7 @@ fn gen_branchunless(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
     // RUBY_Qfalse  /* ...0000 0000 */
     // RUBY_Qnil    /* ...0000 1000 */
     let val_opnd = ctx.stack_pop(1);
-    test(cb, val_opnd, uimm_opnd(!(Qnil.as_u64())));
+    test(cb, val_opnd, imm_opnd(!Qnil.as_i64()));
 
     // Get the branch target instruction offsets
     let next_idx = jit_next_insn_idx(jit) as i32;
