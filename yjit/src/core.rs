@@ -564,8 +564,16 @@ impl Block {
         self.blockid
     }
 
+    pub fn get_end_idx(&self) -> u32 {
+        self.end_idx
+    }
+
     pub fn get_ctx(&self) -> Context {
         self.ctx
+    }
+
+    pub fn get_start_addr(&self) -> Option<CodePtr> {
+        self.start_addr
     }
 
     /// Set the starting address in the generated code for the block
@@ -582,7 +590,6 @@ impl Block {
         assert!(self.start_addr.is_some());
 
         // TODO: assert constraint that blocks can shrink but not grow in length
-
         self.end_addr = Some(addr);
     }
 
@@ -593,7 +600,7 @@ impl Block {
         self.end_idx = end_idx;
     }
 
-    pub fn add_gc_object_offset(self:&mut Block, ptr_offset:u32) {
+    pub fn add_gc_object_offset(self: &mut Block, ptr_offset: u32) {
         self.gc_object_offsets.push(ptr_offset);
     }
 
@@ -604,6 +611,13 @@ impl Block {
             receiver_klass,
             callee_cme,
         });
+    }
+
+    // Compute the size of the block code
+    pub fn code_size(&self) -> usize
+    {
+        (self.end_addr.unwrap().raw_ptr() as usize) -
+        (self.start_addr.unwrap().raw_ptr() as usize)
     }
 }
 

@@ -35,7 +35,8 @@ module RubyVM::YJIT
     iseq = RubyVM::InstructionSequence.of(iseq)
 
     # Produce the disassembly string
-    Primitive.rb_yjit_disasm_iseq(iseq)
+    # Include the YARV iseq disasm in the string for additional context
+    iseq.disasm + "\n" + Primitive.rb_yjit_disasm_iseq(iseq)
   end
 
   #def self.simulate_oom!

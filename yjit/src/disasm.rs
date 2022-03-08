@@ -28,167 +28,81 @@ pub extern "C" fn rb_yjit_disasm_iseq(ec: EcPtr, ruby_self: VALUE, iseqw: VALUE)
     }
 }
 
+#[cfg(feature = "disasm")]
 fn disasm_iseq(iseq: IseqPtr) -> String {
     let mut out = String::from("");
 
     // Get a list of block versions generated for this iseq
-    let block_list = get_iseq_block_list(iseq);
+    let mut block_list = get_iseq_block_list(iseq);
 
-    out.push_str(&format!("NUM BLOCK VERSIONS: {}", block_list.len()));
+    // Sort the blocks by increasing start addresses
+    block_list.sort_by(|a, b| {
+        use std::cmp::Ordering;
 
-    // TODO: compute total code size in bytes for all blocks
+        // Get the start addresses for each block
+        let addr_a = a.borrow().get_start_addr().unwrap().raw_ptr();
+        let addr_b = b.borrow().get_start_addr().unwrap().raw_ptr();
 
+        if addr_a < addr_b {
+            Ordering::Less
+        }
+        else if addr_a == addr_b {
+            Ordering::Equal
+        }
+        else {
+            Ordering::Greater
+        }
+    });
 
+    // Compute total code size in bytes for all blocks in the function
+    let mut total_code_size = 0;
+    for blockref in &block_list {
+        total_code_size = blockref.borrow().code_size();
+    }
 
-
-
-
-    return out;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
-#[test]
-#[cfg(feature = "disassembly")]
-fn basic_capstone_usage() -> std::result::Result<(), capstone::Error> {
-    // Test drive Capstone with simple input
+    // Initialize capstone
     extern crate capstone;
     use capstone::prelude::*;
     let cs = Capstone::new()
         .x86()
         .mode(arch::x86::ArchMode::Mode64)
         .syntax(arch::x86::ArchSyntax::Intel)
-        .build()?;
+        .build()
+        .unwrap();
 
-    let insns = cs.disasm_all(&[0xCC], 0x1000)?;
+    out.push_str(&format!("NUM BLOCK VERSIONS: {}\n", block_list.len()));
+    out.push_str(&format!("TOTAL INLINE CODE SIZE: {} bytes\n", total_code_size));
 
-    match insns.as_ref() {
-        [insn] => {
-            assert_eq!(Some("int3"), insn.mnemonic());
-            Ok(())
+    // TODO: may want to list block i/n here
+
+    // For each block, sorted by increasing start address
+    for block_idx in 0..block_list.len() {
+        let block = block_list[block_idx].borrow();
+        let blockid = block.get_blockid();
+        let end_idx = block.get_end_idx();
+        let start_addr = block.get_start_addr().unwrap().raw_ptr();
+        let code_size = block.code_size();
+
+        // Write some info about the block
+        let block_ident = format!(
+            "BLOCK {}/{}, ISEQ RANGE [{},{}), {} bytes ",
+            block_idx + 1,
+            block_list.len(),
+            blockid.idx,
+            end_idx,
+            code_size
+        );
+        out.push_str(&format!("== {:=<60}\n", block_ident));
+
+        // Disassemble the instructions
+        let code_slice = unsafe { std::slice::from_raw_parts(start_addr, code_size) };
+        let insns = cs.disasm_all(code_slice, start_addr as u64).unwrap();
+
+        // For each instruction in this block
+        for insn in insns.as_ref() {
+            out.push_str(&format!("  {}\n", insn));
         }
-        _ => Err(capstone::Error::CustomError(
-            "expected to disassemble to int3",
-        )),
     }
+
+    return out;
 }
-*/
-
-
-
-
-
-
-/*
-static VALUE
-yjit_disasm_init(VALUE klass)
-{
-    csh * handle;
-    VALUE disasm = TypedData_Make_Struct(klass, csh, &yjit_disasm_type, handle);
-    if (cs_open(CS_ARCH_X86, CS_MODE_64, handle) != CS_ERR_OK) {
-        rb_raise(rb_eRuntimeError, "failed to make Capstone handle");
-    }
-    return disasm;
-}
-*/
-
-
-
-
-
-
-/*
-  if defined?(Disasm)
-    def self.disasm(iseq, tty: $stdout && $stdout.tty?)
-      iseq = RubyVM::InstructionSequence.of(iseq)
-
-      blocks = blocks_for(iseq)
-      return if blocks.empty?
-
-      str = String.new
-      str << iseq.disasm
-      str << "\n"
-
-      # Sort the blocks by increasing addresses
-      sorted_blocks = blocks.sort_by(&:address)
-
-      highlight = ->(str) {
-        if tty
-          "\x1b[1m#{str}\x1b[0m"
-        else
-          str
-        end
-      }
-
-      cs = Disasm.new
-      sorted_blocks.each_with_index do |block, i|
-        str << "== BLOCK #{i+1}/#{blocks.length}: #{block.code.length} BYTES, ISEQ RANGE [#{block.iseq_start_index},#{block.iseq_end_index}) ".ljust(80, "=")
-        str << "\n"
-
-        comments = comments_for(block.address, block.address + block.code.length)
-        comment_idx = 0
-        cs.disasm(block.code, block.address).each do |i|
-          while (comment = comments[comment_idx]) && comment.address <= i.address
-            str << "  ; #{highlight.call(comment.comment)}\n"
-            comment_idx += 1
-          end
-
-          str << sprintf(
-            "  %<address>08x:  %<instruction>s\t%<details>s\n",
-            address: i.address,
-            instruction: i.mnemonic,
-            details: i.op_str
-          )
-        end
-      end
-
-      block_sizes = blocks.map { |block| block.code.length }
-      total_bytes = block_sizes.sum
-      str << "\n"
-      str << "Total code size: #{total_bytes} bytes"
-      str << "\n"
-
-      str
-    end
-
-    def self.comments_for(start_address, end_address)
-      Primitive.comments_for(start_address, end_address)
-    end
-
-    def self.disasm_block(cs, block, highlight)
-      comments = comments_for(block.address, block.address + block.code.length)
-      comment_idx = 0
-      str = +''
-      cs.disasm(block.code, block.address).each do |i|
-        while (comment = comments[comment_idx]) && comment.address <= i.address
-          str << "  ; #{highlight.call(comment.comment)}\n"
-          comment_idx += 1
-        end
-
-        str << sprintf(
-          "  %<address>08x:  %<instruction>s\t%<details>s\n",
-          address: i.address,
-          instruction: i.mnemonic,
-          details: i.op_str
-        )
-      end
-      str
-    end
-  end
-  */
