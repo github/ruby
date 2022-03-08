@@ -123,7 +123,9 @@ vm_cme_invalidate(rb_callable_method_entry_t *cme)
     METHOD_ENTRY_INVALIDATED_SET(cme);
     RB_DEBUG_COUNTER_INC(cc_cme_invalidate);
 
-    rb_yjit_cme_invalidate((VALUE)cme);
+    RB_VM_LOCK_ENTER();
+    rb_yjit_cme_invalidate(cme);
+    RB_VM_LOCK_LEAVE();
 }
 
 void

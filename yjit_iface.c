@@ -137,48 +137,6 @@ static const rb_data_type_t yjit_root_type = {
     0, 0, RUBY_TYPED_FREE_IMMEDIATELY
 };
 
-// st_table iterator for invalidating blocks that are keys to the table.
-static int
-block_set_invalidate_i(st_data_t key, st_data_t v, st_data_t ignore)
-{
-    //block_t *version = (block_t *)key;
-
-    // Thankfully, st_table supports deleting while iterating.
-    //invalidate_block_version(version);
-
-    return ST_CONTINUE;
-}
-
-// Callback for when a cme becomes invalid.
-// Invalidate all blocks that depend on cme being valid.
-void
-rb_yjit_cme_invalidate(VALUE cme)
-{
-    if (!cme_validity_dependency) return;
-
-    RUBY_ASSERT(IMEMO_TYPE_P(cme, imemo_ment));
-
-    RB_VM_LOCK_ENTER();
-
-    // Delete the block set from the table
-    st_data_t cme_as_st_data = (st_data_t)cme;
-    st_data_t blocks;
-    if (st_delete(cme_validity_dependency, &cme_as_st_data, &blocks)) {
-        st_table *block_set = (st_table *)blocks;
-
-#if YJIT_STATS
-        yjit_runtime_counters.invalidate_method_lookup += block_set->num_entries;
-#endif
-
-        // Invalidate each block
-        st_foreach(block_set, block_set_invalidate_i, 0);
-
-        st_free_table(block_set);
-    }
-
-    RB_VM_LOCK_LEAVE();
-}
-
 // For dealing with refinements
 void
 rb_yjit_invalidate_all_method_lookup_assumptions(void)
@@ -261,20 +219,6 @@ rb_yjit_constant_ic_update(const rb_iseq_t *const iseq, IC ic)
         }
     }
     RB_VM_LOCK_LEAVE();
-    */
-}
-
-void
-rb_yjit_before_ractor_spawn(void)
-{
-    /*
-    if (blocks_assuming_single_ractor_mode) {
-#if YJIT_STATS
-        yjit_runtime_counters.invalidate_ractor_spawn += blocks_assuming_single_ractor_mode->num_entries;
-#endif
-
-        st_foreach(blocks_assuming_single_ractor_mode, block_set_invalidate_i, 0);
-    }
     */
 }
 

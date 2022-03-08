@@ -4924,7 +4924,7 @@ fn gen_opt_getinlinecache(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBl
     else {
         // Optimize for single ractor mode.
         // FIXME: This leaks when st_insert raises NoMemoryError
-        if !assume_single_ractor_mode(jit) {
+        if !assume_single_ractor_mode(jit, ocb) {
             return CantCompile;
         }
 

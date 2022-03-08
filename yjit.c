@@ -645,6 +645,11 @@ rb_RCLASS_ORIGIN(VALUE c)
     return RCLASS_ORIGIN(c);
 }
 
+bool
+rb_yjit_multi_ractor_p(void) {
+    return rb_multi_ractor_p();
+}
+
 #include "yjit_iface.c"
 
 #endif // if JIT_ENABLED && PLATFORM_SUPPORTED_P

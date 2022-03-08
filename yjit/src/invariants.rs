@@ -15,11 +15,6 @@ use std::collections::HashMap;
 // assume_single_ractor_mode(jit)
 // assume_stable_global_constant_state(jit);
 
-struct MethodLookupDependency {
-    block: BlockRef,
-    mid: ID
-}
-
 /// Used to track all of the various block references that contain assumptions
 /// about the state of the virtual machine.
 pub struct Invariants {
@@ -33,7 +28,13 @@ pub struct Invariants {
     /// Tracks block assumptions about method lookup. Maps a class to a table of
     /// method ID points to a set of blocks. While a block `b` is in the table,
     /// b->callee_cme == rb_callable_method_entry(klass, mid).
-    method_lookup: HashMap<VALUE, HashMap<ID, Vec<MethodLookupDependency>>>
+    method_lookup: HashMap<VALUE, HashMap<ID, Vec<(BlockRef, ID)>>>,
+
+    /// Tracks the set of blocks that are assuming the interpreter is running
+    /// with only one ractor. This is important for things like accessing
+    /// constants which can have different semantics when multiple ractors are
+    /// running.
+    single_ractor: Vec<BlockRef>
 }
 
 /// Private singleton instance of the invariants global struct.
@@ -46,7 +47,8 @@ impl Invariants {
             INVARIANTS = Some(Invariants {
                 basic_operators: HashMap::new(),
                 cme_validity: HashMap::new(),
-                method_lookup: HashMap::new()
+                method_lookup: HashMap::new(),
+                single_ractor: Vec::new()
             });
         }
     }
@@ -54,12 +56,6 @@ impl Invariants {
     /// Get a mutable reference to the codegen globals instance
     pub fn get_instance() -> &'static mut Invariants {
         unsafe { INVARIANTS.as_mut().unwrap() }
-    }
-
-    /// Returns the vector of blocks that are currently assuming the given basic
-    /// operator on the given class has not been redefined.
-    pub fn get_bop_assumptions(klass: RedefinitionFlag, bop: ruby_basic_operators) -> &'static mut Vec<BlockRef> {
-        Invariants::get_instance().basic_operators.entry((klass, bop)).or_insert(Vec::new())
     }
 }
 
@@ -69,7 +65,15 @@ impl Invariants {
 pub fn assume_bop_not_redefined(jit: &mut JITState, ocb: &mut OutlinedCb, klass: RedefinitionFlag, bop: ruby_basic_operators) -> bool {
     if unsafe { BASIC_OP_UNREDEFINED_P(bop, klass) } {
         jit_ensure_block_entry_exit(jit, ocb);
-        Invariants::get_bop_assumptions(klass, bop).push(jit.get_block());
+
+        // First, fetch the entry in the list of basic operators that
+        // corresponds to this class and basic operator tuple.
+        let entry = Invariants::get_instance().basic_operators.entry((klass, bop));
+
+        // Next, add the current block to the list of blocks that are assuming
+        // this basic operator is not redefined.
+        entry.or_insert(Vec::new()).push(jit.get_block());
+
         return true;
     } else {
         return false;
@@ -99,16 +103,39 @@ pub fn assume_method_lookup_stable(jit: &mut JITState, ocb: &mut OutlinedCb, rec
     Invariants::get_instance().method_lookup
         .entry(receiver_klass).or_insert(HashMap::new())
         .entry(mid).or_insert(Vec::new())
-        .push(MethodLookupDependency { block: block.clone(), mid });
+        .push((block.clone(), mid));
+}
+
+/// Tracks that a block is assuming it is operating in single-ractor mode.
+pub fn assume_single_ractor_mode(jit: &mut JITState, ocb: &mut OutlinedCb) -> bool {
+    if unsafe { rb_yjit_multi_ractor_p() } {
+        false
+    } else {
+        jit_ensure_block_entry_exit(jit, ocb);
+        Invariants::get_instance().single_ractor.push(jit.get_block());
+        true
+    }
 }
 
 /// Called when a basic operation is redefined.
 #[no_mangle]
 pub extern "C" fn rb_yjit_bop_redefined(klass: RedefinitionFlag, bop: ruby_basic_operators) {
-    for block in Invariants::get_bop_assumptions(klass, bop).iter() {
+    for block in Invariants::get_instance().basic_operators.entry((klass, bop)).or_insert(Vec::new()).iter() {
         invalidate_block_version(block);
         incr_counter!(invalidate_bop_redefined);
     }
+}
+
+/// Callback for when a cme becomes invalid. Invalidate all blocks that depend
+/// on the given cme being valid.
+#[no_mangle]
+pub extern "C" fn rb_yjit_cme_invalidate(callee_cme: *const rb_callable_method_entry_t) {
+    Invariants::get_instance().cme_validity.remove(&callee_cme).map(|blocks| {
+        for block in blocks.iter() {
+            invalidate_block_version(block);
+            incr_counter!(invalidate_method_lookup);
+        }
+    });
 }
 
 /// Callback for when rb_callable_method_entry(klass, mid) is going to change.
@@ -123,55 +150,22 @@ pub extern "C" fn rb_yjit_method_lookup_change(klass: VALUE, mid: ID) {
 
     Invariants::get_instance().method_lookup.entry(klass).and_modify(|deps| {
         deps.remove(&mid).map(|deps| {
-            for dep in deps.iter() {
-                invalidate_block_version(&dep.block);
+            for (block, mid) in deps.iter() {
+                invalidate_block_version(block);
                 incr_counter!(invalidate_method_lookup);
             }
         });
     });
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_get_bop_assumptions() {
-        Invariants::init();
-
-        let block = Block::new(BLOCKID_NULL, &Context::default());
-        let bops = &mut Invariants::get_instance().basic_operators;
-
-        // Configure the set of assumptions such that one block is assuming
-        // Integer#+ is not redefined and one block is assuming String#+ is not
-        // redefined.
-        bops.insert((INTEGER_REDEFINED_OP_FLAG, BOP_PLUS), vec![block.clone()]);
-        bops.insert((STRING_REDEFINED_OP_FLAG, BOP_PLUS), vec![block.clone()]);
-
-        assert_eq!(Invariants::get_bop_assumptions(INTEGER_REDEFINED_OP_FLAG, BOP_PLUS).len(), 1);
+/// Callback for then Ruby is about to spawn a ractor. In that case we need to
+/// invalidate every block that is assuming single ractor mode.
+#[no_mangle]
+pub extern "C" fn rb_yjit_before_ractor_spawn() {
+    for block in Invariants::get_instance().single_ractor.iter() {
+        invalidate_block_version(block);
+        incr_counter!(invalidate_ractor_spawn);
     }
-}
-
-
-
-
-
-
-//static st_table *blocks_assuming_single_ractor_mode;
-
-// Can raise NoMemoryError.
-//RBIMPL_ATTR_NODISCARD()
-pub fn assume_single_ractor_mode(jit: &JITState) -> bool
-{
-    todo!()
-    /*
-    if (rb_multi_ractor_p()) return false;
-
-    jit_ensure_block_entry_exit(jit);
-
-    //st_insert(blocks_assuming_single_ractor_mode, (st_data_t)jit->block, 1);
-    true
-    */
 }
 
 
@@ -191,41 +185,6 @@ pub fn assume_stable_global_constant_state(jit: &JITState)
     */
 }
 
-
-
-/*
-// Callback for when a cme becomes invalid.
-// Invalidate all blocks that depend on cme being valid.
-void
-rb_yjit_cme_invalidate(VALUE cme)
-{
-    if (!cme_validity_dependency) return;
-
-    RUBY_ASSERT(IMEMO_TYPE_P(cme, imemo_ment));
-
-    RB_VM_LOCK_ENTER();
-
-    // Delete the block set from the table
-    st_data_t cme_as_st_data = (st_data_t)cme;
-    st_data_t blocks;
-    if (st_delete(cme_validity_dependency, &cme_as_st_data, &blocks)) {
-        st_table *block_set = (st_table *)blocks;
-
-#if YJIT_STATS
-        yjit_runtime_counters.invalidate_method_lookup += block_set->num_entries;
-#endif
-
-        // Invalidate each block
-        st_foreach(block_set, block_set_invalidate_i, 0);
-
-        st_free_table(block_set);
-    }
-
-    RB_VM_LOCK_LEAVE();
-}
-*/
-
-
 /*
 static void
 yjit_block_assumptions_free(block_t *block)
@@ -244,34 +203,6 @@ yjit_block_assumptions_free(block_t *block)
     }
 }
 */
-
-
-
-
-/*
-// When a block is deleted, remove the assumptions associated with it
-static void
-yjit_block_assumptions_free(block_t *block)
-{
-    /*
-    st_data_t as_st_data = (st_data_t)block;
-    if (blocks_assuming_stable_global_constant_state) {
-        st_delete(blocks_assuming_stable_global_constant_state, &as_st_data, NULL);
-    }
-
-    if (blocks_assuming_single_ractor_mode) {
-        st_delete(blocks_assuming_single_ractor_mode, &as_st_data, NULL);
-    }
-
-    if (blocks_assuming_bops) {
-        st_delete(blocks_assuming_bops, &as_st_data, NULL);
-    }
-    */
-}
-*/
-
-
-
 
 /*
 // Free the yjit resources associated with an iseq
@@ -370,18 +301,6 @@ rb_yjit_constant_ic_update(const rb_iseq_t *const iseq, IC ic)
         }
     }
     RB_VM_LOCK_LEAVE();
-}
-
-void
-rb_yjit_before_ractor_spawn(void)
-{
-    if (blocks_assuming_single_ractor_mode) {
-#if YJIT_STATS
-        yjit_runtime_counters.invalidate_ractor_spawn += blocks_assuming_single_ractor_mode->num_entries;
-#endif
-
-        st_foreach(blocks_assuming_single_ractor_mode, block_set_invalidate_i, 0);
-    }
 }
 */
 
