@@ -15,6 +15,8 @@
 #include "vm_sync.h"
 #include "yjit.h"
 #include "vm_insnhelper.h"
+#include "probes.h"
+#include "probes_helper.h"
 
 // For mmapp(), sysconf()
 #ifndef _WIN32
@@ -225,6 +227,54 @@ uint8_t *rb_yjit_alloc_exec_mem(uint32_t mem_size) {
     // Windows not supported for now
     return NULL;
 #endif
+}
+
+// Is anyone listening for :c_call and :c_return event currently?
+bool
+rb_c_method_tracing_currently_enabled(rb_execution_context_t *ec)
+{
+    rb_event_flag_t tracing_events;
+    if (rb_multi_ractor_p()) {
+        tracing_events = ruby_vm_event_enabled_global_flags;
+    }
+    else {
+        // At the time of writing, events are never removed from
+        // ruby_vm_event_enabled_global_flags so always checking using it would
+        // mean we don't compile even after tracing is disabled.
+        tracing_events = rb_ec_ractor_hooks(ec)->events;
+    }
+
+    return tracing_events & (RUBY_EVENT_C_CALL | RUBY_EVENT_C_RETURN);
+}
+
+// The code we generate in gen_send_cfunc() doesn't fire the c_return TracePoint event
+// like the interpreter. When tracing for c_return is enabled, we patch the code after
+// the C method return to call into this to fire the event.
+void
+rb_full_cfunc_return(rb_execution_context_t *ec, VALUE return_value)
+{
+    rb_control_frame_t *cfp = ec->cfp;
+    RUBY_ASSERT_ALWAYS(cfp == GET_EC()->cfp);
+    const rb_callable_method_entry_t *me = rb_vm_frame_method_entry(cfp);
+
+    RUBY_ASSERT_ALWAYS(RUBYVM_CFUNC_FRAME_P(cfp));
+    RUBY_ASSERT_ALWAYS(me->def->type == VM_METHOD_TYPE_CFUNC);
+
+    // CHECK_CFP_CONSISTENCY("full_cfunc_return"); TODO revive this
+
+    // Pop the C func's frame and fire the c_return TracePoint event
+    // Note that this is the same order as vm_call_cfunc_with_frame().
+    rb_vm_pop_frame(ec);
+    EXEC_EVENT_HOOK(ec, RUBY_EVENT_C_RETURN, cfp->self, me->def->original_id, me->called_id, me->owner, return_value);
+    // Note, this deviates from the interpreter in that users need to enable
+    // a c_return TracePoint for this DTrace hook to work. A reasonable change
+    // since the Ruby return event works this way as well.
+    RUBY_DTRACE_CMETHOD_RETURN_HOOK(ec, me->owner, me->def->original_id);
+
+    // Push return value into the caller's stack. We know that it's a frame that
+    // uses cfp->sp because we are patching a call done with gen_send_cfunc().
+    ec->cfp->sp[0] = return_value;
+    ec->cfp->sp++;
 }
 
 unsigned int

@@ -552,43 +552,10 @@ fn gen_pc_guard(cb: &mut CodeBlock, iseq: IseqPtr)
     cb.link_labels();
 }
 
-/*
-// The code we generate in gen_send_cfunc() doesn't fire the c_return TracePoint event
-// like the interpreter. When tracing for c_return is enabled, we patch the code after
-// the C method return to call into this to fire the event.
-static void
-full_cfunc_return(rb_execution_context_t *ec, VALUE return_value)
-{
-    rb_control_frame_t *cfp = ec->cfp;
-    RUBY_ASSERT_ALWAYS(cfp == GET_EC()->cfp);
-    const rb_callable_method_entry_t *me = rb_vm_frame_method_entry(cfp);
-
-    RUBY_ASSERT_ALWAYS(RUBYVM_CFUNC_FRAME_P(cfp));
-    RUBY_ASSERT_ALWAYS(me->def->type == VM_METHOD_TYPE_CFUNC);
-
-    // CHECK_CFP_CONSISTENCY("full_cfunc_return"); TODO revive this
-
-    // Pop the C func's frame and fire the c_return TracePoint event
-    // Note that this is the same order as vm_call_cfunc_with_frame().
-    rb_vm_pop_frame(ec);
-    EXEC_EVENT_HOOK(ec, RUBY_EVENT_C_RETURN, cfp->self, me->def->original_id, me->called_id, me->owner, return_value);
-    // Note, this deviates from the interpreter in that users need to enable
-    // a c_return TracePoint for this DTrace hook to work. A reasonable change
-    // since the Ruby return event works this way as well.
-    RUBY_DTRACE_CMETHOD_RETURN_HOOK(ec, me->owner, me->def->original_id);
-
-    // Push return value into the caller's stack. We know that it's a frame that
-    // uses cfp->sp because we are patching a call done with gen_send_cfunc().
-    ec->cfp->sp[0] = return_value;
-    ec->cfp->sp++;
-}
-
 // Landing code for when c_return tracing is enabled. See full_cfunc_return().
-static void
-gen_full_cfunc_return(void)
+fn gen_full_cfunc_return(ocb: &mut OutlinedCb)
 {
-    codeblock_t *cb = ocb;
-    outline_full_cfunc_return_pos = ocb->write_pos;
+    let cb = ocb.unwrap();
 
     // This chunk of code expect REG_EC to be filled properly and
     // RAX to contain the return value of the C method.
@@ -596,7 +563,7 @@ gen_full_cfunc_return(void)
     // Call full_cfunc_return()
     mov(cb, C_ARG_REGS[0], REG_EC);
     mov(cb, C_ARG_REGS[1], RAX);
-    call_ptr(cb, REG0, (void *)full_cfunc_return);
+    call_ptr(cb, REG0, rb_full_cfunc_return as *const u8);
 
     // Count the exit
     gen_counter_incr!(cb, traced_cfunc_return);
@@ -606,10 +573,9 @@ gen_full_cfunc_return(void)
     pop(cb, REG_EC);
     pop(cb, REG_CFP);
 
-    mov(cb, RAX, imm_opnd(Qundef));
+    mov(cb, RAX, uimm_opnd(Qundef.into()));
     ret(cb);
 }
-*/
 
 
 
@@ -3466,21 +3432,8 @@ fn lookup_cfunc_codegen(def: *const rb_method_definition_t) -> Option<MethodGenF
 // Is anyone listening for :c_call and :c_return event currently?
 fn c_method_tracing_currently_enabled(jit: &JITState) -> bool
 {
-    todo!();
-    /*
-    rb_event_flag_t tracing_events;
-    if (rb_multi_ractor_p()) {
-        tracing_events = ruby_vm_event_enabled_global_flags;
-    }
-    else {
-        // At the time of writing, events are never removed from
-        // ruby_vm_event_enabled_global_flags so always checking using it would
-        // mean we don't compile even after tracing is disabled.
-        tracing_events = rb_ec_ractor_hooks(jit->ec)->events;
-    }
-
-    return tracing_events & (RUBY_EVENT_C_CALL | RUBY_EVENT_C_RETURN);
-    */
+    // Defer to C implementation in yjit.c
+    unsafe { rb_c_method_tracing_currently_enabled(jit.ec.unwrap() as *mut rb_execution_context_struct) }
 }
 
 fn gen_send_cfunc(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: * const rb_callinfo, cme: * const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, recv_known_klass: *const VALUE) -> CodegenStatus
@@ -5227,7 +5180,7 @@ pub struct CodegenGlobals
     stub_exit_code: CodePtr,
 
     // Code for full logic of returning from C method and exiting to the interpreter
-    outline_full_cfunc_return_pos: Option<CodePtr>,
+    outline_full_cfunc_return_pos: CodePtr,
 
     // For implementing global code invalidation
     global_inval_patches: Vec<CodepagePatch>,
@@ -5273,13 +5226,10 @@ impl CodegenGlobals {
 
         let stub_exit_code = gen_code_for_exit_from_stub(&mut ocb);
 
-        // TODO
-        // Generate full exit code for C func
-        //gen_full_cfunc_return();
-
         cb.mark_all_executable();
         ocb.unwrap().mark_all_executable();
 
+        let return_pos = ocb.unwrap().get_write_ptr();
         unsafe {
             CODEGEN_GLOBALS = Some(
                 CodegenGlobals {
@@ -5288,11 +5238,14 @@ impl CodegenGlobals {
                     leave_exit_code: leave_exit_code,
                     stub_exit_code: stub_exit_code,
                     global_inval_patches: Vec::new(),
-                    outline_full_cfunc_return_pos: None,
+                    outline_full_cfunc_return_pos: return_pos,
                     method_codegen_table: HashMap::new(),
                 }
             )
         }
+
+        // Generate full exit code for C func - this doesn't work until there is a CodegenGlobals instance
+        gen_full_cfunc_return(CodegenGlobals::get_outlined_cb());
     }
 
     /// Get a mutable reference to the codegen globals instance
@@ -5321,12 +5274,8 @@ impl CodegenGlobals {
         CodegenGlobals::get_instance().global_inval_patches.push(patch);
     }
 
-    pub fn set_outline_full_cfunc_return_pos(val:CodePtr) {
-        CodegenGlobals::get_instance().outline_full_cfunc_return_pos = Some(val);
-    }
-
     pub fn get_outline_full_cfunc_return_pos() -> CodePtr {
-        CodegenGlobals::get_instance().outline_full_cfunc_return_pos.unwrap()
+        CodegenGlobals::get_instance().outline_full_cfunc_return_pos
     }
 
     pub fn look_up_codegen_method(method_serial: u64) -> Option<MethodGenFn> {

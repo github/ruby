@@ -196,6 +196,8 @@ fn main() {
         .allowlist_function("rb_set_cfp_(pc|sp)")
         .allowlist_function("rb_cfp_get_iseq")
         .allowlist_function("rb_yjit_multi_ractor_p")
+        .allowlist_function("rb_c_method_tracing_currently_enabled")
+        .allowlist_function("rb_full_cfunc_return")
 
         // Not sure why it's picking these up, but don't.
         .blocklist_type("FILE")

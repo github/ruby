@@ -645,6 +645,12 @@ extern "C" {
     pub fn rb_yjit_get_page_size() -> u32;
 }
 extern "C" {
+    pub fn rb_c_method_tracing_currently_enabled(ec: *mut rb_execution_context_t) -> bool;
+}
+extern "C" {
+    pub fn rb_full_cfunc_return(ec: *mut rb_execution_context_t, return_value: VALUE);
+}
+extern "C" {
     pub fn rb_iseq_get_yjit_payload(iseq: *const rb_iseq_t) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
