@@ -34,7 +34,13 @@ pub struct Invariants {
     /// with only one ractor. This is important for things like accessing
     /// constants which can have different semantics when multiple ractors are
     /// running.
-    single_ractor: Vec<BlockRef>
+    single_ractor: Vec<BlockRef>,
+
+    /// Tracks the set of blocks that are assuming that the global constant
+    /// state hasn't changed since the last time it was checked. This is
+    /// important for accessing constants and their fields which can change
+    /// between executions of a given block.
+    global_constant_state: Vec<BlockRef>
 }
 
 /// Private singleton instance of the invariants global struct.
@@ -48,7 +54,8 @@ impl Invariants {
                 basic_operators: HashMap::new(),
                 cme_validity: HashMap::new(),
                 method_lookup: HashMap::new(),
-                single_ractor: Vec::new()
+                single_ractor: Vec::new(),
+                global_constant_state: Vec::new()
             });
         }
     }
@@ -117,6 +124,13 @@ pub fn assume_single_ractor_mode(jit: &mut JITState, ocb: &mut OutlinedCb) -> bo
     }
 }
 
+/// Tracks that a block is assuming that the global constant state has not
+/// changed since the last call to this function.
+pub fn assume_stable_global_constant_state(jit: &mut JITState, ocb: &mut OutlinedCb) {
+    jit_ensure_block_entry_exit(jit, ocb);
+    Invariants::get_instance().global_constant_state.push(jit.get_block());
+}
+
 /// Called when a basic operation is redefined.
 #[no_mangle]
 pub extern "C" fn rb_yjit_bop_redefined(klass: RedefinitionFlag, bop: ruby_basic_operators) {
@@ -173,21 +187,18 @@ pub extern "C" fn rb_yjit_before_ractor_spawn() {
     }
 }
 
+/// Callback for when the global constant state changes.
+#[no_mangle]
+pub extern "C" fn rb_yjit_constant_state_changed() {
+    // If YJIT isn't enabled, do nothing
+    if !yjit_enabled_p() {
+        return;
+    }
 
-
-
-
-//static st_table *blocks_assuming_stable_global_constant_state;
-
-// Assume that the global constant state has not changed since call to this function.
-// Can raise NoMemoryError.
-pub fn assume_stable_global_constant_state(jit: &JITState)
-{
-    todo!()
-    /*
-    jit_ensure_block_entry_exit(jit);
-    st_insert(blocks_assuming_stable_global_constant_state, (st_data_t)jit->block, 1);
-    */
+    for block in Invariants::get_instance().global_constant_state.iter() {
+        invalidate_block_version(block);
+        incr_counter!(invalidate_constant_state_bump);
+    }
 }
 
 /*
@@ -234,20 +245,6 @@ rb_yjit_iseq_free(const struct rb_iseq_constant_body *body)
 
 
 /*
-
-/* Called when the constant state changes */
-void
-rb_yjit_constant_state_changed(void)
-{
-    if (blocks_assuming_stable_global_constant_state) {
-#if YJIT_STATS
-        yjit_runtime_counters.constant_state_bumps++;
-        yjit_runtime_counters.invalidate_constant_state_bump += blocks_assuming_stable_global_constant_state->num_entries;
-#endif
-
-        st_foreach(blocks_assuming_stable_global_constant_state, block_set_invalidate_i, 0);
-    }
-}
 
 // Callback from the opt_setinlinecache instruction in the interpreter.
 // Invalidate the block for the matching opt_getinlinecache so it could regenerate code

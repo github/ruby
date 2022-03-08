@@ -145,22 +145,6 @@ rb_yjit_invalidate_all_method_lookup_assumptions(void)
     // method caches, so we do nothing here for now.
 }
 
-/* Called when the constant state changes */
-void
-rb_yjit_constant_state_changed(void)
-{
-    /*
-    if (blocks_assuming_stable_global_constant_state) {
-#if YJIT_STATS
-        yjit_runtime_counters.constant_state_bumps++;
-        yjit_runtime_counters.invalidate_constant_state_bump += blocks_assuming_stable_global_constant_state->num_entries;
-#endif
-
-        st_foreach(blocks_assuming_stable_global_constant_state, block_set_invalidate_i, 0);
-    }
-    */
-}
-
 // Callback from the opt_setinlinecache instruction in the interpreter.
 // Invalidate the block for the matching opt_getinlinecache so it could regenerate code
 // using the new value in the constant cache.
