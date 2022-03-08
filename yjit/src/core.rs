@@ -1288,7 +1288,6 @@ pub extern "C" fn rb_yjit_rust_branch_stub_hit(branch_ptr: *const c_void, target
         (cfp, original_interp_sp)
     };
 
-
     // Try to find an existing compiled version of this block
     let mut block = find_block_version(target, &target_ctx);
 

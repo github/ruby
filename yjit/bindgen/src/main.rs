@@ -47,6 +47,10 @@ fn main() {
         // From include/ruby/internal/core/rbasic.h
         .allowlist_type("RBasic")
 
+        // From internal.h
+        // This function prints info about a value and is useful for debugging
+        .allowlist_function("rb_obj_info_dump")
+
         // From ruby/internal/intern/object.h
         .allowlist_function("rb_obj_is_kind_of")
 

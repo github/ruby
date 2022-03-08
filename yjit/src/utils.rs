@@ -187,3 +187,7 @@ print_str(codeblock_t *cb, const char *str)
     pop_regs(cb);
 }
 */
+
+// TODO:
+// Would be useful to have a print_value(cb) function that calls into
+// rb_obj_info_dump(VALUE obj)

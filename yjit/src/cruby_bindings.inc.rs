@@ -167,6 +167,9 @@ extern "C" {
     pub fn rb_attr_get(obj: VALUE, name: ID) -> VALUE;
 }
 extern "C" {
+    pub fn rb_obj_info_dump(obj: VALUE);
+}
+extern "C" {
     pub fn rb_reg_new_ary(ary: VALUE, options: ::std::os::raw::c_int) -> VALUE;
 }
 pub const idDot2: ruby_method_ids = 128;
