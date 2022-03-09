@@ -104,7 +104,29 @@ assert_equal '5', %q{
   foo(1, 5)
 }
 
-# Simple function call
+# Simple function calls with 0, 1, 2 arguments
+assert_equal '-2', %q{
+  def bar()
+    -2
+  end
+
+  def foo(a, b)
+    bar()
+  end
+
+  foo(3, 2)
+}
+assert_equal '2', %q{
+  def bar(a)
+    a
+  end
+
+  def foo(a, b)
+    bar(b)
+  end
+
+  foo(3, 2)
+}
 assert_equal '1', %q{
   def bar(a, b)
     a - b
