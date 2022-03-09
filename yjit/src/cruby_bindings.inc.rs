@@ -684,3 +684,12 @@ extern "C" {
 extern "C" {
     pub fn rb_yjit_multi_ractor_p() -> bool;
 }
+extern "C" {
+    pub fn rb_yjit_vm_lock_then_barrier(
+        file: *const ::std::os::raw::c_char,
+        line: ::std::os::raw::c_int,
+    );
+}
+extern "C" {
+    pub fn rb_yjit_vm_unlock(file: *const ::std::os::raw::c_char, line: ::std::os::raw::c_int);
+}
