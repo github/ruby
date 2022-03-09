@@ -664,27 +664,6 @@ rb_get_call_data_ci(struct rb_call_data *cd)
     return cd->ci;
 }
 
-const uint8_t *
-rb_yjit_branch_stub_hit(void *branch_ptr, uint32_t target_idx, rb_execution_context_t *ec)
-{
-    const uint8_t *ret;
-    // Acquire the VM lock and then signal all other Ruby threads (ractors) to
-    // contend for the VM lock, putting them to sleep. YJIT uses this to evict
-    // threads running inside generated code so among other things, it can
-    // safely change memory protection of regions housing generated code.
-    RB_VM_LOCK_ENTER();
-    rb_vm_barrier();
-
-    const uint8_t *rb_yjit_rust_branch_stub_hit(void *branch_ptr, uint32_t target_idx, rb_execution_context_t *ec);
-    ret = rb_yjit_rust_branch_stub_hit(branch_ptr, target_idx, ec);
-
-    // Release the VM lock. Note, watch out for Ruby exceptions and Rust panics
-    // to ensure that the lock is properly released in exceptional situations.
-    RB_VM_LOCK_LEAVE();
-
-    return ret;
-}
-
 bool
 rb_BASIC_OP_UNREDEFINED_P(enum ruby_basic_operators bop, uint32_t klass)
 {
@@ -700,6 +679,27 @@ rb_RCLASS_ORIGIN(VALUE c)
 bool
 rb_yjit_multi_ractor_p(void) {
     return rb_multi_ractor_p();
+}
+
+// Acquire the VM lock and then signal all other Ruby threads (ractors) to
+// contend for the VM lock, putting them to sleep. YJIT uses this to evict
+// threads running inside generated code so among other things, it can
+// safely change memory protection of regions housing generated code.
+//
+// Using rb_vm_lock() rather than RB_VM_LOCK_ENTER() because
+//   - Simpler signature for FFI
+//   - The lev parameter appears to be for debugging purposes only
+void
+rb_yjit_vm_lock_then_barrier(const char *file, int line)
+{
+    rb_vm_lock(file, line);
+    rb_vm_barrier();
+}
+
+void
+rb_yjit_vm_unlock(const char *file, int line)
+{
+    rb_vm_unlock(file, line);
 }
 
 #include "yjit_iface.c"

@@ -1234,10 +1234,20 @@ fn make_branch_entry(block: BlockRef, src_ctx: &Context, gen_fn: BranchGenFn) ->
     return branchref;
 }
 
-// Called by the generated code when a branch stub is executed
-// Triggers compilation of branches and code patching
-#[no_mangle]
-pub extern "C" fn rb_yjit_rust_branch_stub_hit(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -> *const u8
+/// Generated code calls this function with the SysV calling convention.
+/// See [get_branch_target].
+extern "sysv64" fn branch_stub_hit(
+    branch_ptr: *const c_void,
+    target_idx: u32,
+    ec: EcPtr
+) -> *const u8
+{
+    with_vm_lock(src_loc!(), || branch_stub_hit_body(branch_ptr, target_idx, ec))
+}
+
+/// Called by the generated code when a branch stub is executed
+/// Triggers compilation of branches and code patching
+fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -> *const u8
 {
     assert!(!branch_ptr.is_null());
 
@@ -1409,7 +1419,7 @@ fn get_branch_target(
     mov(ocb, C_ARG_REGS[2], REG_EC);
     mov(ocb, C_ARG_REGS[1], uimm_opnd(target_idx as u64));
     mov(ocb, C_ARG_REGS[0], const_ptr_opnd(branch_ptr as *const u8));
-    call_ptr(ocb, REG0, rb_yjit_branch_stub_hit as *mut u8);
+    call_ptr(ocb, REG0, branch_stub_hit as *mut u8);
 
     // Jump to the address returned by the
     // branch_stub_hit call

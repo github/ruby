@@ -85,6 +85,7 @@
 use std::ffi::CString;
 use std::convert::From;
 use std::os::raw::{c_int, c_uint, c_long, c_char, c_void};
+use std::panic::{UnwindSafe, catch_unwind};
 
 // We check that we can do this with the configure script and a couple of
 // static asserts. u64 and not usize to play nice with lowering to x86.
@@ -565,6 +566,61 @@ pub fn rust_str_to_sym(str: &str) -> VALUE
     unsafe {
         rb_id2sym(rb_intern(c_ptr))
     }
+}
+
+/// A location in Rust code for integrating with debugging facilities defined in C.
+/// Use the [src_loc!] macro to crate an instance.
+pub struct SourceLocation {
+    pub file: CString,
+    pub line: c_int,
+}
+
+/// Make a [SourceLocation] at the current spot.
+macro_rules! src_loc {
+    () => {
+        crate::cruby::SourceLocation{
+            file: std::ffi::CString::new(file!()).unwrap(), // ASCII source file paths
+            line: line!().try_into().unwrap(), // not that many lines
+        }
+    }
+}
+
+pub(crate) use src_loc;
+
+/// Acquire the VM lock, make sure all other Ruby threads are asleep then run
+/// some code while holding the lock. Returns whatever `func` returns.
+/// Use with [src_loc!].
+///
+/// Required for code patching in the presence of ractors.
+pub fn with_vm_lock<F, R>(loc: SourceLocation, func: F) -> R
+    where F: FnOnce() -> R + UnwindSafe
+{
+    let file = loc.file.as_ptr();
+    let line = loc.line;
+
+    unsafe { rb_yjit_vm_lock_then_barrier(file, line) };
+
+    let ret = match catch_unwind(func) {
+        Ok(result) => result,
+        Err(_) => {
+            // Theoretically we can recover from some of these panics,
+            // but it's too late if the unwind reaches here.
+            use std::{io, process, str};
+
+            let _ = catch_unwind(|| { // IO functions can panic too.
+                eprintln!(
+                    "YJIT panicked while holding VM lock acquired at {}:{}. Aborting...",
+                    str::from_utf8(loc.file.as_bytes()).unwrap_or("<not utf8>"),
+                    line,
+                );
+            });
+            process::abort();
+        }
+    };
+
+    unsafe { rb_yjit_vm_unlock(file, line) };
+
+    ret
 }
 
 // Non-idiomatic capitalization for consistency with CRuby code
