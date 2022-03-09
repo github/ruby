@@ -658,8 +658,9 @@ rb_RSTRUCT_SET(VALUE st, int k, VALUE v)
     RSTRUCT_SET(st, k, v);
 }
 
-const struct rb_callinfo*
-rb_get_call_data_ci(struct rb_call_data* cd) {
+const struct rb_callinfo *
+rb_get_call_data_ci(struct rb_call_data *cd)
+{
     return cd->ci;
 }
 
@@ -685,7 +686,8 @@ rb_yjit_branch_stub_hit(void *branch_ptr, uint32_t target_idx, rb_execution_cont
 }
 
 bool
-rb_BASIC_OP_UNREDEFINED_P(enum ruby_basic_operators bop, uint32_t klass) {
+rb_BASIC_OP_UNREDEFINED_P(enum ruby_basic_operators bop, uint32_t klass)
+{
     return BASIC_OP_UNREDEFINED_P(bop, klass);
 }
 
