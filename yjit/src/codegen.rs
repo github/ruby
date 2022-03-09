@@ -4895,7 +4895,7 @@ fn gen_opt_getinlinecache(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBl
 
         // Invalidate output code on any and all constant writes
         // FIXME: This leaks when st_insert raises NoMemoryError
-        assume_stable_global_constant_state(jit);
+        assume_stable_global_constant_state(jit, ocb);
 
         jit_putobject(jit, ctx, cb, unsafe { (*ice).value });
     }
