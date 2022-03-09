@@ -73,12 +73,37 @@ assert_equal '-7', %q{
   foo(1, 2)
 }
 
+# Putstring
+assert_equal 'foo', %q{
+  def foo(a, b)
+    "foo"
+  end
+
+  foo(1, 2)
+}
+
 assert_equal '-6', %q{
   def foo(a, b)
     a + -7
   end
 
   foo(1, 2)
+}
+
+assert_equal 'true', %q{
+  def foo(a, b)
+    a == b
+  end
+
+  foo(3, 3)
+}
+
+assert_equal 'true', %q{
+  def foo(a, b)
+    a < b
+  end
+
+  foo(3, 5)
 }
 
 assert_equal '777', %q{
@@ -102,6 +127,15 @@ assert_equal '5', %q{
   end
 
   foo(1, 5)
+}
+
+# opt_aref
+assert_equal '2', %q{
+  def foo(a, b)
+    a[b]
+  end
+
+  foo([0, 1, 2], 2)
 }
 
 # Simple function calls with 0, 1, 2 arguments

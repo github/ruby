@@ -5208,7 +5208,6 @@ impl CodegenGlobals {
             (cb, ocb)
         };
 
-
         // In test mode we're not linking with the C code
         // so we don't allocate executable memory
         #[cfg(test)]
