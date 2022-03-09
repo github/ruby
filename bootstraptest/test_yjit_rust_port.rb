@@ -85,20 +85,6 @@ assert_equal '-6', %q{
 
 
 
-# FIXME:
-#
-=begin
-assert_equal '5', %q{
-  def foo(a, b)
-    while a < b
-      a += 1
-    end
-    a
-  end
-
-  foo(1, 5)
-}
-=end
 
 # FIXME: currently takes the wrong branch
 #
@@ -113,6 +99,21 @@ assert_equal '777', %q{
   end
 
   foo(true, true)
+}
+=end
+
+# FIXME: loop never terminates, wrong branch direction
+#
+=begin
+assert_equal '5', %q{
+  def foo(a, b)
+    while a < b
+      a += 1
+    end
+    a
+  end
+
+  foo(1, 5)
 }
 =end
 

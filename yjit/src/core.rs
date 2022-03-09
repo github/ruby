@@ -1387,7 +1387,7 @@ fn get_branch_target(
     if let Some(blockref) = maybe_block {
         let mut block = blockref.borrow_mut();
 
-        // Add an incoming branch for this version
+        // Add an incoming branch into this block
         block.incoming.push(branchref.clone());
         let mut branch = branchref.borrow_mut();
         branch.blocks[target_idx.as_usize()] = Some(blockref.clone());
@@ -1430,10 +1430,19 @@ pub fn gen_branch(
     gen_fn: BranchGenFn
 )
 {
-    //assert!(target0 != BLOCKID_NULL);
+    assert!(target0 != BLOCKID_NULL);
 
     let branchref = make_branch_entry(jit.get_block(), src_ctx, gen_jump_branch);
+
+    // Get the branch targets or stubs
+    let dst_addr0 = Some(get_branch_target(target0, ctx0, &branchref, 0, ocb));
+    let dst_addr1 = if ctx1.is_some() { Some(get_branch_target(target1.unwrap(), ctx1.unwrap(), &branchref, 1, ocb)) } else { None };
+
     let mut branch = branchref.borrow_mut();
+
+    // Set the branch target adresses
+    branch.dst_addrs[0] = dst_addr0;
+    branch.dst_addrs[1] = dst_addr1;
 
     branch.targets[0] = target0;
     if target1.is_some() {
@@ -1441,10 +1450,6 @@ pub fn gen_branch(
     }
     branch.target_ctxs[0] = *ctx0;
     branch.target_ctxs[1] = if ctx1.is_some() { *ctx1.unwrap() } else { Context::default() };
-
-    // Get the branch targets or stubs
-    branch.dst_addrs[0] = Some(get_branch_target(target0, ctx0, &branchref, 0, ocb));
-    branch.dst_addrs[1] = if ctx1.is_some() { Some(get_branch_target(target1.unwrap(), ctx1.unwrap(), &branchref, 1, ocb)) } else { None };
 
     // Call the branch generation function
     branch.start_addr = Some(cb.get_write_ptr());
