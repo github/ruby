@@ -81,16 +81,8 @@ assert_equal '-6', %q{
   foo(1, 2)
 }
 
-
-
-
-
-
-# FIXME: currently takes the wrong branch
-#
-=begin
 assert_equal '777', %q{
-  def foo(a, b)
+  def foo(a)
     if a
       777
     else
@@ -98,13 +90,9 @@ assert_equal '777', %q{
     end
   end
 
-  foo(true, true)
+  foo(true)
 }
-=end
 
-# FIXME: loop never terminates, wrong branch direction
-#
-=begin
 assert_equal '5', %q{
   def foo(a, b)
     while a < b
@@ -115,13 +103,8 @@ assert_equal '5', %q{
 
   foo(1, 5)
 }
-=end
 
-# FIXME: currently broken
-# Assertion Failed: yjit.c:307:rb_iseq_pc_at_idx:insn_idx < iseq->body->iseq_size
-#
-=begin
-# Function call
+# Simple function call
 assert_equal '1', %q{
   def bar(a, b)
     a - b
@@ -133,4 +116,3 @@ assert_equal '1', %q{
 
   foo(3, 2)
 }
-=end

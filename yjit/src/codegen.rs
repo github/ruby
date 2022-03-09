@@ -180,6 +180,7 @@ jit_obj_info_dump(codeblock_t *cb, x86opnd_t opnd) {
     pop_regs(cb);
 }
 */
+
 // Get the index of the next instruction
 fn jit_next_insn_idx(jit: &JITState) -> u32
 {
@@ -232,8 +233,6 @@ fn jit_peek_at_local(jit: &JITState, ctx: &Context, n: i32) -> VALUE
     }
 }
 */
-
-
 
 // Add a comment at the current position in the code block
 fn add_comment(cb: &mut CodeBlock, comment_str: &str)
@@ -294,11 +293,6 @@ macro_rules! counted_exit {
         }
     };
 }
-
-
-
-
-
 
 // Save the incremented PC on the CFP
 // This is necessary when callees can raise or allocate

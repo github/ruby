@@ -1442,7 +1442,7 @@ pub fn gen_branch(
 {
     assert!(target0 != BLOCKID_NULL);
 
-    let branchref = make_branch_entry(jit.get_block(), src_ctx, gen_jump_branch);
+    let branchref = make_branch_entry(jit.get_block(), src_ctx, gen_fn);
 
     // Get the branch targets or stubs
     let dst_addr0 = Some(get_branch_target(target0, ctx0, &branchref, 0, ocb));
