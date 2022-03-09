@@ -485,8 +485,7 @@ impl VALUE {
     }
 
     pub fn as_i32(self: VALUE) -> i32 {
-        let VALUE(i) = self;
-        i.try_into().unwrap()
+        self.as_i64().try_into().unwrap()
     }
 
     pub fn as_u32(self: VALUE) -> u32 {
@@ -496,7 +495,7 @@ impl VALUE {
 
     pub fn as_i64(self: VALUE) -> i64 {
         let VALUE(i) = self;
-        i.try_into().unwrap()
+        i as i64
     }
 
     pub fn as_u64(self: VALUE) -> u64 {
