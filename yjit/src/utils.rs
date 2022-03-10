@@ -1,3 +1,7 @@
+use crate::asm::*;
+use crate::asm::x86_64::*;
+use crate::cruby::*;
+
 /// Trait for casting to [usize] that allows you to say `.as_usize()`.
 /// Implementation conditional on the the cast preserving the numeric value on
 /// all inputs and being inexpensive.
@@ -78,10 +82,8 @@ yjit_print_iseq(const rb_iseq_t *iseq)
 }
 */
 
-/*
 // Save caller-save registers on the stack before a C call
-static void
-push_regs(codeblock_t *cb)
+fn push_regs(cb: &mut CodeBlock)
 {
     push(cb, RAX);
     push(cb, RCX);
@@ -96,8 +98,7 @@ push_regs(codeblock_t *cb)
 }
 
 // Restore caller-save registers from the after a C call
-static void
-pop_regs(codeblock_t *cb)
+fn pop_regs(cb: &mut CodeBlock)
 {
     popfq(cb);
     pop(cb, R11);
@@ -111,6 +112,7 @@ pop_regs(codeblock_t *cb)
     pop(cb, RAX);
 }
 
+/*
 static void
 print_int_cfun(int64_t val)
 {
@@ -188,6 +190,20 @@ print_str(codeblock_t *cb, const char *str)
 }
 */
 
-// TODO:
-// Would be useful to have a print_value(cb) function that calls into
-// rb_obj_info_dump(VALUE obj)
+pub fn print_value(cb: &mut CodeBlock, opnd: X86Opnd)
+{
+    extern "sysv64" fn print_value_fn(val: VALUE)
+    {
+        unsafe { rb_obj_info_dump(val) }
+    }
+
+    assert!(opnd.num_bits() == 64);
+
+    push_regs(cb);
+
+    mov(cb, RDI, opnd);
+    mov(cb, RAX, const_ptr_opnd(print_value_fn as *const u8));
+    call(cb, RAX);
+
+    pop_regs(cb);
+}
