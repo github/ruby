@@ -107,7 +107,7 @@ fn disasm_iseq(iseq: IseqPtr) -> String {
             // Compute the size of the gap between this block and the next
             let next_block = block_list[block_idx+1].borrow();
             let next_start_addr = next_block.get_start_addr().unwrap().raw_ptr();
-            let gap_size = (end_addr as usize) - (next_start_addr as usize);
+            let gap_size = (next_start_addr as usize) - (end_addr as usize);
 
             // Log the size of the gap between the blocks if nonzero
             if gap_size > 0 {
