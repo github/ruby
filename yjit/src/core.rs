@@ -576,6 +576,10 @@ impl Block {
         self.start_addr
     }
 
+    pub fn get_end_addr(&self) -> Option<CodePtr> {
+        self.end_addr
+    }
+
     /// Set the starting address in the generated code for the block
     /// This can be done only once for a block
     pub fn set_start_addr(&mut self, addr: CodePtr) {

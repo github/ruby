@@ -73,17 +73,16 @@ fn disasm_iseq(iseq: IseqPtr) -> String {
     out.push_str(&format!("NUM BLOCK VERSIONS: {}\n", block_list.len()));
     out.push_str(&format!("TOTAL INLINE CODE SIZE: {} bytes\n", total_code_size));
 
-    // TODO: may want to list block i/n here
-
     // For each block, sorted by increasing start address
     for block_idx in 0..block_list.len() {
         let block = block_list[block_idx].borrow();
         let blockid = block.get_blockid();
         let end_idx = block.get_end_idx();
         let start_addr = block.get_start_addr().unwrap().raw_ptr();
+        let end_addr = block.get_end_addr().unwrap().raw_ptr();
         let code_size = block.code_size();
 
-        // Write some info about the block
+        // Write some info about the current block
         let block_ident = format!(
             "BLOCK {}/{}, ISEQ RANGE [{},{}), {} bytes ",
             block_idx + 1,
@@ -101,6 +100,19 @@ fn disasm_iseq(iseq: IseqPtr) -> String {
         // For each instruction in this block
         for insn in insns.as_ref() {
             out.push_str(&format!("  {}\n", insn));
+        }
+
+        // If this is not the last block
+        if block_idx < block_list.len() - 1 {
+            // Compute the size of the gap between this block and the next
+            let next_block = block_list[block_idx+1].borrow();
+            let next_start_addr = next_block.get_start_addr().unwrap().raw_ptr();
+            let gap_size = (end_addr as usize) - (next_start_addr as usize);
+
+            // Log the size of the gap between the blocks if nonzero
+            if gap_size > 0 {
+                out.push_str(&format!("... {} byte gap ...\n", gap_size));
+            }
         }
     }
 
