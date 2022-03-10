@@ -131,6 +131,9 @@ extern "C" {
     pub fn rb_intern(name: *const ::std::os::raw::c_char) -> ID;
 }
 extern "C" {
+    pub fn rb_gc_mark(obj: VALUE);
+}
+extern "C" {
     pub fn rb_obj_is_kind_of(obj: VALUE, klass: VALUE) -> VALUE;
 }
 extern "C" {

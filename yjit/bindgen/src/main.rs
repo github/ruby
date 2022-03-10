@@ -81,6 +81,9 @@ fn main() {
         // From include/ruby/internal/core/rclass.h
         .allowlist_function("rb_class_get_superclass")
 
+        // From include/ruby/internal/intern/gc.h
+        .allowlist_function("rb_gc_mark")
+
         // VALUE variables for Ruby class objects
         // From include/ruby/internal/globals.h
         .allowlist_var("rb_cBasicObject")

@@ -61,54 +61,9 @@ check_cfunc_dispatch(VALUE receiver, struct rb_callinfo *ci, void *callee, rb_ca
 
 // GC root for interacting with the GC
 struct yjit_root_struct {
-    int unused; // empty structs are not legal in C99
+    bool unused; // empty structs are not legal in C99
 };
 
-// Map klass => id_table[mid, set of blocks]
-// While a block `b` is in the table, b->callee_cme == rb_callable_method_entry(klass, mid).
-// See assume_method_lookup_stable()
-static st_table *method_lookup_dependency;
-
-// For adding to method_lookup_dependency data with st_update
-struct lookup_dependency_insertion {
-    //block_t *block;
-    ID mid;
-};
-
-// Map cme => set of blocks
-// See assume_method_lookup_stable()
-static st_table *cme_validity_dependency;
-
-static int
-mark_and_pin_keys_i(st_data_t k, st_data_t v, st_data_t ignore)
-{
-    rb_gc_mark((VALUE)k);
-
-    return ST_CONTINUE;
-}
-
-// GC callback during mark phase
-static void
-yjit_root_mark(void *ptr)
-{
-    if (method_lookup_dependency) {
-        // TODO: This is a leak. Unused blocks linger in the table forever, preventing the
-        // callee class they speculate on from being collected.
-        // We could do a bespoke weak reference scheme on classes similar to
-        // the interpreter's call cache. See finalizer for T_CLASS and cc_table_free().
-        st_foreach(method_lookup_dependency, mark_and_pin_keys_i, 0);
-    }
-
-    if (cme_validity_dependency) {
-        // Why not let the GC move the cme keys in this table?
-        // Because this is basically a compare_by_identity Hash.
-        // If a key moves, we would need to reinsert it into the table so it is rehashed.
-        // That is tricky to do, espcially as it could trigger allocation which could
-        // trigger GC. Not sure if it is okay to trigger GC while the GC is updating
-        // references.
-        st_foreach(cme_validity_dependency, mark_and_pin_keys_i, 0);
-    }
-}
 
 static void
 yjit_root_free(void *ptr)
@@ -120,20 +75,23 @@ static size_t
 yjit_root_memsize(const void *ptr)
 {
     // Count off-gc-heap allocation size of the dependency table
-    return st_memsize(method_lookup_dependency); // TODO: more accurate accounting
+    return 0; // TODO: more accurate accounting
 }
 
 // GC callback during compaction
 static void
 yjit_root_update_references(void *ptr)
 {
+    // Do nothing since we use rb_gc_mark(), which pins.
 }
+
+void rb_yjit_root_mark(void *ptr); // in Rust
 
 // Custom type for interacting with the GC
 // TODO: make this write barrier protected
 static const rb_data_type_t yjit_root_type = {
     "yjit_root",
-    {yjit_root_mark, yjit_root_free, yjit_root_memsize, yjit_root_update_references},
+    {rb_yjit_root_mark, yjit_root_free, yjit_root_memsize, yjit_root_update_references},
     0, 0, RUBY_TYPED_FREE_IMMEDIATELY
 };
 
@@ -361,12 +319,10 @@ rb_yjit_init(void)
 
     // Call the Rust initialization code
     void rb_yjit_init_rust(void);
-    return rb_yjit_init_rust();
+    rb_yjit_init_rust();
 
-    /*
-    // Initialize the GC hooks
+    // Initialize the GC hooks. Do this second as some code depend on Rust initialization.
     struct yjit_root_struct *root;
     VALUE yjit_root = TypedData_Make_Struct(0, struct yjit_root_struct, &yjit_root_type, root);
     rb_gc_register_mark_object(yjit_root);
-    */
 }

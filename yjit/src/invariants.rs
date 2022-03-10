@@ -201,6 +201,43 @@ pub extern "C" fn rb_yjit_constant_state_changed() {
     }
 }
 
+/// Callback for marking GC objects inside [Invariants].
+/// See `struct yjijt_root_struct` in C.
+#[no_mangle]
+pub extern "C" fn rb_yjit_root_mark() {
+    // Comment from C YJIT:
+    //
+    // Why not let the GC move the cme keys in this table?
+    // Because this is basically a compare_by_identity Hash.
+    // If a key moves, we would need to reinsert it into the table so it is rehashed.
+    // That is tricky to do, espcially as it could trigger allocation which could
+    // trigger GC. Not sure if it is okay to trigger GC while the GC is updating
+    // references.
+    //
+    // NOTE(alan): since we are using Rust data structures that don't interact
+    // with the Ruby GC now, it might be feasible to allow movement.
+
+    let invariants = Invariants::get_instance();
+
+    // Mark CME imemos
+    for cme in invariants.cme_validity.keys() {
+        let cme = (*cme) as usize;
+        let cme = VALUE(cme);
+
+        unsafe { rb_gc_mark(cme) };
+    }
+
+    // Mark class and iclass objects
+    for klass in invariants.method_lookup.keys() {
+        // TODO: This is a leak. Unused blocks linger in the table forever, preventing the
+        // callee class they speculate on from being collected.
+        // We could do a bespoke weak reference scheme on classes similar to
+        // the interpreter's call cache. See finalizer for T_CLASS and cc_table_free().
+
+        unsafe { rb_gc_mark(*klass) };
+    }
+}
+
 /*
 static void
 yjit_block_assumptions_free(block_t *block)
