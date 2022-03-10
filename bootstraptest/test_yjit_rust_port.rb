@@ -184,3 +184,22 @@ assert_equal '1', %q{
 
   check_index 2
 }
+
+# Setivar test
+assert_equal '2', %q{
+  class Klass
+    attr_accessor :a
+
+    def set()
+        @a = 2
+    end
+
+    def get()
+        @a
+    end
+  end
+
+  o = Klass.new
+  o.set()
+  o.a
+}

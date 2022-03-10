@@ -932,18 +932,17 @@ fn gen_putnil(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &m
 
 fn jit_putobject(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, arg: VALUE)
 {
-    let val_type:Type = Type::from(arg);
-    let VALUE(arg_value) = arg;
+    let val_type: Type = Type::from(arg);
     let stack_top = ctx.stack_push(val_type);
 
     if arg.special_const_p() {
         // Immediates will not move and do not need to be tracked for GC
         // Thanks to this we can mov directly to memory when possible.
 
-        let imm = uimm_opnd(arg_value as u64);
+        let imm = imm_opnd(arg.as_i64());
 
         // 64-bit immediates can't be directly written to memory
-        if arg_value <= 0xFF_FF_FF_FF {
+        if imm.num_bits() <= 32 {
             mov(cb, stack_top, imm);
         } else {
             mov(cb, REG0, imm);
