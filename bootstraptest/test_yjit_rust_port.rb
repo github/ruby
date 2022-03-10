@@ -203,3 +203,16 @@ assert_equal '2', %q{
   o.set()
   o.a
 }
+
+# Regression for putobject bug
+assert_equal '1.5', %q{
+  def foo(x)
+    x
+  end
+
+  def bar
+    foo(1.5)
+  end
+
+  bar()
+}

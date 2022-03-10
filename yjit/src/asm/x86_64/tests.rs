@@ -182,6 +182,7 @@ fn test_mov() {
     check_bytes("49b8ffffffffffffffff", |cb| mov(cb, R8, imm_opnd(-1)));
 
     check_bytes("b834000000", |cb| mov(cb, RAX, imm_opnd(0x34)));
+    check_bytes("48b8020000000000c0ff", |cb| mov(cb, RAX, imm_opnd(-18014398509481982)));
     check_bytes("48b80000008000000000", |cb| mov(cb, RAX, imm_opnd(0x80000000)));
     check_bytes("48b8ccffffffffffffff", |cb| mov(cb, RAX, imm_opnd(-52))); // yasm thinks this could use a dword immediate instead of qword
     check_bytes("48b8ffffffffffffffff", |cb| mov(cb, RAX, imm_opnd(-1))); // yasm thinks this could use a dword immediate instead of qword

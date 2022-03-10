@@ -939,7 +939,7 @@ pub fn mov(cb: &mut CodeBlock, dst: X86Opnd, src: X86Opnd) {
             // bit, we can use the 32-bit operands version of the instruction.
             // For example, we can turn mov(rax, 0x34) into the equivalent
             // mov(eax, 0x34).
-            if (reg.num_bits == 64) && (imm.value <= u32::MAX.into()) && (imm.value & (1 << 31) == 0) {
+            if (reg.num_bits == 64) && (imm.value > 0) && (imm.num_bits <= 32) {
                 if dst.rex_needed() {
                     write_rex(cb, false, 0, 0, reg.reg_no);
                 }

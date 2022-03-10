@@ -5,7 +5,7 @@ use crate::core::*;
 use crate::invariants::*;
 use crate::options::*;
 use crate::stats::*;
-use crate::utils::IntoUsize;
+use crate::utils::*;
 use InsnOpnd::*;
 use CodegenStatus::*;
 
@@ -938,7 +938,6 @@ fn jit_putobject(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, arg:
     if arg.special_const_p() {
         // Immediates will not move and do not need to be tracked for GC
         // Thanks to this we can mov directly to memory when possible.
-
         let imm = imm_opnd(arg.as_i64());
 
         // 64-bit immediates can't be directly written to memory
