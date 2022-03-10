@@ -468,7 +468,7 @@ impl VALUE {
 
     // Read the flags bits from the RBasic object, then return a Ruby type enum (e.g. RUBY_T_ARRAY)
     pub fn builtin_type(self: VALUE) -> ruby_value_type {
-        assert!(self.special_const_p());
+        assert!(!self.special_const_p());
 
         let VALUE(cval) = self;
         let rbasic_ptr = cval as *const RBasic;
