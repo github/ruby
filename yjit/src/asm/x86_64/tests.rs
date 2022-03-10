@@ -241,6 +241,10 @@ fn test_mov_unsigned() {
 
     // MOV r64, imm64, will not move down into 32 bit since it does not fit into 32 bits
     check_bytes("49b8ffffffffffffffff", |cb| mov(cb, R8, uimm_opnd(u64::MAX)));
+
+    // This is equivalent to mov dword[rbx], 2147483649
+    // The REX.W prefix must not be set because that would cause sign-extension
+    check_bytes("c70301000080", |cb| mov(cb, mem_opnd(64, RBX, 0), uimm_opnd(2147483649)));
 }
 
 #[test]

@@ -172,3 +172,15 @@ assert_equal '1', %q{
 
   foo(3, 2)
 }
+
+# Regression test for assembler bug
+assert_equal '1', %q{
+  def check_index(index)
+    if 0x40000000 < index
+        return -1
+    end
+    1
+  end
+
+  check_index 2
+}

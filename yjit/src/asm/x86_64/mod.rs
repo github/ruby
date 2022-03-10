@@ -1003,9 +1003,15 @@ pub fn mov(cb: &mut CodeBlock, dst: X86Opnd, src: X86Opnd) {
         (X86Opnd::Mem(mem), X86Opnd::UImm(uimm)) => {
             assert!(uimm.num_bits <= mem.num_bits);
 
-            if mem.num_bits == 8 {
+            // In case the source immediate could be zero extended to be 64
+            // bit, we can use the 32-bit operands version of the instruction.
+            if (mem.num_bits == 64) && (uimm.num_bits <= 32) {
+                write_rm(cb, false, false, X86Opnd::None, dst, 0, &[0xc7]);
+            }
+            else if mem.num_bits == 8 {
                 write_rm(cb, false, false, X86Opnd::None, dst, 0xff, &[0xc6]);
-            } else {
+            }
+            else {
                 write_rm(cb, mem.num_bits == 16, mem.num_bits == 64, X86Opnd::None, dst, 0, &[0xc7]);
             }
 

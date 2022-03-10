@@ -962,7 +962,7 @@ fn jit_putobject(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, arg:
 fn gen_putobject_int2fix(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let opcode = jit.opcode;
-    let cst_val:usize = if opcode == OP_PUTOBJECT_INT2FIX_0_ { 0 } else { 1 };
+    let cst_val: usize = if opcode == OP_PUTOBJECT_INT2FIX_0_ { 0 } else { 1 };
 
     jit_putobject(jit, ctx, cb, VALUE::fixnum_from_usize(cst_val));
     KeepCompiling
@@ -970,7 +970,7 @@ fn gen_putobject_int2fix(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlo
 
 fn gen_putobject(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    let arg:VALUE = jit_get_arg(jit, 0);
+    let arg: VALUE = jit_get_arg(jit, 0);
 
     jit_putobject(jit, ctx, cb, arg);
     KeepCompiling
