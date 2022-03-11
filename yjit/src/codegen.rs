@@ -2541,7 +2541,7 @@ fn gen_opt_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         // It never raises or allocates, so we don't need to write to cfp->pc.
         {
             mov(cb, RDI, recv_opnd);
-            sar(cb, REG1, imm_opnd(1)); // Convert fixnum to int
+            sar(cb, REG1, uimm_opnd(1)); // Convert fixnum to int
             mov(cb, RSI, REG1);
             call_ptr(cb, REG0, rb_ary_entry_internal as *const u8);
 
@@ -2624,7 +2624,7 @@ fn gen_opt_aset(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         // Call rb_ary_store
         mov(cb, C_ARG_REGS[0], recv);
         mov(cb, C_ARG_REGS[1], key);
-        sar(cb, C_ARG_REGS[1], imm_opnd(1)); // FIX2LONG(key)
+        sar(cb, C_ARG_REGS[1], uimm_opnd(1)); // FIX2LONG(key)
         mov(cb, C_ARG_REGS[2], val);
 
         // We might allocate or raise

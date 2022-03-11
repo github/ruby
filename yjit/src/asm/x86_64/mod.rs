@@ -1210,7 +1210,7 @@ fn write_shift(cb: &mut CodeBlock, op_mem_one_pref: u8, op_mem_cl_pref: u8, op_m
     let sz_pref = opnd_size == 16;
     let rex_w = opnd_size == 64;
 
-    if let X86Opnd::Imm(imm) = opnd1 {
+    if let X86Opnd::UImm(imm) = opnd1 {
         if imm.value == 1 {
             write_rm(cb, sz_pref, rex_w, X86Opnd::None, opnd0, op_ext, &[op_mem_one_pref]);
         } else {

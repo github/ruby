@@ -235,3 +235,12 @@ assert_equal '3', %q{
   f = Foo.new
   f.bar
 }
+
+assert_equal 'true', %q{
+  x = [[false, true]]
+  for i, j in x
+    ;
+  end
+  j
+
+}

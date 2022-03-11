@@ -341,20 +341,20 @@ fn test_ret() {
 
 #[test]
 fn test_sal() {
-    check_bytes("66d1e1", |cb| sal(cb, CX, imm_opnd(1)));
-    check_bytes("d1e1", |cb| sal(cb, ECX, imm_opnd(1)));
-    check_bytes("c1e505", |cb| sal(cb, EBP, imm_opnd(5)));
-    check_bytes("d1642444", |cb| sal(cb, mem_opnd(32, RSP, 68), imm_opnd(1)));
+    check_bytes("66d1e1", |cb| sal(cb, CX, uimm_opnd(1)));
+    check_bytes("d1e1", |cb| sal(cb, ECX, uimm_opnd(1)));
+    check_bytes("c1e505", |cb| sal(cb, EBP, uimm_opnd(5)));
+    check_bytes("d1642444", |cb| sal(cb, mem_opnd(32, RSP, 68), uimm_opnd(1)));
 }
 
 #[test]
 fn test_sar() {
-    check_bytes("d1fa", |cb| sar(cb, EDX, imm_opnd(1)));
+    check_bytes("d1fa", |cb| sar(cb, EDX, uimm_opnd(1)));
 }
 
 #[test]
 fn test_shr() {
-    check_bytes("49c1ee07", |cb| shr(cb, R14, imm_opnd(7)));
+    check_bytes("49c1ee07", |cb| shr(cb, R14, uimm_opnd(7)));
 }
 
 #[test]
