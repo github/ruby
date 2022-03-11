@@ -344,8 +344,12 @@ pub struct rb_iseq_t {
         core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
 
+/// An object handle similar to VALUE in the C code. Our methods assume
+/// that this is a handle. Sometimes the C code briefly uses VALUE as
+/// an unsigned integer type and don't necessarily store valid handles but
+/// thankfully those cases are rare and don't cross the FFI boundary.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
-#[repr(C)]
+#[repr(transparent)] // same size and alignment as simply `usize`
 pub struct VALUE(pub usize);
 
 /// Pointer to an ISEQ
@@ -560,6 +564,34 @@ impl From<VALUE> for i32 {
         let VALUE(uimm) = value;
         assert!(uimm <= (i32::MAX as usize));
         uimm as i32
+    }
+}
+
+impl From<IseqPtr> for VALUE {
+    /// Use this for `.into()` convenience and debug build asserts
+    fn from(iseq: IseqPtr) -> Self {
+        let handle = VALUE(iseq as usize);
+
+        #[cfg(debug_assertions)]
+        if !iseq.is_null() {
+            unsafe { rb_assert_iseq_handle(handle) }
+        }
+
+        handle
+    }
+}
+
+impl From<*const rb_callable_method_entry_t> for VALUE {
+    /// Use this for `.into()` convenience and debug build asserts
+    fn from(cme: *const rb_callable_method_entry_t) -> Self {
+        let handle = VALUE(cme as usize);
+
+        #[cfg(debug_assertions)]
+        if !cme.is_null() {
+            unsafe { rb_assert_cme_handle(handle) }
+        }
+
+        handle
     }
 }
 

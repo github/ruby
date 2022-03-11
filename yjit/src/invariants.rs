@@ -221,8 +221,7 @@ pub extern "C" fn rb_yjit_root_mark() {
 
     // Mark CME imemos
     for cme in invariants.cme_validity.keys() {
-        let cme = (*cme) as usize;
-        let cme = VALUE(cme);
+        let cme: VALUE = (*cme).into();
 
         unsafe { rb_gc_mark(cme) };
     }

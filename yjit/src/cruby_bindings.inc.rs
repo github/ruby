@@ -134,6 +134,12 @@ extern "C" {
     pub fn rb_gc_mark(obj: VALUE);
 }
 extern "C" {
+    pub fn rb_gc_mark_movable(obj: VALUE);
+}
+extern "C" {
+    pub fn rb_gc_location(obj: VALUE) -> VALUE;
+}
+extern "C" {
     pub fn rb_obj_is_kind_of(obj: VALUE, klass: VALUE) -> VALUE;
 }
 extern "C" {
@@ -639,6 +645,9 @@ extern "C" {
     pub fn rb_iseqw_to_iseq(iseqw: VALUE) -> *const rb_iseq_t;
 }
 extern "C" {
+    pub fn rb_vm_barrier();
+}
+extern "C" {
     pub static mut ruby_vm_global_constant_state: rb_serial_t;
 }
 extern "C" {
@@ -686,6 +695,12 @@ extern "C" {
 }
 extern "C" {
     pub fn rb_yjit_multi_ractor_p() -> bool;
+}
+extern "C" {
+    pub fn rb_assert_iseq_handle(handle: VALUE);
+}
+extern "C" {
+    pub fn rb_assert_cme_handle(handle: VALUE);
 }
 extern "C" {
     pub fn rb_yjit_vm_lock_then_barrier(

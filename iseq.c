@@ -110,7 +110,7 @@ rb_iseq_free(const rb_iseq_t *iseq)
     if (iseq && iseq->body) {
 	struct rb_iseq_constant_body *const body = iseq->body;
 	mjit_free_iseq(iseq); /* Notify MJIT */
-        rb_yjit_iseq_free(body);
+        rb_yjit_iseq_free(body->yjit_payload);
 	ruby_xfree((void *)body->iseq_encoded);
 	ruby_xfree((void *)body->insns_info.body);
 	if (body->insns_info.positions) ruby_xfree((void *)body->insns_info.positions);
@@ -325,7 +325,7 @@ rb_iseq_update_references(rb_iseq_t *iseq)
 #if USE_MJIT
         mjit_update_references(iseq);
 #endif
-        rb_yjit_iseq_update_references(body);
+        rb_yjit_iseq_update_references(body->yjit_payload);
     }
 }
 
@@ -413,7 +413,7 @@ rb_iseq_mark(const rb_iseq_t *iseq)
 #if USE_MJIT
         mjit_mark_cc_entries(body);
 #endif
-        rb_yjit_iseq_mark(body);
+        rb_yjit_iseq_mark(body->yjit_payload);
     }
 
     if (FL_TEST_RAW((VALUE)iseq, ISEQ_NOT_LOADED_YET)) {
