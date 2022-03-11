@@ -216,3 +216,22 @@ assert_equal '1.5', %q{
 
   bar()
 }
+
+# Getivar with an extended ivar table
+assert_equal '3', %q{
+  class Foo
+    def initialize
+      @x1 = 1
+      @x2 = 1
+      @x3 = 1
+      @x4 = 3
+    end
+
+    def bar
+      @x4
+    end
+  end
+
+  f = Foo.new
+  f.bar
+}

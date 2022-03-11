@@ -1,6 +1,7 @@
 use crate::asm::*;
 use crate::asm::x86_64::*;
 use crate::cruby::*;
+use std::slice;
 
 /// Trait for casting to [usize] that allows you to say `.as_usize()`.
 /// Implementation conditional on the the cast preserving the numeric value on
@@ -112,84 +113,54 @@ fn pop_regs(cb: &mut CodeBlock)
     pop(cb, RAX);
 }
 
-/*
-static void
-print_int_cfun(int64_t val)
+pub fn print_int(cb: &mut CodeBlock, opnd: X86Opnd)
 {
-    fprintf(stderr, "%lld\n", (long long int)val);
-}
-
-RBIMPL_ATTR_MAYBE_UNUSED()
-static void
-print_int(codeblock_t *cb, x86opnd_t opnd)
-{
-    push_regs(cb);
-
-    if (opnd.num_bits < 64 && opnd.type != OPND_IMM)
-        movsx(cb, RDI, opnd);
-    else
-        mov(cb, RDI, opnd);
-
-    // Call the print function
-    mov(cb, RAX, const_ptr_opnd((void*)&print_int_cfun));
-    call(cb, RAX);
-
-    pop_regs(cb);
-}
-
-static void
-print_ptr_cfun(void *val)
-{
-    fprintf(stderr, "%p\n", val);
-}
-
-RBIMPL_ATTR_MAYBE_UNUSED()
-static void
-print_ptr(codeblock_t *cb, x86opnd_t opnd)
-{
-    assert (opnd.num_bits == 64);
+    extern "sysv64" fn print_int_fn(val: i64)
+    {
+        println!("{}", val);
+    }
 
     push_regs(cb);
 
-    mov(cb, RDI, opnd);
-    mov(cb, RAX, const_ptr_opnd((void*)&print_ptr_cfun));
-    call(cb, RAX);
+    match opnd {
+        X86Opnd::Mem(_) | X86Opnd::Reg(_) => {
+            // Sign-extend the value if necessary
+            if opnd.num_bits() < 64 {
+                movsx(cb, C_ARG_REGS[0], opnd);
+            }
+            else {
+                mov(cb, C_ARG_REGS[0], opnd);
+            }
+        },
+        X86Opnd::Imm(_) | X86Opnd::UImm(_) => {
+            mov(cb, C_ARG_REGS[0], opnd);
+        }
+        _ => unreachable!()
+    }
 
+    mov(cb, RAX, const_ptr_opnd(print_int_fn as *const u8));
+    call(cb, RAX);
     pop_regs(cb);
 }
 
-static void
-print_str_cfun(const char *str)
+/// Generate code to print a pointer
+pub fn print_ptr(cb: &mut CodeBlock, opnd: X86Opnd)
 {
-    fprintf(stderr, "%s\n", str);
-}
+    extern "sysv64" fn print_ptr_fn(ptr: *const u8)
+    {
+        println!("{:p}", ptr);
+    }
 
-// Print a constant string to stdout
-static void
-print_str(codeblock_t *cb, const char *str)
-{
-    //as.comment("printStr(\"" ~ str ~ "\")");
-    size_t len = strlen(str);
+    assert!(opnd.num_bits() == 64);
 
     push_regs(cb);
-
-    // Load the string address and jump over the string data
-    lea(cb, RDI, mem_opnd(8, RIP, 5));
-    jmp32(cb, (int32_t)len + 1);
-
-    // Write the string chars and a null terminator
-    for (size_t i = 0; i < len; ++i)
-        cb_write_byte(cb, (uint8_t)str[i]);
-    cb_write_byte(cb, 0);
-
-    // Call the print function
-    mov(cb, RAX, const_ptr_opnd((void*)&print_str_cfun));
+    mov(cb, C_ARG_REGS[0], opnd);
+    mov(cb, RAX, const_ptr_opnd(print_ptr_fn as *const u8));
     call(cb, RAX);
-
     pop_regs(cb);
 }
-*/
 
+/// Generate code to print a value
 pub fn print_value(cb: &mut CodeBlock, opnd: X86Opnd)
 {
     extern "sysv64" fn print_value_fn(val: VALUE)
@@ -203,6 +174,42 @@ pub fn print_value(cb: &mut CodeBlock, opnd: X86Opnd)
 
     mov(cb, RDI, opnd);
     mov(cb, RAX, const_ptr_opnd(print_value_fn as *const u8));
+    call(cb, RAX);
+
+    pop_regs(cb);
+}
+
+// Generate code to print constant string to stdout
+pub fn print_str(cb: &mut CodeBlock, str: &str)
+{
+    extern "sysv64" fn print_str_cfun(ptr: *const u8, num_bytes: usize)
+    {
+        unsafe {
+            let slice = slice::from_raw_parts(ptr, num_bytes);
+            let str = std::str::from_utf8(slice).unwrap();
+            println!("{}", str);
+        }
+    }
+
+    let bytes = str.as_ptr();
+    let num_bytes = str.len();
+
+    push_regs(cb);
+
+    // Load the string address and jump over the string data
+    lea(cb, C_ARG_REGS[0], mem_opnd(8, RIP, 5));
+    jmp32(cb, num_bytes as i32);
+
+    // Write the string chars and a null terminator
+    for i in 0..num_bytes {
+        cb.write_byte(unsafe { *bytes.add(i) });
+    }
+
+    // Pass the string length as an argument
+    mov(cb, C_ARG_REGS[1], uimm_opnd(num_bytes as u64));
+
+    // Call the print function
+    mov(cb, RAX, const_ptr_opnd(print_str_cfun as *const u8));
     call(cb, RAX);
 
     pop_regs(cb);

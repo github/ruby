@@ -765,9 +765,11 @@ pub fn gen_single_block(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &m
             // Note that the increment happens even when the output takes side exit.
             gen_counter_incr!(cb, exec_instruction);
 
+            // TODO
             // Add a comment for the name of the YARV instruction
-            // TODO: missing insn_name()
-            // add_comment(cb, insn_name(opcode));
+            //add_comment(cb, insn_name(opcode));
+
+            //print_str(cb, &insn_name(opcode));
 
             // Call the code generation function
             status = gen_fn(&mut jit, &mut ctx, cb, ocb);
@@ -820,13 +822,8 @@ pub fn gen_single_block(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &m
     // doesn't go to the next instruction.
     //assert!(!jit.record_boundary_patch_point);
 
-    // If code for the block doesn't fit, free the block and fail.
+    // If code for the block doesn't fit, fail
     if cb.has_dropped_bytes() || ocb.unwrap().has_dropped_bytes() {
-
-        // TODO: do we need to call drop on the block?
-        // TODO: do we need to free assumptions/invariants?
-        //yjit_free_block(block);
-
         return Err(());
     }
 
@@ -1975,7 +1972,7 @@ fn gen_get_ivar(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         mov(cb, C_ARG_REGS[1], uimm_opnd(ivar_name));
         call_ptr(cb, REG1, rb_ivar_get as *const u8);
 
-        if reg0_opnd != InsnOpnd::SelfOpnd {
+        if reg0_opnd != SelfOpnd {
             ctx.stack_pop(1);
         }
         // Push the ivar on the stack
@@ -2009,10 +2006,10 @@ fn gen_get_ivar(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
     // FIXME: Mapping the index could fail when there is too many ivar names. If we're
     // compiling for a branch stub that can cause the exception to be thrown from the
     // wrong PC.
-    let ivar_index:usize = unsafe { rb_obj_ensure_iv_index_mapping(comptime_receiver, ivar_name) }.as_usize();
+    let ivar_index = unsafe { rb_obj_ensure_iv_index_mapping(comptime_receiver, ivar_name) }.as_usize();
 
     // Pop receiver if it's on the temp stack
-    if reg0_opnd != InsnOpnd::SelfOpnd {
+    if reg0_opnd != SelfOpnd {
         ctx.stack_pop(1);
     }
 
@@ -2054,10 +2051,11 @@ fn gen_get_ivar(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         let side_exit = counted_exit!(ocb, side_exit, getivar_megamorphic);
         jit_chain_guard(JCC_JNZ, jit, &starting_context, cb, ocb, max_chain_depth, side_exit);
 
-        // check that the extended table is big enough
+        // Check that the extended table is big enough
         if ivar_index >= ROBJECT_EMBED_LEN_MAX + 1 {
             // Check that the slot is inside the extended table (num_slots > index)
             let num_slots = mem_opnd(32, REG0, RUBY_OFFSET_ROBJECT_AS_HEAP_NUMIV);
+
             cmp(cb, num_slots, uimm_opnd(ivar_index as u64));
             jle_ptr(cb, counted_exit!(ocb, side_exit, getivar_idx_out_of_range));
         }
@@ -2104,9 +2102,9 @@ fn gen_getinstancevariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeB
     // Guard that the receiver has the same class as the one from compile time.
     mov(cb, REG0, mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_SELF));
 
-    jit_guard_known_klass(jit, ctx, cb, ocb, comptime_val_klass, InsnOpnd::SelfOpnd, comptime_val, GET_IVAR_MAX_DEPTH, side_exit);
+    jit_guard_known_klass(jit, ctx, cb, ocb, comptime_val_klass, SelfOpnd, comptime_val, GET_IVAR_MAX_DEPTH, side_exit);
 
-    gen_get_ivar(jit, ctx, cb, ocb, GET_IVAR_MAX_DEPTH, comptime_val, ivar_name, InsnOpnd::SelfOpnd, side_exit)
+    gen_get_ivar(jit, ctx, cb, ocb, GET_IVAR_MAX_DEPTH, comptime_val, ivar_name, SelfOpnd, side_exit)
 }
 
 fn gen_setinstancevariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus

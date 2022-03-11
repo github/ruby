@@ -1,7 +1,6 @@
 //! Everything related to the collection of runtime stats in YJIT
 //! See the stats feature and the --yjit-stats command-line option
 
-use std::ffi::CStr;
 use crate::cruby::*;
 use crate::options::*;
 use crate::codegen::{CodegenGlobals};
@@ -222,13 +221,8 @@ pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
         // For each entry in exit_op_count, add a stats entry with key "exit_INSTRUCTION_NAME"
         // and the value is the count of side exits for that instruction.
         for op_idx in 0..VM_INSTRUCTION_SIZE {
-            // Look up Ruby's NULL-terminated insn name string
-            let op_name = insn_name(VALUE(op_idx));
-
-            // Convert the op name C string to a Rust string and concat
-            let op_name = CStr::from_ptr(op_name).to_str().unwrap();
-            let key_string = "exit_".to_owned() + op_name;
-
+            let op_name = insn_name(op_idx);
+            let key_string = "exit_".to_owned() + &op_name;
             let key = rust_str_to_sym(&key_string);
             let value = VALUE::fixnum_from_usize(EXIT_OP_COUNT[op_idx] as usize);
             rb_hash_aset(hash, key, value);

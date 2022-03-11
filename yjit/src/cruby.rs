@@ -109,7 +109,7 @@ extern "C" {
     pub fn alloc_exec_mem(mem_size: u32) -> *mut u8;
 
     #[link_name = "rb_insn_name"]
-    pub fn insn_name(insn: VALUE) -> *const c_char;
+    pub fn raw_insn_name(insn: VALUE) -> *const c_char;
 
     #[link_name = "rb_insn_len"]
     pub fn raw_insn_len(v: VALUE) -> c_int;
@@ -291,6 +291,23 @@ extern "C" {
 
     #[link_name = "rb_RCLASS_ORIGIN"]
     pub fn RCLASS_ORIGIN(v: VALUE) -> VALUE;
+}
+
+/// Helper so we can get a Rust string for insn_name()
+pub fn insn_name(opcode: usize) -> String
+{
+    use std::ffi::CStr;
+
+    unsafe {
+        // Look up Ruby's NULL-terminated insn name string
+        let op_name = raw_insn_name(VALUE(opcode));
+
+        // Convert the op name C string to a Rust string and concat
+        let op_name = CStr::from_ptr(op_name).to_str().unwrap();
+
+        // Convert into an owned string
+        op_name.to_string()
+    }
 }
 
 pub fn insn_len(opcode: usize) -> u32
@@ -717,7 +734,7 @@ pub const RUBY_OFFSET_RSTRUCT_AS_ARY:i32 = 16;  // struct RStruct, subfield "as.
 
 pub const RUBY_OFFSET_ROBJECT_AS_ARY:i32 = 16; // struct RObject, subfield "as.ary"
 pub const RUBY_OFFSET_ROBJECT_AS_HEAP_NUMIV:i32 = 16; // struct RObject, subfield "as.heap.numiv"
-pub const RUBY_OFFSET_ROBJECT_AS_HEAP_IVPTR:i32 = 20; // struct RObject, subfield "as.heap.ivptr"
+pub const RUBY_OFFSET_ROBJECT_AS_HEAP_IVPTR:i32 = 24; // struct RObject, subfield "as.heap.ivptr"
 
 // Constants from rb_control_frame_t vm_core.h
 pub const RUBY_OFFSET_CFP_PC: i32 = 0;
