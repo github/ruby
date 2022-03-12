@@ -437,7 +437,7 @@ pub extern "C" fn rb_yjit_iseq_mark(payload: *mut c_void)
             for offset in &block.gc_object_offsets {
                 let value_address: *const u8 = cb.get_ptr(offset.as_usize()).raw_ptr();
                 // Creating an unaligned pointer is well defined unlike in C.
-                let value_address= value_address as *const VALUE;
+                let value_address = value_address as *const VALUE;
 
                 // SAFETY: these point to YJIT's code buffer
                 unsafe {
@@ -476,14 +476,14 @@ pub extern "C" fn rb_yjit_iseq_update_references(payload: *mut c_void)
 
             block.blockid.iseq = unsafe {
                 rb_gc_location(block.blockid.iseq.into())
-            }.as_usize() as _;
+            }.as_iseq();
 
             // Update method entry dependencies
             for cme_dep in &mut block.cme_dependencies {
                 cme_dep.receiver_klass = unsafe { rb_gc_location(cme_dep.receiver_klass) };
                 cme_dep.callee_cme = unsafe {
                     rb_gc_location(cme_dep.callee_cme.into())
-                }.as_usize() as _;
+                }.as_cme();
             }
 
             // Update outgoing branch entries
@@ -492,7 +492,7 @@ pub extern "C" fn rb_yjit_iseq_update_references(payload: *mut c_void)
                 for target in &mut branch.targets {
                     target.iseq = unsafe {
                         rb_gc_location(target.iseq.into())
-                    }.as_usize() as _;
+                    }.as_iseq();
                 }
             }
 

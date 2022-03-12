@@ -534,6 +534,30 @@ impl VALUE {
         let VALUE(us) = self;
         us as *const T
     }
+
+    /// Assert that `self` is an iseq in debug builds
+    pub fn as_iseq(self) -> IseqPtr {
+        let ptr: IseqPtr = self.as_ptr();
+
+        #[cfg(debug_assertions)]
+        if !ptr.is_null() {
+            unsafe { rb_assert_iseq_handle(self) }
+        }
+
+        ptr
+    }
+
+    /// Assert that `self` is a method entry in debug builds
+    pub fn as_cme(self) -> *const rb_callable_method_entry_t {
+        let ptr: *const rb_callable_method_entry_t = self.as_ptr();
+
+        #[cfg(debug_assertions)]
+        if !ptr.is_null() {
+            unsafe { rb_assert_cme_handle(self) }
+        }
+
+        ptr
+    }
 }
 
 impl VALUE {
@@ -541,6 +565,20 @@ impl VALUE {
         assert!(item <= (RUBY_FIXNUM_MAX as usize)); // An unsigned will always be greater than RUBY_FIXNUM_MIN
         let k : usize = item.wrapping_add(item.wrapping_add(1));
         VALUE(k)
+    }
+}
+
+impl From<IseqPtr> for VALUE {
+    /// For `.into()` convenience
+    fn from(iseq: IseqPtr) -> Self {
+        VALUE(iseq as usize)
+    }
+}
+
+impl From<*const rb_callable_method_entry_t> for VALUE {
+    /// For `.into()` convenience
+    fn from(cme: *const rb_callable_method_entry_t) -> Self {
+        VALUE(cme as usize)
     }
 }
 
@@ -564,34 +602,6 @@ impl From<VALUE> for i32 {
         let VALUE(uimm) = value;
         assert!(uimm <= (i32::MAX as usize));
         uimm as i32
-    }
-}
-
-impl From<IseqPtr> for VALUE {
-    /// Use this for `.into()` convenience and debug build asserts
-    fn from(iseq: IseqPtr) -> Self {
-        let handle = VALUE(iseq as usize);
-
-        #[cfg(debug_assertions)]
-        if !iseq.is_null() {
-            unsafe { rb_assert_iseq_handle(handle) }
-        }
-
-        handle
-    }
-}
-
-impl From<*const rb_callable_method_entry_t> for VALUE {
-    /// Use this for `.into()` convenience and debug build asserts
-    fn from(cme: *const rb_callable_method_entry_t) -> Self {
-        let handle = VALUE(cme as usize);
-
-        #[cfg(debug_assertions)]
-        if !cme.is_null() {
-            unsafe { rb_assert_cme_handle(handle) }
-        }
-
-        handle
     }
 }
 
