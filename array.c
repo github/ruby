@@ -165,6 +165,7 @@ should_not_be_shared_and_embedded(VALUE ary)
 #define ARY_SHARED_ROOT_OCCUPIED(ary) (ARY_SHARED_ROOT_REFCNT(ary) == 1)
 #define ARY_SET_SHARED_ROOT_REFCNT(ary, value) do { \
     assert(ARY_SHARED_ROOT_P(ary)); \
+    assert((value) >= 0); \
     RARRAY(ary)->as.heap.aux.capa = (value); \
 } while (0)
 #define FL_SET_SHARED_ROOT(ary) do { \
@@ -512,12 +513,8 @@ ary_double_capa(VALUE ary, long min)
 static void
 rb_ary_decrement_share(VALUE shared_root)
 {
-    if (shared_root) {
-        long num = ARY_SHARED_ROOT_REFCNT(shared_root) - 1;
-        if (num > 0) {
-            ARY_SET_SHARED_ROOT_REFCNT(shared_root, num);
-        }
-    }
+    long num = ARY_SHARED_ROOT_REFCNT(shared_root);
+    ARY_SET_SHARED_ROOT_REFCNT(shared_root, num - 1);
 }
 
 static void
@@ -528,21 +525,26 @@ rb_ary_unshare(VALUE ary)
     FL_UNSET_SHARED(ary);
 }
 
-static inline void
-rb_ary_unshare_safe(VALUE ary)
+static void
+rb_ary_reset(VALUE ary)
 {
-    if (ARY_SHARED_P(ary) && !ARY_EMBED_P(ary)) {
-	rb_ary_unshare(ary);
+    if (ARY_OWNS_HEAP_P(ary)) {
+        ary_heap_free(ary);
     }
+    else if (ARY_SHARED_P(ary)) {
+        rb_ary_unshare(ary);
+    }
+
+    FL_SET_EMBED(ary);
+    ARY_SET_EMBED_LEN(ary, 0);
 }
 
 static VALUE
 rb_ary_increment_share(VALUE shared_root)
 {
     long num = ARY_SHARED_ROOT_REFCNT(shared_root);
-    if (num >= 0) {
-        ARY_SET_SHARED_ROOT_REFCNT(shared_root, num + 1);
-    }
+    assert(num >= 0);
+    ARY_SET_SHARED_ROOT_REFCNT(shared_root, num + 1);
     return shared_root;
 }
 
@@ -1075,12 +1077,9 @@ rb_ary_initialize(int argc, VALUE *argv, VALUE ary)
 
     rb_ary_modify(ary);
     if (argc == 0) {
-        if (ARY_OWNS_HEAP_P(ary) && ARY_HEAP_PTR(ary) != NULL) {
-            ary_heap_free(ary);
-	}
-        rb_ary_unshare_safe(ary);
-        FL_SET_EMBED(ary);
-	ARY_SET_EMBED_LEN(ary, 0);
+        rb_ary_reset(ary);
+        assert(ARY_EMBED_P(ary));
+        assert(ARY_EMBED_LEN(ary) == 0);
 	if (rb_block_given_p()) {
 	    rb_warning("given block not used");
 	}
@@ -3829,7 +3828,7 @@ ary_resize_smaller(VALUE ary, long len)
  *    array.delete(obj) -> deleted_object
  *    array.delete(obj) {|nosuch| ... } -> deleted_object or block_return
  *
- *  Removes zero or more elements from +self+; returns +self+.
+ *  Removes zero or more elements from +self+.
  *
  *  When no block is given,
  *  removes from +self+ each element +ele+ such that <tt>ele == obj</tt>;
@@ -4391,31 +4390,15 @@ rb_ary_replace(VALUE copy, VALUE orig)
     orig = to_ary(orig);
     if (copy == orig) return copy;
 
-    if (RARRAY_LEN(orig) <= RARRAY_EMBED_LEN_MAX) {
-        VALUE shared_root = 0;
+    rb_ary_reset(copy);
 
-        if (ARY_OWNS_HEAP_P(copy)) {
-            ary_heap_free(copy);
-	}
-        else if (ARY_SHARED_P(copy)) {
-            shared_root = ARY_SHARED_ROOT(copy);
-            FL_UNSET_SHARED(copy);
-        }
-        FL_SET_EMBED(copy);
+    if (RARRAY_LEN(orig) <= RARRAY_EMBED_LEN_MAX) {
+        assert(ARY_EMBED_P(copy));
         ary_memcpy(copy, 0, RARRAY_LEN(orig), RARRAY_CONST_PTR_TRANSIENT(orig));
-        if (shared_root) {
-            rb_ary_decrement_share(shared_root);
-        }
         ARY_SET_LEN(copy, RARRAY_LEN(orig));
     }
     else {
         VALUE shared_root = ary_make_shared(orig);
-        if (ARY_OWNS_HEAP_P(copy)) {
-            ary_heap_free(copy);
-        }
-        else {
-            rb_ary_unshare_safe(copy);
-        }
         FL_UNSET_EMBED(copy);
         ARY_SET_PTR(copy, ARY_HEAP_PTR(orig));
         ARY_SET_LEN(copy, ARY_HEAP_LEN(orig));
@@ -8110,7 +8093,7 @@ rb_ary_deconstruct(VALUE ary)
  *  #last:: Returns one or more trailing elements.
  *  #max:: Returns one or more maximum-valued elements,
  *         as determined by <tt><=></tt> or a given block.
- *  #max:: Returns one or more minimum-valued elements,
+ *  #min:: Returns one or more minimum-valued elements,
  *         as determined by <tt><=></tt> or a given block.
  *  #minmax:: Returns the minimum-valued and maximum-valued elements,
  *            as determined by <tt><=></tt> or a given block.

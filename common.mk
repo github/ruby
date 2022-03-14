@@ -18,8 +18,8 @@ mflags = $(MFLAGS)
 gnumake_recursive =
 enable_shared = $(ENABLE_SHARED:no=)
 
-UNICODE_VERSION = 13.0.0
-UNICODE_EMOJI_VERSION = 13.1
+UNICODE_VERSION = 14.0.0
+UNICODE_EMOJI_VERSION = 14.0
 UNICODE_BETA = NO
 
 ### set the following environment variable or uncomment the line if
@@ -305,7 +305,7 @@ configure-ext: $(EXTS_MK)
 
 build-ext: $(EXTS_MK)
 	$(Q)$(MAKE) -f $(EXTS_MK) $(mflags) libdir="$(libdir)" LIBRUBY_EXTS=$(LIBRUBY_EXTS) \
-	    EXTENCS="$(ENCOBJS)" UPDATE_LIBRARIES=no $(EXTSTATIC)
+	    EXTENCS="$(ENCOBJS)" MINIRUBY="$(MINIRUBY)" UPDATE_LIBRARIES=no $(EXTSTATIC)
 	$(Q)$(MAKE) $(EXTS_NOTE)
 
 exts-note: $(EXTS_MK)
