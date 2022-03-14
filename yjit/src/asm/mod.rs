@@ -220,7 +220,7 @@ impl CodeBlock
     }
 
     // Get a direct pointer into the executable memory block
-    pub fn get_ptr(&mut self, offset: usize) -> CodePtr {
+    pub fn get_ptr(&self, offset: usize) -> CodePtr {
         // The unwrapping/bounds checking should happen here
         // because if we're calling this function with a
         // wrong offset, it's a compiler bug
@@ -406,7 +406,7 @@ impl OutlinedCb
         }
     }
 
-    pub fn unwrap<'a> (&'a mut self) -> &'a mut CodeBlock {
+    pub fn unwrap(&mut self) -> &mut CodeBlock {
         &mut self.cb
     }
 }

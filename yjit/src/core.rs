@@ -1,6 +1,7 @@
 use std::rc::{Rc, Weak};
 use std::cell::*;
 use std::ptr;
+use std::mem::size_of;
 use crate::cruby::*;
 use crate::asm::*;
 use crate::asm::x86_64::*;
@@ -375,6 +376,158 @@ fn get_iseq_payload(iseq: IseqPtr) -> &'static mut IseqPayload
     // Hmm, nothing seems to stop calling this on the same
     // iseq twice, though, which violates aliasing rules.
     unsafe { payload_non_null.as_mut() }.unwrap()
+}
+
+/// Free the per-iseq payload
+#[no_mangle]
+pub extern "C" fn rb_yjit_iseq_free(payload: *mut c_void)
+{
+    let payload = {
+        if payload.is_null() {
+            // Nothing to free.
+            return;
+        } else {
+            payload as *mut IseqPayload
+        }
+    };
+
+    // Drop the payload with Box::from_raw().
+    // SAFETY: We got the pointer from Box::into_raw().
+    let _ = unsafe { Box::from_raw(payload) };
+}
+
+/// GC callback for marking GC objects in the the per-iseq payload.
+#[no_mangle]
+pub extern "C" fn rb_yjit_iseq_mark(payload: *mut c_void)
+{
+    let payload = if payload.is_null() {
+        // Nothing to mark.
+        return;
+    } else {
+        // SAFETY: It looks like the GC takes the VM lock while marking
+        // so we should be satisfying aliasing rules here.
+        unsafe { &*(payload as *const IseqPayload) }
+    };
+
+    // For marking VALUEs written into the inline code block.
+    // We don't write VALUEs in the outlined block.
+    let cb: &CodeBlock = CodegenGlobals::get_inline_cb();
+
+    for versions in &payload.version_map {
+        for block in versions {
+            let block = block.borrow();
+
+            unsafe { rb_gc_mark_movable(block.blockid.iseq.into()) };
+
+            // Mark method entry dependencies
+            for cme_dep in &block.cme_dependencies {
+                unsafe { rb_gc_mark_movable(cme_dep.receiver_klass) };
+                unsafe { rb_gc_mark_movable(cme_dep.callee_cme.into()) };
+            }
+
+            // Mark outgoing branch entries
+            for branch in &block.outgoing {
+                let branch = branch.borrow();
+                for target in &branch.targets {
+                    unsafe { rb_gc_mark_movable(target.iseq.into()) };
+                }
+            }
+
+            // Walk over references to objects in generated code.
+            for offset in &block.gc_object_offsets {
+                let value_address: *const u8 = cb.get_ptr(offset.as_usize()).raw_ptr();
+                // Creating an unaligned pointer is well defined unlike in C.
+                let value_address = value_address as *const VALUE;
+
+                // SAFETY: these point to YJIT's code buffer
+                unsafe {
+                    let object = value_address.read_unaligned();
+                    rb_gc_mark_movable(object);
+                };
+            }
+        }
+    }
+}
+
+/// GC callback for updating GC objects in the the per-iseq payload.
+/// This is a mirror of [rb_yjit_iseq_mark].
+#[no_mangle]
+pub extern "C" fn rb_yjit_iseq_update_references(payload: *mut c_void)
+{
+    let payload = if payload.is_null() {
+        // Nothing to update.
+        return;
+    } else {
+        // SAFETY: It looks like the GC takes the VM lock while updating references
+        // so we should be satisfying aliasing rules here.
+        unsafe { &*(payload as *const IseqPayload) }
+    };
+
+    // Evict other threads from generated code since we are about to patch them.
+    // Also acts as an assert that we hold the VM lock.
+    unsafe { rb_vm_barrier() };
+
+    // For updating VALUEs written into the inline code block.
+    let cb = CodegenGlobals::get_inline_cb();
+
+    for versions in &payload.version_map {
+        for block in versions {
+            let mut block = block.borrow_mut();
+
+            block.blockid.iseq = unsafe {
+                rb_gc_location(block.blockid.iseq.into())
+            }.as_iseq();
+
+            // Update method entry dependencies
+            for cme_dep in &mut block.cme_dependencies {
+                cme_dep.receiver_klass = unsafe { rb_gc_location(cme_dep.receiver_klass) };
+                cme_dep.callee_cme = unsafe {
+                    rb_gc_location(cme_dep.callee_cme.into())
+                }.as_cme();
+            }
+
+            // Update outgoing branch entries
+            for branch in &block.outgoing {
+                let mut branch = branch.borrow_mut();
+                for target in &mut branch.targets {
+                    target.iseq = unsafe {
+                        rb_gc_location(target.iseq.into())
+                    }.as_iseq();
+                }
+            }
+
+            // Walk over references to objects in generated code.
+            for offset in &block.gc_object_offsets {
+                let offset_to_value = offset.as_usize();
+                let value_address: *const u8 = cb.get_ptr(offset_to_value).raw_ptr();
+                // Creating an unaligned pointer is well defined unlike in C.
+                let value_address = value_address as *mut VALUE;
+
+                // SAFETY: these point to YJIT's code buffer
+                let object = unsafe { value_address.read_unaligned() };
+                let new_addr = unsafe { rb_gc_location(object) };
+
+                // Only write when the VALUE moves, to be CoW friendly.
+                if new_addr != object {
+                    // Possibly unlock the page we need to update
+                    cb.mark_position_writable(offset_to_value);
+
+                    // Object could cross a page boundary, so unlock there as well
+                    cb.mark_position_writable(offset_to_value + size_of::<VALUE>() - 1);
+
+                    // SAFETY: we just made this address writable
+                    unsafe { value_address.write_unaligned(new_addr) };
+                }
+            }
+        }
+    }
+
+    // Note that we would have returned already if YJIT is off.
+    cb.mark_all_executable();
+
+    // I guess we need to make the outlined block executable as well because
+    // we don't split the two at exact page boundaries.
+    CodegenGlobals::get_outlined_cb().unwrap().mark_all_executable();
 }
 
 /// Get all blocks for a particular place in an iseq.
@@ -1330,7 +1483,9 @@ fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -
         }
 
         // Compile the new block version
+        drop(branch); // Stop mutable RefCell borrow since GC might borrow branch for marking 
         block = gen_block_series(target, &target_ctx, ec, cb, ocb);
+        branch = branch_rc.borrow_mut();
 
         if block.is_none() && branch_modified {
             // We couldn't generate a new block for the branch, but we modified the branch.
@@ -1340,9 +1495,11 @@ fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -
         }
     }
 
+    // Finish building the new block
     let dst_addr = match block {
         Some(block_rc) => {
             let mut block = block_rc.borrow_mut();
+
             // Branch shape should reflect layout
             assert!(! (branch.shape == target_branch_shape && block.start_addr != branch.end_addr));
 

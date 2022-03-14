@@ -83,6 +83,8 @@ fn main() {
 
         // From include/ruby/internal/intern/gc.h
         .allowlist_function("rb_gc_mark")
+        .allowlist_function("rb_gc_mark_movable")
+        .allowlist_function("rb_gc_location")
 
         // VALUE variables for Ruby class objects
         // From include/ruby/internal/globals.h
@@ -206,6 +208,10 @@ fn main() {
         .allowlist_function("rb_full_cfunc_return")
         .allowlist_function("rb_yjit_vm_lock_then_barrier")
         .allowlist_function("rb_yjit_vm_unlock")
+        .allowlist_function("rb_assert_(iseq|cme)_handle")
+
+        // from vm_sync.h
+        .allowlist_function("rb_vm_barrier")
 
         // Not sure why it's picking these up, but don't.
         .blocklist_type("FILE")

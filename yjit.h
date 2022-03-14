@@ -54,9 +54,9 @@ bool rb_yjit_compile_iseq(const rb_iseq_t *iseq, rb_execution_context_t *ec);
 void rb_yjit_init(void);
 void rb_yjit_bop_redefined(int redefined_flag, enum ruby_basic_operators bop);
 void rb_yjit_constant_state_changed(void);
-void rb_yjit_iseq_mark(const struct rb_iseq_constant_body *body);
-void rb_yjit_iseq_update_references(const struct rb_iseq_constant_body *body);
-void rb_yjit_iseq_free(const struct rb_iseq_constant_body *body);
+void rb_yjit_iseq_mark(void *payload);
+void rb_yjit_iseq_update_references(void *payload);
+void rb_yjit_iseq_free(void *payload);
 void rb_yjit_before_ractor_spawn(void);
 void rb_yjit_constant_ic_update(const rb_iseq_t *const iseq, IC ic);
 void rb_yjit_tracing_invalidate_all(void);
@@ -77,9 +77,9 @@ static inline bool rb_yjit_compile_iseq(const rb_iseq_t *iseq, rb_execution_cont
 static inline void rb_yjit_init(void) {}
 static inline void rb_yjit_bop_redefined(int redefined_flag, enum ruby_basic_operators bop) {}
 static inline void rb_yjit_constant_state_changed(void) {}
-static inline void rb_yjit_iseq_mark(const struct rb_iseq_constant_body *body) {}
-static inline void rb_yjit_iseq_update_references(const struct rb_iseq_constant_body *body) {}
-static inline void rb_yjit_iseq_free(const struct rb_iseq_constant_body *body) {}
+static inline void rb_yjit_iseq_mark(void *payload) {}
+static inline void rb_yjit_iseq_update_references(void *payload) {}
+static inline void rb_yjit_iseq_free(void *payload) {}
 static inline void rb_yjit_before_ractor_spawn(void) {}
 static inline void rb_yjit_constant_ic_update(const rb_iseq_t *const iseq, IC ic) {}
 static inline void rb_yjit_tracing_invalidate_all(void) {}

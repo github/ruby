@@ -7,6 +7,7 @@
 #include "internal/hash.h"
 #include "internal/variable.h"
 #include "internal/class.h"
+#include "gc.h"
 #include "vm_core.h"
 #include "vm_callinfo.h"
 #include "builtin.h"
@@ -679,6 +680,21 @@ rb_RCLASS_ORIGIN(VALUE c)
 bool
 rb_yjit_multi_ractor_p(void) {
     return rb_multi_ractor_p();
+}
+
+// For debug builds
+void
+rb_assert_iseq_handle(VALUE handle)
+{
+    RUBY_ASSERT_ALWAYS(rb_objspace_markable_object_p(handle));
+    RUBY_ASSERT_ALWAYS(IMEMO_TYPE_P(handle, imemo_iseq));
+}
+
+void
+rb_assert_cme_handle(VALUE handle)
+{
+    RUBY_ASSERT_ALWAYS(rb_objspace_markable_object_p(handle));
+    RUBY_ASSERT_ALWAYS(IMEMO_TYPE_P(handle, imemo_ment));
 }
 
 // Acquire the VM lock and then signal all other Ruby threads (ractors) to

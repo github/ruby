@@ -330,8 +330,12 @@ pub struct rb_iseq_t {
         core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
 
+/// An object handle similar to VALUE in the C code. Our methods assume
+/// that this is a handle. Sometimes the C code briefly uses VALUE as
+/// an unsigned integer type and don't necessarily store valid handles but
+/// thankfully those cases are rare and don't cross the FFI boundary.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
-#[repr(C)]
+#[repr(transparent)] // same size and alignment as simply `usize`
 pub struct VALUE(pub usize);
 
 /// Pointer to an ISEQ
@@ -516,6 +520,30 @@ impl VALUE {
         let VALUE(us) = self;
         us as *const T
     }
+
+    /// Assert that `self` is an iseq in debug builds
+    pub fn as_iseq(self) -> IseqPtr {
+        let ptr: IseqPtr = self.as_ptr();
+
+        #[cfg(debug_assertions)]
+        if !ptr.is_null() {
+            unsafe { rb_assert_iseq_handle(self) }
+        }
+
+        ptr
+    }
+
+    /// Assert that `self` is a method entry in debug builds
+    pub fn as_cme(self) -> *const rb_callable_method_entry_t {
+        let ptr: *const rb_callable_method_entry_t = self.as_ptr();
+
+        #[cfg(debug_assertions)]
+        if !ptr.is_null() {
+            unsafe { rb_assert_cme_handle(self) }
+        }
+
+        ptr
+    }
 }
 
 impl VALUE {
@@ -523,6 +551,20 @@ impl VALUE {
         assert!(item <= (RUBY_FIXNUM_MAX as usize)); // An unsigned will always be greater than RUBY_FIXNUM_MIN
         let k : usize = item.wrapping_add(item.wrapping_add(1));
         VALUE(k)
+    }
+}
+
+impl From<IseqPtr> for VALUE {
+    /// For `.into()` convenience
+    fn from(iseq: IseqPtr) -> Self {
+        VALUE(iseq as usize)
+    }
+}
+
+impl From<*const rb_callable_method_entry_t> for VALUE {
+    /// For `.into()` convenience
+    fn from(cme: *const rb_callable_method_entry_t) -> Self {
+        VALUE(cme as usize)
     }
 }
 
