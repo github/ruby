@@ -1699,7 +1699,7 @@ fn gen_setlocal_wc0(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
     jnz_ptr(cb, side_exit);
 
     // Set the type of the local variable in the context
-    let temp_type = ctx.get_opnd_type(InsnOpnd::StackOpnd(0));
+    let temp_type = ctx.get_opnd_type(StackOpnd(0));
     ctx.set_local_type(local_idx, temp_type);
 
     // Pop the value to write from the stack

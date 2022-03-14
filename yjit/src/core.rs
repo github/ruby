@@ -909,7 +909,7 @@ impl Context {
             return;
         }
 
-        if local_idx < MAX_LOCAL_TYPES {
+        if local_idx >= MAX_LOCAL_TYPES {
             return;
         }
 
