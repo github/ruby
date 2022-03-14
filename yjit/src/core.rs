@@ -1483,7 +1483,9 @@ fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -
         }
 
         // Compile the new block version
+        drop(branch); // Stop mutable RefCell borrow since GC might borrow branch for marking 
         block = gen_block_series(target, &target_ctx, ec, cb, ocb);
+        branch = branch_rc.borrow_mut();
 
         if block.is_none() && branch_modified {
             // We couldn't generate a new block for the branch, but we modified the branch.
@@ -1493,9 +1495,11 @@ fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -
         }
     }
 
+    // Finish building the new block
     let dst_addr = match block {
         Some(block_rc) => {
             let mut block = block_rc.borrow_mut();
+
             // Branch shape should reflect layout
             assert!(! (branch.shape == target_branch_shape && block.start_addr != branch.end_addr));
 
