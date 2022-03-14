@@ -1810,52 +1810,7 @@ rb_ec_str_resurrect(struct rb_execution_context_struct *ec, VALUE str)
     return ec_str_duplicate(ec, rb_cString, str);
 }
 
-/*
- *  call-seq:
- *    String.new(string = '') -> new_string
- *    String.new(string = '', encoding: encoding) -> new_string
- *    String.new(string = '', capacity: size) -> new_string
- *
- *  Returns a new \String that is a copy of +string+.
- *
- *  With no arguments, returns the empty string with the Encoding <tt>ASCII-8BIT</tt>:
- *    s = String.new
- *    s # => ""
- *    s.encoding # => #<Encoding:ASCII-8BIT>
- *
- *  With the single \String argument +string+, returns a copy of +string+
- *  with the same encoding as +string+:
- *    s = String.new("Que veut dire \u{e7}a?")
- *    s # => "Que veut dire \u{e7}a?"
- *    s.encoding # => #<Encoding:UTF-8>
- *
- *  Literal strings like <tt>""</tt> or here-documents always use
- *  Encoding@Script+encoding, unlike String.new.
- *
- *  With keyword +encoding+, returns a copy of +str+
- *  with the specified encoding:
- *    s = String.new(encoding: 'ASCII')
- *    s.encoding # => #<Encoding:US-ASCII>
- *    s = String.new('foo', encoding: 'ASCII')
- *    s.encoding # => #<Encoding:US-ASCII>
- *
- *  Note that these are equivalent:
- *    s0 = String.new('foo', encoding: 'ASCII')
- *    s1 = 'foo'.force_encoding('ASCII')
- *    s0.encoding == s1.encoding # => true
- *
- *  With keyword +capacity+, returns a copy of +str+;
- *  the given +capacity+ may set the size of the internal buffer,
- *  which may affect performance:
- *    String.new(capacity: 1) # => ""
- *    String.new(capacity: 4096) # => ""
- *
- *  The +string+, +encoding+, and +capacity+ arguments may all be used together:
- *
- *    String.new('hello', encoding: 'UTF-8', capacity: 25)
- *
- */
-
+/* :nodoc: documented in doc/string.rdoc */
 static VALUE
 rb_str_init(int argc, VALUE *argv, VALUE str)
 {
@@ -4307,8 +4262,8 @@ rb_str_byterindex(VALUE str, VALUE sub, long pos)
 
 /*
  *  call-seq:
- *    byterindex(substring, offset = self.length) -> integer or nil
- *    byterindex(regexp, offset = self.length) -> integer or nil
+ *    byterindex(substring, offset = self.bytesize) -> integer or nil
+ *    byterindex(regexp, offset = self.bytesize) -> integer or nil
  *
  *  Returns the \Integer byte-based index of the _last_ occurrence of the given +substring+,
  *  or +nil+ if none found:
@@ -6116,13 +6071,14 @@ rb_str_chr(VALUE str)
 
 /*
  *  call-seq:
- *    getbyte(index) -> integer
+ *    getbyte(index) -> integer or nil
  *
- *  Returns the byte at zero-based +index+ as an integer:
+ *  Returns the byte at zero-based +index+ as an integer, or +nil+ if +index+ is out of range:
  *
- *    s = 'abcde'  # => "abcde"
- *    s.getbyte(0) # => 97
- *    s.getbyte(1) # => 98
+ *    s = 'abcde'   # => "abcde"
+ *    s.getbyte(0)  # => 97
+ *    s.getbyte(-1) # => 101
+ *    s.getbyte(5)  # => nil
  *
  *  Related: String#setbyte.
  */
@@ -6670,7 +6626,6 @@ rb_str_escape(VALUE str)
  *  and with special characters escaped:
  *
  *    s = "foo\tbar\tbaz\n"
- *    # => "foo\tbar\tbaz\n"
  *    s.inspect
  *    # => "\"foo\\tbar\\tbaz\\n\""
  *
@@ -8052,11 +8007,11 @@ tr_trans(VALUE str, VALUE src, VALUE repl, int sflag)
 
 /*
  *  call-seq:
- *     str.tr!(from_str, to_str)   -> str or nil
+ *    tr!(selector, replacements) -> self or nil
  *
- *  Translates <i>str</i> in place, using the same rules as
- *  String#tr. Returns <i>str</i>, or <code>nil</code> if no changes
- *  were made.
+ *  Like String#tr, but modifies +self+ in place.
+ *  Returns +self+ if any changes were made, +nil+ otherwise.
+ *
  */
 
 static VALUE
@@ -8068,37 +8023,41 @@ rb_str_tr_bang(VALUE str, VALUE src, VALUE repl)
 
 /*
  *  call-seq:
- *     str.tr(from_str, to_str)   => new_str
+ *    tr(selector, replacements) -> new_string
  *
- *  Returns a copy of +str+ with the characters in +from_str+ replaced by the
- *  corresponding characters in +to_str+.  If +to_str+ is shorter than
- *  +from_str+, it is padded with its last character in order to maintain the
- *  correspondence.
+ *  Returns a copy of +self+ with each character specified by string +selector+
+ *  translated to the corresponding character in string +replacements+.
+ *  The correspondence is _positional_:
  *
- *     "hello".tr('el', 'ip')      #=> "hippo"
- *     "hello".tr('aeiou', '*')    #=> "h*ll*"
- *     "hello".tr('aeiou', 'AA*')  #=> "hAll*"
+ *  - Each occurrence of the first character specified by +selector+
+ *    is translated to the first character in +replacements+.
+ *  - Each occurrence of the second character specified by selector+
+ *    is translated to the second character in +replacements+.
+ *  - And so on.
  *
- *  Both strings may use the <code>c1-c2</code> notation to denote ranges of
- *  characters, and +from_str+ may start with a <code>^</code>, which denotes
- *  all characters except those listed.
+ *  Example:
  *
- *     "hello".tr('a-y', 'b-z')    #=> "ifmmp"
- *     "hello".tr('^aeiou', '*')   #=> "*e**o"
+ *    'hello'.tr('el', 'ip') #=> "hippo"
  *
- *  The backslash character <code>\\</code> can be used to escape
- *  <code>^</code> or <code>-</code> and is otherwise ignored unless it
- *  appears at the end of a range or the end of the +from_str+ or +to_str+:
+ *  If +replacements+ is shorter than +selector+,
+ *  it is implicitly padded with its own last character:
  *
- *     "hello^world".tr("\\^aeiou", "*") #=> "h*ll**w*rld"
- *     "hello-world".tr("a\\-eo", "*")   #=> "h*ll**w*rld"
+ *    'hello'.tr('aeiou', '-')   # => "h-ll-"
+ *    'hello'.tr('aeiou', 'AA-') # => "hAll-"
  *
- *     "hello\r\nworld".tr("\r", "")   #=> "hello\nworld"
- *     "hello\r\nworld".tr("\\r", "")  #=> "hello\r\nwold"
- *     "hello\r\nworld".tr("\\\r", "") #=> "hello\nworld"
+ *  Arguments +selector+ and +replacements+ must be valid character selectors
+ *  (see {Character Selectors}[rdoc-ref:character_selectors.rdoc]),
+ *  and may use any of its valid forms, including negation, ranges, and escaping:
  *
- *     "X['\\b']".tr("X\\", "")   #=> "['b']"
- *     "X['\\b']".tr("X-\\]", "") #=> "'b'"
+ *    # Negation.
+ *    'hello'.tr('^aeiou', '-') # => "-e--o"
+ *    # Ranges.
+ *    'ibm'.tr('b-z', 'a-z') # => "hal"
+ *    # Escapes.
+ *    'hel^lo'.tr('\^aeiou', '-')     # => "h-l-l-"    # Escaped leading caret.
+ *    'i-b-m'.tr('b\-z', 'a-z')       # => "ibabm"     # Escaped embedded hyphen.
+ *    'foo\\bar'.tr('ab\\', 'XYZ')    # => "fooZYXr"   # Escaped backslash.
+ *
  */
 
 static VALUE
@@ -8199,10 +8158,11 @@ tr_find(unsigned int c, const char table[TR_TABLE_SIZE], VALUE del, VALUE nodel)
 
 /*
  *  call-seq:
- *     str.delete!([other_str]+)   -> str or nil
+ *    delete!(*selectors) -> self or nil
  *
- *  Performs a <code>delete</code> operation in place, returning <i>str</i>, or
- *  <code>nil</code> if <i>str</i> was not modified.
+ *  Like String#delete, but modifies +self+ in place.
+ *  Returns +self+ if any changes were made, +nil+ otherwise.
+ *
  */
 
 static VALUE
@@ -8269,16 +8229,16 @@ rb_str_delete_bang(int argc, VALUE *argv, VALUE str)
 
 /*
  *  call-seq:
- *     str.delete([other_str]+)   -> new_str
+ *    delete(*selectors) -> new_string
  *
- *  Returns a copy of <i>str</i> with all characters in the intersection of its
- *  arguments deleted. Uses the same rules for building the set of characters as
- *  String#count.
+ *  Returns a copy of +self+ with characters specified by +selectors+ removed
+ *  (see {Multiple Character Selectors}[rdoc-ref:character_selectors.rdoc@Multiple+Character+Selectors]):
  *
  *     "hello".delete "l","lo"        #=> "heo"
  *     "hello".delete "lo"            #=> "he"
  *     "hello".delete "aeiou", "^e"   #=> "hell"
  *     "hello".delete "ej-m"          #=> "ho"
+ *
  */
 
 static VALUE
@@ -8292,10 +8252,10 @@ rb_str_delete(int argc, VALUE *argv, VALUE str)
 
 /*
  *  call-seq:
- *     str.squeeze!([other_str]*)   -> str or nil
+ *    squeeze!(*selectors) -> self or nil
  *
- *  Squeezes <i>str</i> in place, returning either <i>str</i>, or
- *  <code>nil</code> if no changes were made.
+ *  Like String#squeeze, but modifies +self+ in place.
+ *  Returns +self+ if any changes were made, +nil+ otherwise.
  */
 
 static VALUE
@@ -8376,17 +8336,19 @@ rb_str_squeeze_bang(int argc, VALUE *argv, VALUE str)
 
 /*
  *  call-seq:
- *     str.squeeze([other_str]*)    -> new_str
+ *     str.squeeze(*selectors) -> new_string
  *
- *  Builds a set of characters from the <i>other_str</i> parameter(s)
- *  using the procedure described for String#count. Returns a new
- *  string where runs of the same character that occur in this set are
- *  replaced by a single character. If no arguments are given, all
- *  runs of identical characters are replaced by a single character.
+ *  Returns a copy of +self+ with characters specified by +selectors+ "squeezed"
+ *  (see {Multiple Character Selectors}[rdoc-ref:character_selectors.rdoc@Multiple+Character+Selectors]):
+ *
+ *  "Squeezed" means that each multiple-character run of a selected character
+ *  is squeezed down to a single character;
+ *  with no arguments given, squeezes all characters:
  *
  *     "yellow moon".squeeze                  #=> "yelow mon"
  *     "  now   is  the".squeeze(" ")         #=> " now is the"
  *     "putters shoot balls".squeeze("m-z")   #=> "puters shot balls"
+ *
  */
 
 static VALUE
@@ -8400,10 +8362,12 @@ rb_str_squeeze(int argc, VALUE *argv, VALUE str)
 
 /*
  *  call-seq:
- *     str.tr_s!(from_str, to_str)   -> str or nil
+ *    tr_s!(selector, replacements) -> self or nil
  *
- *  Performs String#tr_s processing on <i>str</i> in place,
- *  returning <i>str</i>, or <code>nil</code> if no changes were made.
+ *  Like String#tr_s, but modifies +self+ in place.
+ *  Returns +self+ if any changes were made, +nil+ otherwise.
+ *
+ *  Related: String#squeeze!.
  */
 
 static VALUE
@@ -8415,15 +8379,17 @@ rb_str_tr_s_bang(VALUE str, VALUE src, VALUE repl)
 
 /*
  *  call-seq:
- *     str.tr_s(from_str, to_str)   -> new_str
+ *    tr_s(selector, replacements) -> string
  *
- *  Processes a copy of <i>str</i> as described under String#tr, then
- *  removes duplicate characters in regions that were affected by the
- *  translation.
+ *  Like String#tr, but also squeezes the modified portions of the translated string;
+ *  returns a new string (translated and squeezed).
  *
- *     "hello".tr_s('l', 'r')     #=> "hero"
- *     "hello".tr_s('el', '*')    #=> "h*o"
- *     "hello".tr_s('el', 'hx')   #=> "hhxo"
+ *    'hello'.tr_s('l', 'r')   #=> "hero"
+ *    'hello'.tr_s('el', '-')  #=> "h-o"
+ *    'hello'.tr_s('el', 'hx') #=> "hhxo"
+ *
+ *  Related: String#squeeze.
+ *
  */
 
 static VALUE
@@ -8437,15 +8403,11 @@ rb_str_tr_s(VALUE str, VALUE src, VALUE repl)
 
 /*
  *  call-seq:
- *     str.count([other_str]+)   -> integer
+ *    count(*selectors) -> integer
  *
- *  Each +other_str+ parameter defines a set of characters to count.  The
- *  intersection of these sets defines the characters to count in +str+.  Any
- *  +other_str+ that starts with a caret <code>^</code> is negated.  The
- *  sequence <code>c1-c2</code> means all characters between c1 and c2.  The
- *  backslash character <code>\\</code> can be used to escape <code>^</code> or
- *  <code>-</code> and is otherwise ignored unless it appears at the end of a
- *  sequence or the end of a +other_str+.
+ *  Returns the total number of characters in +self+
+ *  that are specified by the given +selectors+
+ *  (see {Multiple Character Selectors}[rdoc-ref:character_selectors.rdoc@Multiple+Character+Selectors]):
  *
  *     a = "hello world"
  *     a.count "lo"                   #=> 5
@@ -10963,9 +10925,22 @@ rb_str_force_encoding(VALUE str, VALUE enc)
 
 /*
  *  call-seq:
- *     str.b   -> str
+ *    b -> string
  *
- *  Returns a copied string whose encoding is ASCII-8BIT.
+ *  Returns a copy of +self+ with that has ASCII-8BIT encoding;
+ *  the contents (bytes) of +self+ are not modified:
+ *
+ *    s = "\x99"
+ *    s.encoding   # => #<Encoding:UTF-8>
+ *    t = s.b      # => "\x99"
+ *    t.encoding   # => #<Encoding:ASCII-8BIT>
+ *
+ *    s = "\u4095"
+ *    s.encoding   # => #<Encoding:UTF-8>
+ *    s.bytes      # => [228, 130, 149]
+ *    t = s.b      # => "\xE4\x82\x95"
+ *    t.encoding   # => #<Encoding:ASCII-8BIT>
+ *
  */
 
 static VALUE
@@ -11341,17 +11316,38 @@ enc_str_scrub(rb_encoding *enc, VALUE str, VALUE repl, int cr)
 
 /*
  *  call-seq:
- *    str.scrub -> new_str
- *    str.scrub(repl) -> new_str
- *    str.scrub{|bytes|} -> new_str
+ *    scrub(replacement_string = default_replacement) -> string
+ *    scrub{|bytes| ... } -> string
  *
- *  If the string is invalid byte sequence then replace invalid bytes with given replacement
- *  character, else returns self.
- *  If block is given, replace invalid bytes with returned value of the block.
+ *  Returns a copy of self with each invalid byte sequence replaced
+ *  by a replacement string.
  *
- *     "abc\u3042\x81".scrub #=> "abc\u3042\uFFFD"
- *     "abc\u3042\x81".scrub("*") #=> "abc\u3042*"
- *     "abc\u3042\xE3\x80".scrub{|bytes| '<'+bytes.unpack1('H*')+'>' } #=> "abc\u3042<e380>"
+ *  With no block given and no argument, replaces each invalid sequence
+ *  with the default replacement string
+ *  (<tt>"\uFFFD"</tt> for a Unicode encoding, <tt>'?'</tt> otherwise):
+ *
+ *    "\uFFFD".bytes # => [239, 191, 189]
+ *    s = "foo\x81\x81bar"
+ *    s.bytes
+ *    # => [102, 111, 111, 129, 129, 98, 97, 114]
+ *    s.scrub.bytes
+ *    # => [102, 111, 111, 239, 191, 189, 239, 191, 189, 98, 97, 114]
+ *
+ *  With no block given and argument +replacement_string+ given,
+ *  replaces each invalid sequence with that string:
+ *
+ *    "foo\x81\x81bar".scrub('xyzzy') # => "fooxyzzyxyzzybar"
+ *
+ *  With a block given, replaces each invalid sequence with the value
+ *  of the block:
+ *
+ *    "foo\x81\x81bar".scrub {|bytes| p bytes; 'XYZZY' } # => "fooXYZZYXYZZYbar"
+ *
+ *  Output:
+ *
+ *    "\x81"
+ *    "\x81"
+ *
  */
 static VALUE
 str_scrub(int argc, VALUE *argv, VALUE str)
@@ -11363,17 +11359,12 @@ str_scrub(int argc, VALUE *argv, VALUE str)
 
 /*
  *  call-seq:
- *    str.scrub! -> str
- *    str.scrub!(repl) -> str
- *    str.scrub!{|bytes|} -> str
+ *    scrub! -> self
+ *    scrub!(replacement_string = default_replacement) -> self
+ *    scrub!{|bytes|} -> self
  *
- *  If the string is invalid byte sequence then replace invalid bytes with given replacement
- *  character, else returns self.
- *  If block is given, replace invalid bytes with returned value of the block.
+ *  Like String#scrub, except that any replacements are made in +self+.
  *
- *     "abc\u3042\x81".scrub! #=> "abc\u3042\uFFFD"
- *     "abc\u3042\x81".scrub!("*") #=> "abc\u3042*"
- *     "abc\u3042\xE3\x80".scrub!{|bytes| '<'+bytes.unpack1('H*')+'>' } #=> "abc\u3042<e380>"
  */
 static VALUE
 str_scrub_bang(int argc, VALUE *argv, VALUE str)
@@ -11405,25 +11396,36 @@ unicode_normalize_common(int argc, VALUE *argv, VALUE str, ID id)
 
 /*
  *  call-seq:
- *    str.unicode_normalize(form=:nfc)
+ *    unicode_normalize(form = :nfc) -> string
  *
- *  Unicode Normalization---Returns a normalized form of +str+,
- *  using Unicode normalizations NFC, NFD, NFKC, or NFKD.
- *  The normalization form used is determined by +form+, which can
- *  be any of the four values +:nfc+, +:nfd+, +:nfkc+, or +:nfkd+.
- *  The default is +:nfc+.
+ *  Returns a copy of +self+ with
+ *  {Unicode normalization}[https://unicode.org/reports/tr15] applied.
  *
- *  If the string is not in a Unicode Encoding, then an Exception is raised.
- *  In this context, 'Unicode Encoding' means any of UTF-8, UTF-16BE/LE,
- *  and UTF-32BE/LE, as well as GB18030, UCS_2BE, and UCS_4BE.
- *  Anything other than UTF-8 is implemented by converting to UTF-8,
- *  which makes it slower than UTF-8.
+ *  Argument +form+ must be one of the following symbols
+ *  (see {Unicode normalization forms}[https://unicode.org/reports/tr15/#Norm_Forms]):
  *
- *    "a\u0300".unicode_normalize        #=> "\u00E0"
- *    "a\u0300".unicode_normalize(:nfc)  #=> "\u00E0"
- *    "\u00E0".unicode_normalize(:nfd)   #=> "a\u0300"
- *    "\xE0".force_encoding('ISO-8859-1').unicode_normalize(:nfd)
- *                                       #=> Encoding::CompatibilityError raised
+ *  - +:nfc+: Canonical decomposition, followed by canonical composition.
+ *  - +:nfd+: Canonical decomposition.
+ *  - +:nfkc+: Compatibility decomposition, followed by canonical composition.
+ *  - +:nfkd+: Compatibility decomposition.
+ *
+ *  +self+ must have encoding UTF-8 or one of the other supported encodings:
+ *
+ *    UnicodeNormalize::UNICODE_ENCODINGS
+ *    # =>
+ *    [#<Encoding:UTF-16BE (autoload)>,
+ *     #<Encoding:UTF-16LE>,
+ *     #<Encoding:UTF-32BE (autoload)>,
+ *     #<Encoding:UTF-32LE (autoload)>,
+ *     #<Encoding:GB18030 (autoload)>,
+ *     #<Encoding:UTF-16BE (autoload)>,
+ *     #<Encoding:UTF-32BE (autoload)>]
+ *
+ *  Examples:
+ *
+ *    "a\u0300".unicode_normalize      # => "a"
+ *    "\u00E0".unicode_normalize(:nfd) # => "a "
+ *
  */
 static VALUE
 rb_str_unicode_normalize(int argc, VALUE *argv, VALUE str)
@@ -11433,10 +11435,11 @@ rb_str_unicode_normalize(int argc, VALUE *argv, VALUE str)
 
 /*
  *  call-seq:
- *    str.unicode_normalize!(form=:nfc)
+ *    unicode_normalize!(form = :nfc) -> self
  *
- *  Destructive version of String#unicode_normalize, doing Unicode
- *  normalization in place.
+ *  Like String#unicode_normalize, except that the normalization
+ *  is performed on +self+.
+ *
  */
 static VALUE
 rb_str_unicode_normalize_bang(int argc, VALUE *argv, VALUE str)
