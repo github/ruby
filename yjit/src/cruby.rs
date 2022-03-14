@@ -321,20 +321,6 @@ pub fn insn_len(opcode: usize) -> u32
     }
 }
 
-#[cfg(not(test))]
-pub fn get_ruby_vm_frozen_core() -> VALUE
-{
-    // The C side reads this as an extern constant from vm.c (see vm_core.h).
-    todo!();
-}
-
-#[cfg(test)]
-pub fn get_ruby_vm_frozen_core() -> VALUE
-{
-    // Until we can link with CRuby, return a fake constant.
-    VALUE(0xACE_DECADE)
-}
-
 /// Opaque iseq type for opaque iseq pointers from vm_core.h
 /// See: <https://doc.rust-lang.org/nomicon/ffi.html#representing-opaque-structs>
 #[repr(C)]

@@ -519,6 +519,9 @@ pub const BOP_LAST_: ruby_basic_operators = 29;
 pub type ruby_basic_operators = u32;
 pub type rb_control_frame_t = rb_control_frame_struct;
 extern "C" {
+    pub static mut rb_mRubyVMFrozenCore: VALUE;
+}
+extern "C" {
     pub static mut rb_block_param_proxy: VALUE;
 }
 pub type IC = *mut iseq_inline_constant_cache;

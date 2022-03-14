@@ -989,8 +989,8 @@ fn gen_putspecialobject(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBloc
     let object_type = jit_get_arg(jit, 0);
 
     if object_type == VALUE(VM_SPECIAL_OBJECT_VMCORE) {
-        let stack_top:X86Opnd = ctx.stack_push(Type::UnknownHeap);
-        jit_mov_gc_ptr(jit, cb, REG0, get_ruby_vm_frozen_core());
+        let stack_top: X86Opnd = ctx.stack_push(Type::UnknownHeap);
+        jit_mov_gc_ptr(jit, cb, REG0, unsafe { rb_mRubyVMFrozenCore });
         mov(cb, stack_top, REG0);
         KeepCompiling
     }
@@ -1269,20 +1269,6 @@ mod tests {
     fn test_putself() {
         let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
         let status = gen_putself(&mut jit, &mut context, &mut cb, &mut ocb);
-
-        assert!(matches!(KeepCompiling, status));
-        assert!(cb.get_write_pos() > 0);
-    }
-
-    #[test]
-    fn test_putspecialobject() {
-        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
-
-        let mut value_array: [u64; 2] = [ 0, VM_SPECIAL_OBJECT_VMCORE as u64 ];
-        let pc: *mut VALUE = &mut value_array as *mut u64 as *mut VALUE;
-        jit.set_pc(pc);
-
-        let status = gen_putspecialobject(&mut jit, &mut context, &mut cb, &mut ocb);
 
         assert!(matches!(KeepCompiling, status));
         assert!(cb.get_write_pos() > 0);
