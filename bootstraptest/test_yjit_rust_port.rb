@@ -242,5 +242,15 @@ assert_equal 'true', %q{
     ;
   end
   j
+}
 
+# Regression for getivar
+assert_equal '[nil]', %q{
+  [TrueClass].each do |klass|
+    klass.class_eval("def foo = @foo")
+  end
+
+  [true].map do |instance|
+    instance.foo
+  end
 }

@@ -1938,15 +1938,24 @@ fn gen_get_ivar(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
     let comptime_val_klass = comptime_receiver.class_of();
     let starting_context = ctx.clone(); // make a copy for use with jit_chain_guard
 
-    let custom_allocator = unsafe { rb_get_alloc_func(comptime_val_klass).unwrap() as *const u8 };
-    let allocate_instance = rb_class_allocate_instance as *const u8;
+    // Check if the comptime class uses a custom allocator
+    let custom_allocator = unsafe { rb_get_alloc_func(comptime_val_klass) };
+    let uses_custom_allocator = match custom_allocator {
+        Some(alloc_fun) => {
+            let allocate_instance = rb_class_allocate_instance as *const u8;
+            alloc_fun as *const u8 != allocate_instance
+        }
+        None => false
+    };
+
+    // Check if the comptime receiver is a T_OBJECT
+    let receiver_t_object = unsafe { RB_TYPE_P(comptime_receiver, RUBY_T_OBJECT) };
 
     // If the class uses the default allocator, instances should all be T_OBJECT
     // NOTE: This assumes nobody changes the allocator of the class after allocation.
     //       Eventually, we can encode whether an object is T_OBJECT or not
     //       inside object shapes.
-    if ! unsafe { RB_TYPE_P(comptime_receiver, RUBY_T_OBJECT) } ||
-            custom_allocator != allocate_instance {
+    if !receiver_t_object || uses_custom_allocator {
         // General case. Call rb_ivar_get().
         // VALUE rb_ivar_get(VALUE obj, ID id)
         add_comment(cb, "call rb_ivar_get()");
