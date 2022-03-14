@@ -1,4 +1,5 @@
 use std::mem;
+use std::collections::{BTreeMap};
 
 pub mod x86_64;
 
@@ -18,6 +19,11 @@ impl CodePtr {
     fn into_i64(&self) -> i64 {
         let CodePtr(ptr) = self;
         *ptr as i64
+    }
+
+    fn into_usize(&self) -> usize {
+        let CodePtr(ptr) = self;
+        *ptr as usize
     }
 }
 
@@ -88,7 +94,7 @@ pub struct CodeBlock
     label_refs: Vec<LabelRef>,
 
     // Comments for assembly instructions, if that feature is enabled
-    asm_comments: Vec<(usize, String)>,
+    asm_comments: BTreeMap<usize, Vec<String>>,
 
     // Keep track of the current aligned write position.
     // Used for changing protection when writing to the JIT buffer
@@ -119,7 +125,7 @@ impl CodeBlock
             label_addrs: Vec::new(),
             label_names: Vec::new(),
             label_refs: Vec::new(),
-            asm_comments: Vec::new(),
+            asm_comments: BTreeMap::new(),
             current_aligned_write_pos: ALIGNED_WRITE_POSITION_NONE,
             page_size: 4096,
             dropped_bytes: false
@@ -135,7 +141,7 @@ impl CodeBlock
             label_addrs: Vec::new(),
             label_names: Vec::new(),
             label_refs: Vec::new(),
-            asm_comments: Vec::new(),
+            asm_comments: BTreeMap::new(),
             current_aligned_write_pos: ALIGNED_WRITE_POSITION_NONE,
             page_size,
             dropped_bytes: false
@@ -153,26 +159,26 @@ impl CodeBlock
     pub fn add_comment(&mut self, comment: &str) {
         #[cfg(feature="asm_comments")]
         {
-            let is_dup = if let Some((last_pos, last_comment)) = self.asm_comments.last() {
-                *last_pos == self.write_pos && *last_comment == comment
-            } else { false };
-            if !is_dup {
-                self.asm_comments.push((self.write_pos, String::from(comment)));
+            let cur_ptr = self.get_write_ptr().into_usize();
+            let this_line_comments = self.asm_comments.get(&cur_ptr);
+
+            // If there's no current list of comments for this line number, add one.
+            if this_line_comments.is_none() {
+                let new_comments = Vec::new();
+                self.asm_comments.insert(cur_ptr, new_comments);
+            }
+            let this_line_comments = self.asm_comments.get_mut(&cur_ptr).unwrap();
+
+            // Unless this comment is the same as the last one at this same line, add it.
+            let string_comment = String::from(comment);
+            if this_line_comments.last() != Some(&string_comment) {
+                this_line_comments.push(string_comment);
             }
         }
     }
 
-    /// Add an assembly comment at a specific byte offset if the feature is on.
-    /// If not, this becomes an inline no-op.
-    #[inline]
-    pub fn add_comment_at(&mut self, pos:usize, comment: &str) {
-        #[cfg(feature="asm_comments")]
-        self.asm_comments.push((pos, String::from(comment)));
-    }
-
-    /// Get a slice (readonly ref) of assembly comments - if the feature is off, this will be empty.
-    pub fn get_comments(&self) -> &[(usize, String)] {
-        return self.asm_comments.as_slice();
+    pub fn comments_at(&self, pos: usize) -> Option<&Vec<String>> {
+        self.asm_comments.get(&pos)
     }
 
     pub fn get_write_pos(&self) -> usize {

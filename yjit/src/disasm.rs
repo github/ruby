@@ -1,6 +1,9 @@
 use std::fmt::Write;
 use crate::cruby::*;
+use crate::codegen::*;
+use crate::asm::*;
 use crate::core::*;
+use crate::yjit::yjit_enabled_p;
 
 /// Primitive called in yjit.rb
 /// Produce a string representing the disassembly for an ISEQ
@@ -19,6 +22,10 @@ pub extern "C" fn rb_yjit_disasm_iseq(ec: EcPtr, ruby_self: VALUE, iseqw: VALUE)
         //    return Qnil;
         //}
 
+        if !yjit_enabled_p() {
+            return Qnil;
+        }
+
         // Get the iseq pointer from the wrapper
         let iseq = unsafe { rb_iseqw_to_iseq(iseqw) };
 
@@ -34,6 +41,9 @@ fn disasm_iseq(iseq: IseqPtr) -> String {
 
     // Get a list of block versions generated for this iseq
     let mut block_list = get_iseq_block_list(iseq);
+
+    // Get a list of codeblocks relevant to this iseq
+    let global_cb = CodegenGlobals::get_inline_cb();
 
     // Sort the blocks by increasing start addresses
     block_list.sort_by(|a, b| {
@@ -57,7 +67,7 @@ fn disasm_iseq(iseq: IseqPtr) -> String {
     // Compute total code size in bytes for all blocks in the function
     let mut total_code_size = 0;
     for blockref in &block_list {
-        total_code_size = blockref.borrow().code_size();
+        total_code_size += blockref.borrow().code_size();
     }
 
     // Initialize capstone
@@ -99,6 +109,12 @@ fn disasm_iseq(iseq: IseqPtr) -> String {
 
         // For each instruction in this block
         for insn in insns.as_ref() {
+            // Comments for this block
+            if let Some(comment_list) = global_cb.comments_at(insn.address() as usize) {
+                for comment in comment_list {
+                    out.push_str(&format!("  // {}\n", comment));
+                }
+            }
             out.push_str(&format!("  {}\n", insn));
         }
 
