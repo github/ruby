@@ -369,7 +369,7 @@ pub extern "C" fn rb_yjit_tracing_invalidate_all()
         return;
     }
 
-    todo!();
+    todo!("rb_yjit_tracing_invalidate_all");
 /*
     // Stop other ractors since we are going to patch machine code.
     RB_VM_LOCK_ENTER();
