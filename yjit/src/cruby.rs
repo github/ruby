@@ -754,11 +754,11 @@ pub const RSTRUCT_EMBED_LEN_MASK:usize = RUBY_FL_USER_2 | RUBY_FL_USER_1;
 pub const RUBY_OFFSET_RBASIC_FLAGS:i32 = 0;  // struct RBasic, field "flags"
 pub const RUBY_OFFSET_RBASIC_KLASS:i32 = 8;  // struct RBasic, field "klass"
 pub const RUBY_OFFSET_RARRAY_AS_HEAP_LEN:i32 = 16;  // struct RArray, subfield "as.heap.len"
-pub const RUBY_OFFSET_RARRAY_AS_ARY:i32 = 16;  // struct RArray, subfield "as.ary"
-pub const RUBY_OFFSET_RARRAY_AS_HEAP_PTR:i32 = 16;  // struct RArray, subfield "as.heap.ptr"
+pub const RUBY_OFFSET_RARRAY_AS_HEAP_PTR:i32 = 32;  // struct RArray, subfield "as.heap.ptr"
+pub const RUBY_OFFSET_RARRAY_AS_ARY:i32 = 16; // struct RArray, subfield "as.ary"
 
 pub const RUBY_OFFSET_RSTRUCT_AS_HEAP_PTR:i32 = 24;  // struct RStruct, subfield "as.heap.ptr"
-pub const RUBY_OFFSET_RSTRUCT_AS_ARY:i32 = 16;  // struct RStruct, subfield "as.ary"
+pub const RUBY_OFFSET_RSTRUCT_AS_ARY:i32 = 24; // struct RStruct, subfield "as.ary"
 
 pub const RUBY_OFFSET_ROBJECT_AS_ARY:i32 = 16; // struct RObject, subfield "as.ary"
 pub const RUBY_OFFSET_ROBJECT_AS_HEAP_NUMIV:i32 = 16; // struct RObject, subfield "as.heap.numiv"

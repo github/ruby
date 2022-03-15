@@ -272,3 +272,13 @@ assert_equal 'ok', %q{
     print "ok"
   end
 }
+
+# Array access regression test
+assert_equal '[0, 1, 2, 3, 4, 5]', %q{
+  def expandarray_useless_splat
+    arr = [0, 1, 2, 3, 4, 5]
+    a, * = arr
+  end
+
+  expandarray_useless_splat
+}
