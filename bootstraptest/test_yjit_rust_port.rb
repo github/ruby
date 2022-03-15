@@ -254,3 +254,21 @@ assert_equal '[nil]', %q{
     instance.foo
   end
 }
+
+# Regression for send
+assert_equal 'ok', %q{
+  def bar(baz: 2)
+    baz
+  end
+
+  def foo
+    bar(1, baz: 123)
+  end
+
+  begin
+    foo
+    foo
+  rescue ArgumentError => e
+    print "ok"
+  end
+}

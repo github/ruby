@@ -3704,7 +3704,7 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
     // Arity handling and optional parameter setup
     let opts_filled = argc - required_num - kw_arg_num;
     let opt_num = unsafe { get_iseq_body_param_opt_num(iseq) };
-    let opts_missing:u32 = (opt_num - opts_filled).try_into().unwrap();
+    let opts_missing: i32 = opt_num - opts_filled;
 
     if opts_filled < 0 || opts_filled > opt_num {
         gen_counter_incr!(cb, send_iseq_arity_error);
@@ -3720,7 +3720,7 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
     }
 
     if opt_num > 0 {
-        num_params -= opts_missing;
+        num_params -= opts_missing as u32;
         unsafe {
             let opt_table = get_iseq_body_param_opt_table(iseq);
             start_pc_offset = (*opt_table.offset(opts_filled as isize)).as_u32();
