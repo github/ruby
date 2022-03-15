@@ -22,7 +22,10 @@ pub struct Options {
     pub max_versions : usize,
 
     // Capture and print out stats
-    pub gen_stats : bool
+    pub gen_stats : bool,
+
+    /// Dump compiled and executed instructions for debugging
+    pub dump_insns: bool,
 }
 
 // Initialize the options to default values
@@ -33,6 +36,7 @@ pub static mut OPTIONS: Options = Options {
     no_type_prop : false,
     max_versions : 4,
     gen_stats : false,
+    dump_insns: false,
 };
 
 /// Macro to get an option value by name
@@ -92,6 +96,7 @@ pub fn parse_option(str_ptr: *const std::os::raw::c_char) -> Option<()>
         ("greedy-versioning", "") => { unsafe { OPTIONS.greedy_versioning = true }},
         ("no-type-prop", "") => { unsafe { OPTIONS.no_type_prop = true }},
         ("stats", "") => { unsafe { OPTIONS.gen_stats = true }},
+        ("dump-insns", "") => { unsafe { OPTIONS.dump_insns = true }},
 
         // Option name not recognized
         _ => {

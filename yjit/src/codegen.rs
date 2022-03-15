@@ -767,13 +767,15 @@ pub fn gen_single_block(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &m
             // Add a comment for the name of the YARV instruction
             add_comment(cb, &insn_name(opcode));
 
-            // TODO: add a command-line option to print an insn trace
-            //print_str(cb, &insn_name(opcode));
+            // If requested, dump instructions for debugging
+            if get_option!(dump_insns) {
+                println!("compiled {}", insn_name(opcode));
+                print_str(cb, &format!("executed {}", insn_name(opcode)));
+            }
 
             // Call the code generation function
             status = gen_fn(&mut jit, &mut ctx, cb, ocb);
         }
-        //dbg!(&status, opcode);
 
         // If we can't compile this instruction
         // exit to the interpreter and stop compiling

@@ -257,31 +257,6 @@ yjit_block_assumptions_free(block_t *block)
 */
 
 /*
-// Free the yjit resources associated with an iseq
-void
-rb_yjit_iseq_free(const struct rb_iseq_constant_body *body)
-{
-    rb_darray_for(body->yjit_blocks, version_array_idx) {
-        rb_yjit_block_array_t version_array = rb_darray_get(body->yjit_blocks, version_array_idx);
-
-        rb_darray_for(version_array, block_idx) {
-            block_t *block = rb_darray_get(version_array, block_idx);
-            yjit_free_block(block);
-        }
-
-        rb_darray_free(version_array);
-    }
-
-    rb_darray_free(body->yjit_blocks);
-}
-*/
-
-
-
-
-
-/*
-
 // Callback from the opt_setinlinecache instruction in the interpreter.
 // Invalidate the block for the matching opt_getinlinecache so it could regenerate code
 // using the new value in the constant cache.
