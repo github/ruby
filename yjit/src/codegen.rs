@@ -3473,6 +3473,7 @@ fn gen_send_cfunc(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
     // Stack overflow check
     // #define CHECK_VM_STACK_OVERFLOW0(cfp, sp, margin)
     // REG_CFP <= REG_SP + 4 * SIZEOF_VALUE + sizeof(rb_control_frame_t)
+    add_comment(cb, "stack overflow check");
     lea(cb, REG0, ctx.sp_opnd((SIZEOF_VALUE * 4 + 2 * RUBY_SIZEOF_CONTROL_FRAME) as isize));
     cmp(cb, REG_CFP, REG0);
     jle_ptr(cb, counted_exit!(ocb, side_exit, send_se_cf_overflow));
@@ -3596,6 +3597,7 @@ fn gen_send_cfunc(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
     // VALUE ret = (cfunc->func)(recv, argv[0], argv[1]);
     // cfunc comes from compile-time cme->def, which we assume to be stable.
     // Invalidation logic is in yjit_method_lookup_change()
+    add_comment(cb, "call C function");
     call_ptr(cb, REG0, unsafe { get_mct_func(cfunc) });
 
     // Record code position for TracePoint patching. See full_cfunc_return().
@@ -4588,6 +4590,7 @@ fn gen_leave(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mu
 
     // Pop the current frame (ec->cfp++)
     // Note: the return PC is already in the previous CFP
+    add_comment(cb, "pop stack frame");
     add(cb, REG_CFP, uimm_opnd(RUBY_SIZEOF_CONTROL_FRAME as u64));
     mov(cb, mem_opnd(64, REG_EC, RUBY_OFFSET_EC_CFP), REG_CFP);
 
