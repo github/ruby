@@ -112,7 +112,7 @@ fn disasm_iseq(iseq: IseqPtr) -> String {
             // Comments for this block
             if let Some(comment_list) = global_cb.comments_at(insn.address() as usize) {
                 for comment in comment_list {
-                    out.push_str(&format!("  // {}\n", comment));
+                    out.push_str(&format!("  \x1b[1m# {}\x1b[0m\n", comment));
                 }
             }
             out.push_str(&format!("  {}\n", insn));

@@ -764,10 +764,10 @@ pub fn gen_single_block(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &m
             // Note that the increment happens even when the output takes side exit.
             gen_counter_incr!(cb, exec_instruction);
 
-            // TODO
             // Add a comment for the name of the YARV instruction
-            //add_comment(cb, insn_name(opcode));
+            add_comment(cb, &insn_name(opcode));
 
+            // TODO: add a command-line option to print an insn trace
             //print_str(cb, &insn_name(opcode));
 
             // Call the code generation function
