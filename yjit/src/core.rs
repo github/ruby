@@ -1211,6 +1211,9 @@ fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &
     let first_block = gen_single_block(blockid, start_ctx, ec, cb, ocb).ok()?;
     batch.push(first_block.clone()); // Keep track of this block version
 
+    // Add the block version to the VersionMap for this ISEQ
+    add_block_version(&first_block);
+
     // Loop variable
     let mut last_blockref = first_block.clone();
     loop {
@@ -1239,6 +1242,9 @@ fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &
         // Generate new block using context from the last branch.
         let new_blockref = gen_single_block(requested_id, requested_ctx, ec, cb, ocb).ok()?;
 
+        // Add the block version to the VersionMap for this ISEQ
+        add_block_version(&new_blockref);
+
         // Connect the last branch and the new block
         last_branch.blocks[0] = Some(new_blockref.clone());
         last_branch.dst_addrs[0] = new_blockref.borrow().start_addr;
@@ -1254,6 +1260,10 @@ fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &
         last_blockref = new_blockref;
     }
 
+    // FIXME: if we abort, we should ideally remove unneeded block versions
+    // However, as compilation errors are unlikely, we skip this for now
+
+    /*
     // Install the block into the ISEQ payload for consideration in future LBBV code expansions.
     // NOTE(alan): There is a slight deviation from C YJIT here. C YJIT runs add_block_version()
     //             after generating each new block whereas we do it in one go at the end here.
@@ -1261,6 +1271,7 @@ fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &
     for blockref in &batch {
         add_block_version(blockref);
     }
+    */
 
     Some(first_block)
 }
@@ -1483,7 +1494,7 @@ fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -
         }
 
         // Compile the new block version
-        drop(branch); // Stop mutable RefCell borrow since GC might borrow branch for marking 
+        drop(branch); // Stop mutable RefCell borrow since GC might borrow branch for marking
         block = gen_block_series(target, &target_ctx, ec, cb, ocb);
         branch = branch_rc.borrow_mut();
 
