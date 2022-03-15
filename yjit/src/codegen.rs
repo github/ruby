@@ -332,6 +332,10 @@ fn jit_prepare_routine_call(jit: &mut JITState, ctx: &mut Context, cb: &mut Code
     jit.record_boundary_patch_point = true;
     jit_save_pc(jit, cb, scratch_reg);
     gen_save_sp(cb, ctx);
+
+    // In case the routine calls Ruby methods, it can set local variables
+    // through Kernel#binding and other means.
+    ctx.clear_local_types();
 }
 
 // Record the current codeblock write position for rewriting into a jump into
@@ -340,11 +344,6 @@ fn record_global_inval_patch(cb: &mut CodeBlock, outline_block_target_pos: CodeP
 {
     CodegenGlobals::push_global_inval_patch(cb.get_write_ptr(), outline_block_target_pos);
 }
-
-
-
-
-
 
 /*
 // Verify the ctx's types and mappings against the compile-time stack, self,
