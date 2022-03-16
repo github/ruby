@@ -769,8 +769,8 @@ pub fn gen_single_block(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &m
 
             // If requested, dump instructions for debugging
             if get_option!(dump_insns) {
-                println!("compiled {}", insn_name(opcode));
-                print_str(cb, &format!("executed {}", insn_name(opcode)));
+                println!("compiling {}", insn_name(opcode));
+                print_str(cb, &format!("executing {}", insn_name(opcode)));
             }
 
             // Call the code generation function
@@ -792,6 +792,7 @@ pub fn gen_single_block(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &m
             if insn_idx == block.get_blockid().idx {
                 block.entry_exit = Some(exit);
             }
+
             break;
         }
 

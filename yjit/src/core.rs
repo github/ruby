@@ -1548,7 +1548,7 @@ fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -
     cb.mark_all_executable();
 
     let new_branch_size = branch.code_size();
-    assert!(new_branch_size <= branch_size_on_entry, "branch stubs should not enlarge branches");
+    assert!(new_branch_size <= branch_size_on_entry, "branch stubs should never enlarge branches");
 
     // Return a pointer to the compiled block version
     dst_addr.raw_ptr()
