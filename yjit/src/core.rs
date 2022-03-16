@@ -8,7 +8,7 @@ use crate::asm::x86_64::*;
 use crate::codegen::*;
 use crate::options::*;
 use crate::stats::*;
-use crate::utils::IntoUsize;
+use crate::utils::*;
 use InsnOpnd::*;
 use TempMapping::*;
 use core::ffi::{c_void};
@@ -1422,8 +1422,12 @@ fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -
     //branch_ptr is actually:
     //branch_ptr: *const RefCell<Branch>
     let branch_rc = unsafe { BranchRef::from_raw(branch_ptr as *const RefCell<Branch>) };
-    let mut branch = branch_rc.borrow_mut();
 
+    // We increment the strong count because we want to keep the reference owned
+    // by the branch stub alive. Return branch stubs can be hit multiple times.
+    unsafe { Rc::increment_strong_count(branch_ptr) };
+
+    let mut branch = branch_rc.borrow_mut();
     let branch_size_on_entry = branch.code_size();
 
     let target_idx: usize = target_idx.as_usize();
@@ -1583,9 +1587,10 @@ fn get_branch_target(
     // Generate an outlined stub that will call branch_stub_hit()
     let stub_addr = ocb.get_write_ptr();
 
-    // Get a raw pointer to the branch while keeping the
-    // reference count alive
-    let branch_ptr = BranchRef::into_raw( branchref.clone() );
+    // Get a raw pointer to the branch while keeping the reference count alive
+    // Here clone increments the strong count by 1
+    // This means the branch stub owns its own reference to the branch
+    let branch_ptr: *const RefCell<Branch> = BranchRef::into_raw( branchref.clone() );
 
     // Call branch_stub_hit(branch_idx, target_idx, ec)
     mov(ocb, C_ARG_REGS[2], REG_EC);
