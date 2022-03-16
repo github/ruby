@@ -671,22 +671,15 @@ fn add_block_version(blockref: &BlockRef)
     incr_counter!(compiled_block_count);
 }
 
-/*
-// Remove a block version
-static void
-block_array_remove(rb_yjit_block_array_t block_array, block_t *block)
+/// Remove a block version from the version map of its parent ISEQ
+fn remove_block_version(blockref: &BlockRef)
 {
-    block_t **element;
-    rb_darray_foreach(block_array, idx, element) {
-        if (*element == block) {
-            rb_darray_remove_unordered(block_array, idx);
-            return;
-        }
-    }
+    let block = blockref.borrow();
+    let version_list = get_version_list(block.blockid);
 
-    RUBY_ASSERT(false);
+    // Retain the versions that are not this one
+    version_list.retain(|other| !Rc::ptr_eq(&blockref, &other));
 }
-*/
 
 //===========================================================================
 // I put the implementation of traits for core.rs types below
@@ -1321,7 +1314,7 @@ pub fn gen_entry_point(iseq: IseqPtr, insn_idx: u32, ec: EcPtr) -> Option<CodePt
     return code_ptr;
 }
 
-// Generate code for a branch, possibly rewriting and changing the size of it
+/// Generate code for a branch, possibly rewriting and changing the size of it
 fn regenerate_branch(cb: &mut CodeBlock, branch: &mut Branch)
 {
     // FIXME
@@ -1366,7 +1359,7 @@ fn regenerate_branch(cb: &mut CodeBlock, branch: &mut Branch)
     }
 }
 
-// Create a new outgoing branch entry for a block
+/// Create a new outgoing branch entry for a block
 fn make_branch_entry(block: BlockRef, src_ctx: &Context, gen_fn: BranchGenFn) -> BranchRef
 {
     let branch = Branch {
@@ -1558,7 +1551,7 @@ fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -
     dst_addr.raw_ptr()
 }
 
-// Get a version or stub corresponding to a branch target
+/// Get a block version or stub corresponding to a branch target
 fn get_branch_target(
     target: BlockId,
     ctx: &Context,
@@ -1696,6 +1689,7 @@ pub fn gen_direct_jump(
     }
 }
 
+/// Create a stub to force the code up to this point to be executed
 pub fn defer_compilation(jit: &JITState, cur_ctx: &Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb)
 {
     if cur_ctx.chain_depth != 0 {
