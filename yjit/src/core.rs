@@ -1233,7 +1233,23 @@ fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &
         assert_ne!(last_branch.targets[0], BLOCKID_NULL, "block id must be filled");
 
         // Generate new block using context from the last branch.
-        let new_blockref = gen_single_block(requested_id, requested_ctx, ec, cb, ocb).ok()?;
+        let result = gen_single_block(requested_id, requested_ctx, ec, cb, ocb);
+
+        // If the block failed to compile
+        if result.is_err() {
+            // Remove previously compiled block
+            // versions from the version map
+            for blockref in &batch {
+                // FIXME: should be deallocating resources here too
+                // e.g. invariants, etc.
+                remove_block_version(blockref);
+            }
+
+            // Stop compiling
+            return None;
+        }
+
+        let new_blockref = result.unwrap();
 
         // Add the block version to the VersionMap for this ISEQ
         add_block_version(&new_blockref);
@@ -1252,19 +1268,6 @@ fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &
         // Repeat with newest block
         last_blockref = new_blockref;
     }
-
-    // FIXME: if we abort, we should ideally remove unneeded block versions
-    // However, as compilation errors are unlikely, we skip this for now
-
-    /*
-    // Install the block into the ISEQ payload for consideration in future LBBV code expansions.
-    // NOTE(alan): There is a slight deviation from C YJIT here. C YJIT runs add_block_version()
-    //             after generating each new block whereas we do it in one go at the end here.
-    //             This is simpler and let's see if the more complex setup is necessary.
-    for blockref in &batch {
-        add_block_version(blockref);
-    }
-    */
 
     Some(first_block)
 }
