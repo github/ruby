@@ -225,11 +225,6 @@ impl CodeBlock
 
     // Get a direct pointer into the executable memory block
     pub fn get_ptr(&self, offset: usize) -> CodePtr {
-        // The unwrapping/bounds checking should happen here
-        // because if we're calling this function with a
-        // wrong offset, it's a compiler bug
-        assert!(offset < self.mem_size);
-
         unsafe {
             let ptr = self.mem_block.offset(offset as isize);
             CodePtr(ptr)

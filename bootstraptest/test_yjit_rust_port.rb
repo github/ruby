@@ -328,3 +328,24 @@ assert_equal '3,12', %q{
   # Make sure it's returning '3,12' instead of e.g. '3,false'
   pt_inspect(p)
 }
+
+assert_equal '2', %q{
+  def foo(s)
+    s.foo
+  end
+
+  S = Struct.new(:foo)
+  foo(S.new(1))
+  foo(S.new(2))
+}
+
+# Try to compile new method while OOM
+assert_equal 'ok', %q{
+  def foo
+    :ok
+  end
+
+  RubyVM::YJIT.simulate_oom! if defined?(RubyVM::YJIT)
+
+  foo
+}
