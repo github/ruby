@@ -1542,7 +1542,7 @@ fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -
             // cfp->sp and cfp->pc. We set both before trying to generate the
             // block. All there is left to do to exit is to pop the native
             // frame. We do that in code_for_exit_from_stub.
-            todo!("code_for_exit_from_stub");
+            CodegenGlobals::get_stub_exit_code()
         }
     };
 

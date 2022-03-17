@@ -5258,6 +5258,10 @@ impl CodegenGlobals {
         CodegenGlobals::get_instance().leave_exit_code
     }
 
+    pub fn get_stub_exit_code() -> CodePtr {
+        CodegenGlobals::get_instance().stub_exit_code
+    }
+
     pub fn push_global_inval_patch(i_pos: CodePtr, o_pos: CodePtr) {
         let patch = CodepagePatch { inline_patch_pos: i_pos, outlined_target_pos: o_pos };
         CodegenGlobals::get_instance().global_inval_patches.push(patch);

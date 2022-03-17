@@ -349,3 +349,21 @@ assert_equal 'ok', %q{
 
   foo
 }
+
+# test hitting a branch stub when out of memory
+assert_equal 'ok', %q{
+  def nimai(jita)
+    if jita
+      :ng
+    else
+      :ok
+    end
+  end
+
+  nimai(true)
+  nimai(true)
+
+  RubyVM::YJIT.simulate_oom! if defined?(RubyVM::YJIT)
+
+  nimai(false)
+}
