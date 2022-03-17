@@ -313,3 +313,18 @@ assert_equal '2022', %q{
 
   contrivance(special_missing, :binding)
 }
+
+# Make sure we're correctly reading RStruct's as.ary union for embedded RStructs
+assert_equal '3,12', %q{
+  pt_struct = Struct.new(:x, :y)
+  p = pt_struct.new(3, 12)
+  def pt_inspect(pt)
+    "#{pt.x},#{pt.y}"
+  end
+
+  # Make sure pt_inspect is JITted
+  10.times { pt_inspect(p) }
+
+  # Make sure it's returning '3,12' instead of e.g. '3,false'
+  pt_inspect(p)
+}
