@@ -7,7 +7,9 @@ use crate::codegen::*;
 use crate::stats::*;
 use crate::asm::OutlinedCb;
 use crate::yjit::yjit_enabled_p;
-use std::collections::HashMap;
+
+use std::collections::{HashMap, HashSet};
+use std::mem;
 
 // Invariants to track:
 // assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_PLUS)
@@ -18,10 +20,6 @@ use std::collections::HashMap;
 /// Used to track all of the various block references that contain assumptions
 /// about the state of the virtual machine.
 pub struct Invariants {
-    /// Tracks block assumptions about the stability of a basic operator on a
-    /// given class.
-    basic_operators: HashMap<(RedefinitionFlag, ruby_basic_operators), Vec<BlockRef>>,
-
     /// Tracks block assumptions about callable method entry validity.
     cme_validity: HashMap<*const rb_callable_method_entry_t, Vec<BlockRef>>,
 
@@ -30,17 +28,20 @@ pub struct Invariants {
     /// b->callee_cme == rb_callable_method_entry(klass, mid).
     method_lookup: HashMap<VALUE, HashMap<ID, Vec<(BlockRef, ID)>>>,
 
+    /// Tracks the set of blocks that assume basic operators are not redefined.
+    basic_operators: HashSet<BlockRef>,
+
     /// Tracks the set of blocks that are assuming the interpreter is running
     /// with only one ractor. This is important for things like accessing
     /// constants which can have different semantics when multiple ractors are
     /// running.
-    single_ractor: Vec<BlockRef>,
+    single_ractor: HashSet<BlockRef>,
 
     /// Tracks the set of blocks that are assuming that the global constant
     /// state hasn't changed since the last time it was checked. This is
     /// important for accessing constants and their fields which can change
     /// between executions of a given block.
-    global_constant_state: Vec<BlockRef>
+    global_constant_state: HashSet<BlockRef>,
 }
 
 /// Private singleton instance of the invariants global struct.
@@ -51,11 +52,11 @@ impl Invariants {
         // Wrapping this in unsafe to assign directly to a global.
         unsafe {
             INVARIANTS = Some(Invariants {
-                basic_operators: HashMap::new(),
                 cme_validity: HashMap::new(),
                 method_lookup: HashMap::new(),
-                single_ractor: Vec::new(),
-                global_constant_state: Vec::new()
+                basic_operators: HashSet::new(),
+                single_ractor: HashSet::new(),
+                global_constant_state: HashSet::new(),
             });
         }
     }
@@ -73,13 +74,8 @@ pub fn assume_bop_not_redefined(jit: &mut JITState, ocb: &mut OutlinedCb, klass:
     if unsafe { BASIC_OP_UNREDEFINED_P(bop, klass) } {
         jit_ensure_block_entry_exit(jit, ocb);
 
-        // First, fetch the entry in the list of basic operators that
-        // corresponds to this class and basic operator tuple.
-        let entry = Invariants::get_instance().basic_operators.entry((klass, bop));
-
-        // Next, add the current block to the list of blocks that are assuming
-        // this basic operator is not redefined.
-        entry.or_insert(Vec::new()).push(jit.get_block());
+        // Keep track of the block assuming some basic operator is not redefined.
+        let entry = Invariants::get_instance().basic_operators.insert(jit.get_block());
 
         return true;
     } else {
@@ -119,7 +115,7 @@ pub fn assume_single_ractor_mode(jit: &mut JITState, ocb: &mut OutlinedCb) -> bo
         false
     } else {
         jit_ensure_block_entry_exit(jit, ocb);
-        Invariants::get_instance().single_ractor.push(jit.get_block());
+        Invariants::get_instance().single_ractor.insert(jit.get_block());
         true
     }
 }
@@ -128,13 +124,24 @@ pub fn assume_single_ractor_mode(jit: &mut JITState, ocb: &mut OutlinedCb) -> bo
 /// changed since the last call to this function.
 pub fn assume_stable_global_constant_state(jit: &mut JITState, ocb: &mut OutlinedCb) {
     jit_ensure_block_entry_exit(jit, ocb);
-    Invariants::get_instance().global_constant_state.push(jit.get_block());
+    Invariants::get_instance().global_constant_state.insert(jit.get_block());
 }
 
-/// Called when a basic operation is redefined.
+/// Called when a basic operator is redefined. Note that all the blocks assuming
+/// the stability of different operators are invalidated together and we don't
+/// do fine-grained tracking.
 #[no_mangle]
 pub extern "C" fn rb_yjit_bop_redefined(klass: RedefinitionFlag, bop: ruby_basic_operators) {
-    for block in Invariants::get_instance().basic_operators.entry((klass, bop)).or_insert(Vec::new()).iter() {
+    // If YJIT isn't enabled, do nothing
+    if !yjit_enabled_p() {
+        return;
+    }
+
+    // Clear the set of blocks inside Invariants
+    let blocks = mem::take(&mut Invariants::get_instance().basic_operators);
+
+    // Invalidate the blocks
+    for block in &blocks {
         invalidate_block_version(block);
         incr_counter!(invalidate_bop_redefined);
     }
@@ -181,7 +188,16 @@ pub extern "C" fn rb_yjit_method_lookup_change(klass: VALUE, mid: ID) {
 /// invalidate every block that is assuming single ractor mode.
 #[no_mangle]
 pub extern "C" fn rb_yjit_before_ractor_spawn() {
-    for block in Invariants::get_instance().single_ractor.iter() {
+    // If YJIT isn't enabled, do nothing
+    if !yjit_enabled_p() {
+        return;
+    }
+
+    // Clear the set of blocks inside Invariants
+    let blocks = mem::take(&mut Invariants::get_instance().single_ractor);
+
+    // Invalidate the blocks
+    for block in &blocks {
         invalidate_block_version(block);
         incr_counter!(invalidate_ractor_spawn);
     }
@@ -195,7 +211,11 @@ pub extern "C" fn rb_yjit_constant_state_changed() {
         return;
     }
 
-    for block in Invariants::get_instance().global_constant_state.iter() {
+    // Clear the set of blocks inside Invariants
+    let blocks = mem::take(&mut Invariants::get_instance().global_constant_state);
+
+    // Invalidate the blocks
+    for block in &blocks {
         invalidate_block_version(block);
         incr_counter!(invalidate_constant_state_bump);
     }
