@@ -30,6 +30,9 @@ jobs:
       # Also compile and test with all features enabled
       - run: RUST_BACKTRACE=1 cargo test --all-features
         working-directory: yjit
+      # Check that we can build in release mode too
+      - run: cargo build --release
+        working-directory: yjit
   make:
     strategy:
       matrix:
