@@ -181,6 +181,10 @@ impl CodeBlock
         self.asm_comments.get(&pos)
     }
 
+    pub fn get_mem_size(&self) -> usize {
+        self.mem_size
+    }
+
     pub fn get_write_pos(&self) -> usize {
         self.write_pos
     }

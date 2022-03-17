@@ -43,9 +43,9 @@ module RubyVM::YJIT
     end
   end
 
-  #def self.simulate_oom!
-  #  Primitive.simulate_oom_bang
-  #end
+  def self.simulate_oom!
+    Primitive.rb_yjit_simulate_oom_bang
+  end
 
   # Avoid calling a method here to not interfere with compilation tests
   if Primitive.rb_yjit_stats_enabled_p

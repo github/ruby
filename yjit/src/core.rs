@@ -1242,6 +1242,8 @@ fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &
             for blockref in &batch {
                 // FIXME: should be deallocating resources here too
                 // e.g. invariants, etc.
+                //free_block(blockref)
+
                 remove_block_version(blockref);
             }
 

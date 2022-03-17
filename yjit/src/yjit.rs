@@ -1,4 +1,4 @@
-use crate::cruby::{EcPtr, IseqPtr};
+use crate::cruby::*;
 use crate::codegen::*;
 use crate::core::*;
 use crate::invariants::*;
@@ -77,4 +77,18 @@ pub extern "C" fn rb_yjit_iseq_gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> *con
         Some(ptr) => ptr.raw_ptr(),
         None => std::ptr::null()
     }
+}
+
+/// Simulate a situation where we are out of executable memory
+#[no_mangle]
+pub extern "C" fn rb_yjit_simulate_oom_bang(ec: EcPtr, ruby_self: VALUE) -> VALUE {
+    #[cfg(debug_assertions)]
+    {
+        let cb = CodegenGlobals::get_inline_cb();
+        let ocb = CodegenGlobals::get_outlined_cb().unwrap();
+        cb.set_pos(cb.get_mem_size() - 1);
+        ocb.set_pos(ocb.get_mem_size() - 1);
+    }
+
+    return Qnil;
 }
