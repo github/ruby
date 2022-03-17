@@ -408,14 +408,6 @@ pub type CfpPtr = *mut rb_control_frame_struct;
 
 /// Opaque struct from vm_core.h
 #[repr(C)]
-pub struct ic_serial_entry {
-    _data: [u8; 0],
-    _marker:
-    core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
-}
-
-/// Opaque struct from vm_core.h
-#[repr(C)]
 pub struct rb_cref_t {
     _data: [u8; 0],
     _marker:
