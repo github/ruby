@@ -6,7 +6,7 @@ pub mod x86_64;
 /// Pointer to a piece of machine code
 /// We may later change this to wrap an u32
 /// Note: there is no NULL constant for CodePtr. You should use Option<CodePtr> instead.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Debug)]
 #[repr(C)]
 pub struct CodePtr(*const u8);
 
@@ -216,7 +216,7 @@ impl CodeBlock
     // Set the current write position from a pointer
     pub fn set_write_ptr(&mut self, code_ptr: CodePtr) {
         let pos = (code_ptr.raw_ptr() as usize) - (self.mem_block as usize);
-        self.set_pos(pos.try_into().unwrap());
+        self.set_pos(pos);
     }
 
     // Get a direct pointer into the executable memory block

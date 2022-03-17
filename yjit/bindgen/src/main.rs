@@ -209,6 +209,7 @@ fn main() {
         .allowlist_function("rb_yjit_vm_lock_then_barrier")
         .allowlist_function("rb_yjit_vm_unlock")
         .allowlist_function("rb_assert_(iseq|cme)_handle")
+        .allowlist_function("rb_iseq_reset_jit_func")
 
         // from vm_sync.h
         .allowlist_function("rb_vm_barrier")

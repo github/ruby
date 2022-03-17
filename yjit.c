@@ -300,6 +300,13 @@ rb_iseq_set_yjit_payload(const rb_iseq_t *iseq, void *payload)
     iseq->body->yjit_payload = payload;
 }
 
+void
+rb_iseq_reset_jit_func(const rb_iseq_t *iseq)
+{
+    RUBY_ASSERT_ALWAYS(IMEMO_TYPE_P(iseq, imemo_iseq));
+    iseq->body->jit_func = NULL;
+}
+
 // Get the PC for a given index in an iseq
 VALUE *
 rb_iseq_pc_at_idx(const rb_iseq_t *iseq, uint32_t insn_idx)

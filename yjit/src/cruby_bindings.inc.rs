@@ -675,6 +675,9 @@ extern "C" {
     pub fn rb_iseq_set_yjit_payload(iseq: *const rb_iseq_t, payload: *mut ::std::os::raw::c_void);
 }
 extern "C" {
+    pub fn rb_iseq_reset_jit_func(iseq: *const rb_iseq_t);
+}
+extern "C" {
     pub fn rb_iseq_pc_at_idx(iseq: *const rb_iseq_t, insn_idx: u32) -> *mut VALUE;
 }
 extern "C" {
