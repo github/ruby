@@ -28,8 +28,17 @@ pub struct Invariants {
     /// b->callee_cme == rb_callable_method_entry(klass, mid).
     method_lookup: HashMap<VALUE, HashMap<ID, Vec<(BlockRef, ID)>>>,
 
-    /// Tracks the set of blocks that assume basic operators are not redefined.
-    basic_operators: HashSet<BlockRef>,
+    /// A map from a class and its associated basic operator to a set of blocks
+    /// that are assuming that that operator is not redefined. This is used for
+    /// quick access to all of the blocks that are making this assumption when
+    /// the operator is redefined.
+    basic_operator_blocks: HashMap<(RedefinitionFlag, ruby_basic_operators), HashSet<BlockRef>>,
+
+    /// A map from a block to a set of classes and their associated basic
+    /// operators that the block is assuming are not redefined. This is used for
+    /// quick access to all of the assumptions that a block is making when it
+    /// needs to be invalidated.
+    block_basic_operators: HashMap<BlockRef, HashSet<(RedefinitionFlag, ruby_basic_operators)>>,
 
     /// Tracks the set of blocks that are assuming the interpreter is running
     /// with only one ractor. This is important for things like accessing
@@ -54,7 +63,8 @@ impl Invariants {
             INVARIANTS = Some(Invariants {
                 cme_validity: HashMap::new(),
                 method_lookup: HashMap::new(),
-                basic_operators: HashSet::new(),
+                basic_operator_blocks: HashMap::new(),
+                block_basic_operators: HashMap::new(),
                 single_ractor: HashSet::new(),
                 global_constant_state: HashSet::new(),
             });
@@ -74,8 +84,9 @@ pub fn assume_bop_not_redefined(jit: &mut JITState, ocb: &mut OutlinedCb, klass:
     if unsafe { BASIC_OP_UNREDEFINED_P(bop, klass) } {
         jit_ensure_block_entry_exit(jit, ocb);
 
-        // Keep track of the block assuming some basic operator is not redefined.
-        let entry = Invariants::get_instance().basic_operators.insert(jit.get_block());
+        let invariants = Invariants::get_instance();
+        invariants.basic_operator_blocks.entry((klass, bop)).or_insert(HashSet::new()).insert(jit.get_block());
+        invariants.block_basic_operators.entry(jit.get_block()).or_insert(HashSet::new()).insert((klass, bop));
 
         return true;
     } else {
@@ -137,14 +148,14 @@ pub extern "C" fn rb_yjit_bop_redefined(klass: RedefinitionFlag, bop: ruby_basic
         return;
     }
 
-    // Clear the set of blocks inside Invariants
-    let blocks = mem::take(&mut Invariants::get_instance().basic_operators);
-
-    // Invalidate the blocks
-    for block in &blocks {
-        invalidate_block_version(block);
-        incr_counter!(invalidate_bop_redefined);
-    }
+    // Loop through the blocks that are associated with this class and basic
+    // operator and invalidate them.
+    Invariants::get_instance().basic_operator_blocks.get_mut(&(klass, bop)).map(|blocks| {
+        for block in blocks.iter() {
+            invalidate_block_version(block);
+            incr_counter!(invalidate_bop_redefined);
+        }
+    });
 }
 
 /// Callback for when a cme becomes invalid. Invalidate all blocks that depend
@@ -257,24 +268,25 @@ pub extern "C" fn rb_yjit_root_mark() {
     }
 }
 
-/*
-static void
-yjit_block_assumptions_free(block_t *block)
-{
-    st_data_t as_st_data = (st_data_t)block;
-    if (blocks_assuming_stable_global_constant_state) {
-        st_delete(blocks_assuming_stable_global_constant_state, &as_st_data, NULL);
-    }
+/// Remove all invariant assumptions made by the block by removing the block as
+/// as a key in all of the relevant tables.
+pub fn block_assumptions_free(block: BlockRef) {
+    let invariants = Invariants::get_instance();
 
-    if (blocks_assuming_single_ractor_mode) {
-        st_delete(blocks_assuming_single_ractor_mode, &as_st_data, NULL);
-    }
+    invariants.block_basic_operators.get(&block).map(|bops| {
+        // Consume all of the bops associated with the given block so that we
+        // can iterate through the basic_operator_blocks table and remove all
+        // references to this block.
+        for key in bops.into_iter() {
+            invariants.basic_operator_blocks.get_mut(key).map(|blocks| {
+                blocks.remove(&block);
+            });
+        }
+    });
 
-    if (blocks_assuming_bops) {
-        st_delete(blocks_assuming_bops, &as_st_data, NULL);
-    }
+    invariants.single_ractor.remove(&block);
+    invariants.global_constant_state.remove(&block);
 }
-*/
 
 /*
 // Callback from the opt_setinlinecache instruction in the interpreter.
