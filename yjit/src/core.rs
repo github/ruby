@@ -2,6 +2,7 @@ use std::rc::{Rc, Weak};
 use std::cell::*;
 use std::ptr;
 use std::mem::size_of;
+use std::hash::{Hash, Hasher};
 use crate::cruby::*;
 use crate::asm::*;
 use crate::asm::x86_64::*;
@@ -326,8 +327,10 @@ pub struct Block
     pub entry_exit: Option<CodePtr>,
 }
 
-/// Reference-counted pointer to a block that can be borrowed mutably
-pub type BlockRef = Rc<RefCell<Block>>;
+/// Reference-counted pointer to a block that can be borrowed mutably.
+/// Wrapped so we could implement [Hash] and [Eq] for use with stdlib collections.
+#[derive(Debug)]
+pub struct BlockRef(Rc<RefCell<Block>>);
 
 /// Reference-counted pointer to a branch that can be borrowed mutably
 type BranchRef = Rc<RefCell<Branch>>;
@@ -338,6 +341,48 @@ type VersionList = Vec<BlockRef>;
 /// Map from iseq indices to lists of versions for that given blockid
 /// An instance of this is stored on each iseq
 type VersionMap = Vec<VersionList>;
+
+impl BlockRef {
+    /// Constructor
+    pub fn new(rc: Rc<RefCell<Block>>) -> Self {
+        Self(rc)
+    }
+
+    /// Borrow the block through [RefCell].
+    pub fn borrow(&self) -> Ref<'_, Block> {
+        self.0.borrow()
+    }
+
+    /// Borrow the block for mutation through [RefCell].
+    pub fn borrow_mut(&self) -> RefMut<'_, Block> {
+        self.0.borrow_mut()
+    }
+}
+
+impl Clone for BlockRef {
+    /// Clone the [Rc]
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl Hash for BlockRef {
+    /// Hash the reference by hashing the pointer
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let rc_ptr = Rc::as_ptr(&self.0);
+        rc_ptr.hash(state);
+    }
+}
+
+impl PartialEq for BlockRef {
+    /// Equality defined by allocation identity
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+/// It's comparison by identity so all the requirements are statisfied
+impl Eq for BlockRef { }
 
 /// This is all the data YJIT stores on an iseq
 /// This will be dynamically allocated by C code
@@ -678,7 +723,7 @@ fn remove_block_version(blockref: &BlockRef)
     let version_list = get_version_list(block.blockid);
 
     // Retain the versions that are not this one
-    version_list.retain(|other| !Rc::ptr_eq(&blockref, &other));
+    version_list.retain(|other| blockref != other);
 }
 
 //===========================================================================
@@ -703,7 +748,7 @@ impl Block {
 
         // Wrap the block in a reference counted refcell
         // so that the block ownership can be shared
-        Rc::new(RefCell::new(block))
+        BlockRef::new(Rc::new(RefCell::new(block)))
     }
 
     pub fn get_blockid(&self) -> BlockId {
@@ -1851,7 +1896,7 @@ pub fn invalidate_block_version(blockref: &BlockRef)
         let mut branch = branchref.borrow_mut();
         let target_idx = if branch.dst_addrs[0] == code_ptr { 0 } else { 1 };
         assert_eq!(branch.dst_addrs[target_idx], code_ptr);
-        assert!(BlockRef::ptr_eq(blockref, branch.blocks[target_idx].as_ref().unwrap()));
+        assert_eq!(blockref, branch.blocks[target_idx].as_ref().unwrap());
 
         // Mark this target as being a stub
         branch.blocks[target_idx] = None;
