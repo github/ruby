@@ -2394,12 +2394,10 @@ fn gen_equality_specialized(jit: &mut JITState, ctx: &mut Context, cb: &mut Code
     }
     else if unsafe { comptime_a.class_of() == rb_cString &&
             comptime_b.class_of() == rb_cString } {
-        /*
-        if (!assume_bop_not_redefined(jit, ocb, STRING_REDEFINED_OP_FLAG, BOP_EQ)) {
+        if !assume_bop_not_redefined(jit, ocb, STRING_REDEFINED_OP_FLAG, BOP_EQ) {
             // if overridden, emit the generic version
             return false;
         }
-        */
 
         // Load a and b in preparation for call later
         mov(cb, C_ARG_REGS[0], a_opnd);
@@ -2502,11 +2500,9 @@ fn gen_opt_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
     let side_exit = get_side_exit(jit, ocb, ctx);
 
     if comptime_recv.class_of() == unsafe { rb_cArray } && comptime_idx.fixnum_p() {
-        /*
-        if (!assume_bop_not_redefined(jit, ARRAY_REDEFINED_OP_FLAG, BOP_AREF)) {
+        if !assume_bop_not_redefined(jit, ocb, ARRAY_REDEFINED_OP_FLAG, BOP_AREF) {
             return CantCompile;
         }
-        */
 
         // Pop the stack operands
         let idx_opnd = ctx.stack_pop(1);
@@ -2552,11 +2548,9 @@ fn gen_opt_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
         return EndBlock;
     }
     else if comptime_recv.class_of() == unsafe { rb_cHash } {
-        /*
-        if (!assume_bop_not_redefined(jit, HASH_REDEFINED_OP_FLAG, BOP_AREF)) {
+        if !assume_bop_not_redefined(jit, ocb, HASH_REDEFINED_OP_FLAG, BOP_AREF) {
             return CantCompile;
         }
-        */
 
         let key_opnd = ctx.stack_opnd(0);
         let recv_opnd = ctx.stack_opnd(1);
@@ -2862,11 +2856,9 @@ fn gen_opt_empty_p(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
 
 fn gen_opt_str_freeze(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    /*
-    if (!assume_bop_not_redefined(jit, ocb, STRING_REDEFINED_OP_FLAG, BOP_FREEZE)) {
+    if !assume_bop_not_redefined(jit, ocb, STRING_REDEFINED_OP_FLAG, BOP_FREEZE) {
         return CantCompile;
     }
-    */
 
     let str = jit_get_arg(jit, 0);
     jit_mov_gc_ptr(jit, cb, REG0, str);
@@ -2880,11 +2872,9 @@ fn gen_opt_str_freeze(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock,
 
 fn gen_opt_str_uminus(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
-    /*
-    if (!assume_bop_not_redefined(jit, ocb, STRING_REDEFINED_OP_FLAG, BOP_UMINUS)) {
+    if !assume_bop_not_redefined(jit, ocb, STRING_REDEFINED_OP_FLAG, BOP_UMINUS) {
         return CantCompile;
     }
-    */
 
     let str = jit_get_arg(jit, 0);
     jit_mov_gc_ptr(jit, cb, REG0, str);
