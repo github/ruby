@@ -273,16 +273,17 @@ pub extern "C" fn rb_yjit_root_mark() {
 pub fn block_assumptions_free(block: BlockRef) {
     let invariants = Invariants::get_instance();
 
-    invariants.block_basic_operators.get(&block).map(|bops| {
-        // Consume all of the bops associated with the given block so that we
-        // can iterate through the basic_operator_blocks table and remove all
-        // references to this block.
-        for key in bops.into_iter() {
-            invariants.basic_operator_blocks.get_mut(key).map(|blocks| {
+    // Remove tracking for basic operators that the given block assumes have
+    // not been redefined.
+    if let Some(bops) = invariants.block_basic_operators.remove(&block) {
+        // Remove tracking for the given block from the list of blocks associated
+        // with the given basic operator.
+        for key in &bops {
+            if let Some(blocks) = invariants.basic_operator_blocks.get_mut(key) {
                 blocks.remove(&block);
-            });
+            }
         }
-    });
+    }
 
     invariants.single_ractor.remove(&block);
     invariants.global_constant_state.remove(&block);
