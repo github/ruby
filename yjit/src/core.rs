@@ -1853,10 +1853,6 @@ pub fn invalidate_block_version(blockref: &BlockRef)
     let cb = CodegenGlobals::get_inline_cb();
     let ocb = CodegenGlobals::get_outlined_cb();
 
-    //fprintf(stderr, "invalidating block (%p, %d)\n", block.blockid.iseq, block.blockid.idx);
-    //fprintf(stderr, "block=%p\n", block);
-
-
     // Remove this block from the version array
     remove_block_version(blockref);
 
