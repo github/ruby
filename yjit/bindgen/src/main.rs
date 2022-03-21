@@ -180,8 +180,6 @@ fn main() {
         .allowlist_type("IVC") // pointer to iseq_inline_iv_cache_entry
         .allowlist_type("IC")  // pointer to iseq_inline_constant_cache
         .allowlist_type("iseq_inline_constant_cache_entry")
-        .blocklist_type("ic_serial_entry.*") // don't need this directly, opaqued to allow IC import
-        .opaque_type("ic_serial_entry.*")
         .blocklist_type("rb_cref_t")         // don't need this directly, opaqued to allow IC import
         .opaque_type("rb_cref_t")
         .allowlist_type("iseq_inline_iv_cache_entry")
