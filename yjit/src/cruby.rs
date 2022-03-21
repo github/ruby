@@ -513,6 +513,11 @@ impl VALUE {
         us as *const T
     }
 
+    pub fn as_mut_ptr<T>(self: VALUE) -> *mut T {
+        let VALUE(us) = self;
+        us as *mut T
+    }
+
     /// Assert that `self` is an iseq in debug builds
     pub fn as_iseq(self) -> IseqPtr {
         let ptr: IseqPtr = self.as_ptr();
@@ -741,6 +746,9 @@ pub const RARRAY_EMBED_LEN_MASK:usize = RUBY_FL_USER_3 | RUBY_FL_USER_4;
 // From internal/struct.h
 pub const RSTRUCT_EMBED_LEN_MASK:usize = RUBY_FL_USER_2 | RUBY_FL_USER_1;
 
+// From iseq.h
+pub const ISEQ_TRANSLATED:usize = RUBY_FL_USER_7;
+
 // We'll need to encode a lot of Ruby struct/field offsets as constants unless we want to
 // redeclare all the Ruby C structs and write our own offsetof macro. For now, we use constants.
 pub const RUBY_OFFSET_RBASIC_FLAGS:i32 = 0;  // struct RBasic, field "flags"
@@ -781,6 +789,7 @@ pub const RUBY_OFFSET_IC_ENTRY: i32 = 0;
 pub const RUBY_OFFSET_ICE_VALUE: i32 = 8;
 
 // TODO: need to dynamically autogenerate constants for all the YARV opcodes from insns.def
+// TODO: typing of these adds unnecessary casting
 pub const OP_NOP:usize = 0;
 pub const OP_GETLOCAL:usize = 1;
 pub const OP_SETLOCAL:usize = 2;
