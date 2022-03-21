@@ -160,15 +160,6 @@ pub fn jit_mov_gc_ptr(jit:&mut JITState, cb: &mut CodeBlock, reg:X86Opnd, ptr: V
 /*
 // Print the current source location for debugging purposes
 RBIMPL_ATTR_MAYBE_UNUSED()
-static void
-jit_print_loc(jitstate_t *jit, const char *msg)
-{
-    char *ptr;
-    long len;
-    VALUE path = rb_iseq_path(jit->iseq);
-    RSTRING_GETMEM(path, ptr, len);
-    fprintf(stderr, "%s %.*s:%u\n", msg, (int)len, ptr, rb_iseq_line_no(jit->iseq, jit->insn_idx));
-}
 
 // dump an object for debugging purposes
 RBIMPL_ATTR_MAYBE_UNUSED()

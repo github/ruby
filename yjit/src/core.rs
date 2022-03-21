@@ -279,9 +279,9 @@ impl Branch
 // In case this block is invalidated, these two pieces of info
 // help to remove all pointers to this block in the system.
 #[derive(Debug)]
-struct CmeDependency {
-    receiver_klass: VALUE,
-    callee_cme: *const rb_callable_method_entry_t,
+pub struct CmeDependency {
+    pub receiver_klass: VALUE,
+    pub callee_cme: *const rb_callable_method_entry_t,
 }
 
 /// Basic block version
@@ -771,6 +771,11 @@ impl Block {
         self.end_addr
     }
 
+    /// Get an immutable iterator over cme dependencies
+    pub fn iter_cme_deps(&self) -> std::slice::Iter<'_, CmeDependency> {
+        self.cme_dependencies.iter()
+    }
+
     /// Set the starting address in the generated code for the block
     /// This can be done only once for a block
     pub fn set_start_addr(&mut self, addr: CodePtr) {
@@ -1223,6 +1228,14 @@ impl Context {
         }
 
         return diff;
+    }
+}
+
+impl BlockId {
+    /// Print Ruby source location for debugging
+    #[cfg(debug_assertions)]
+    fn dump_src_loc(&self) {
+        unsafe { rb_yjit_dump_iseq_loc(self.iseq, self.idx) }
     }
 }
 
@@ -1776,55 +1789,42 @@ pub fn defer_compilation(jit: &JITState, cur_ctx: &Context, cb: &mut CodeBlock, 
 // Remove all references to a block then free it.
 fn free_block(blockref: &BlockRef)
 {
-    todo!("free_block unimplemented");
-    /*
-    yjit_unlink_method_lookup_dependency(block);
-    yjit_block_assumptions_free(block);
+    use crate::invariants::*;
+
+    block_assumptions_free(blockref);
+
+    let block = blockref.borrow();
 
     // Remove this block from the predecessor's targets
-    rb_darray_for(block->incoming, incoming_idx) {
+    for pred_branchref in &block.incoming {
         // Branch from the predecessor to us
-        branch_t *pred_branch = rb_darray_get(block->incoming, incoming_idx);
+        let mut pred_branch = pred_branchref.borrow_mut();
 
         // If this is us, nullify the target block
-        for (size_t succ_idx = 0; succ_idx < 2; succ_idx++) {
-            if (pred_branch->blocks[succ_idx] == block) {
-                pred_branch->blocks[succ_idx] = NULL;
+        for pred_succ_ref in &mut pred_branch.blocks {
+            if let Some(pred_succ) = pred_succ_ref {
+                if pred_succ == blockref {
+                    *pred_succ_ref = None;
+                }
             }
         }
     }
 
     // For each outgoing branch
-    rb_darray_for(block->outgoing, branch_idx) {
-        branch_t *out_branch = rb_darray_get(block->outgoing, branch_idx);
+    for out_branchref in &block.outgoing {
+        let out_branch = out_branchref.borrow();
 
         // For each successor block
-        for (size_t succ_idx = 0; succ_idx < 2; succ_idx++) {
-            block_t *succ = out_branch->blocks[succ_idx];
-
-            if (succ == NULL)
-                continue;
-
-            // Remove this block from the successor's incoming list
-            rb_darray_for(succ->incoming, incoming_idx) {
-                branch_t *pred_branch = rb_darray_get(succ->incoming, incoming_idx);
-                if (pred_branch == out_branch) {
-                    rb_darray_remove_unordered(succ->incoming, incoming_idx);
-                    break;
-                }
+        for succ in &out_branch.blocks {
+            if let Some(succ) = succ {
+                // Remove outgoing branch from the successor's incoming list
+                let mut succ_block = succ.borrow_mut();
+                succ_block.incoming.retain(|succ_incoming| !Rc::ptr_eq(succ_incoming, out_branchref));
             }
         }
-
-        // Free the outgoing branch entry
-        free(out_branch);
     }
 
-    rb_darray_free(block->incoming);
-    rb_darray_free(block->outgoing);
-    rb_darray_free(block->gc_object_offsets);
-
-    free(block);
-    */
+    // No explicit deallocation here as blocks are ref-counted.
 }
 
 
@@ -1969,10 +1969,10 @@ pub fn invalidate_block_version(blockref: &BlockRef)
 
     free_block(blockref);
 
-    incr_counter!(invalidation_count);
-
     ocb.unwrap().mark_all_executable();
     cb.mark_all_executable();
+
+    incr_counter!(invalidation_count);
 }
 
 #[cfg(test)]

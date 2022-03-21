@@ -749,6 +749,9 @@ extern "C" {
     pub fn rb_cfp_get_iseq(cfp: *mut rb_control_frame_struct) -> *mut rb_iseq_t;
 }
 extern "C" {
+    pub fn rb_yjit_dump_iseq_loc(iseq: *const rb_iseq_t, insn_idx: u32);
+}
+extern "C" {
     pub fn rb_yjit_multi_ractor_p() -> bool;
 }
 extern "C" {

@@ -21,12 +21,12 @@ use std::mem;
 /// about the state of the virtual machine.
 pub struct Invariants {
     /// Tracks block assumptions about callable method entry validity.
-    cme_validity: HashMap<*const rb_callable_method_entry_t, Vec<BlockRef>>,
+    cme_validity: HashMap<*const rb_callable_method_entry_t, HashSet<BlockRef>>,
 
     /// Tracks block assumptions about method lookup. Maps a class to a table of
     /// method ID points to a set of blocks. While a block `b` is in the table,
     /// b->callee_cme == rb_callable_method_entry(klass, mid).
-    method_lookup: HashMap<VALUE, HashMap<ID, Vec<(BlockRef, ID)>>>,
+    method_lookup: HashMap<VALUE, HashMap<ID, HashSet<BlockRef>>>,
 
     /// A map from a class and its associated basic operator to a set of blocks
     /// that are assuming that that operator is not redefined. This is used for
@@ -111,13 +111,13 @@ pub fn assume_method_lookup_stable(jit: &mut JITState, ocb: &mut OutlinedCb, rec
     let block = jit.get_block();
     block.borrow_mut().add_cme_dependency(receiver_klass, callee_cme);
 
-    Invariants::get_instance().cme_validity.entry(callee_cme).or_insert(Vec::new()).push(block.clone());
+    Invariants::get_instance().cme_validity.entry(callee_cme).or_insert(HashSet::new()).insert(block.clone());
 
     let mid = unsafe { (*callee_cme).called_id };
     Invariants::get_instance().method_lookup
         .entry(receiver_klass).or_insert(HashMap::new())
-        .entry(mid).or_insert(Vec::new())
-        .push((block.clone(), mid));
+        .entry(mid).or_insert(HashSet::new())
+        .insert(block.clone());
 }
 
 /// Tracks that a block is assuming it is operating in single-ractor mode.
@@ -150,7 +150,7 @@ pub extern "C" fn rb_yjit_bop_redefined(klass: RedefinitionFlag, bop: ruby_basic
 
     // Loop through the blocks that are associated with this class and basic
     // operator and invalidate them.
-    Invariants::get_instance().basic_operator_blocks.get_mut(&(klass, bop)).map(|blocks| {
+    Invariants::get_instance().basic_operator_blocks.remove(&(klass, bop)).map(|blocks| {
         for block in blocks.iter() {
             invalidate_block_version(block);
             incr_counter!(invalidate_bop_redefined);
@@ -186,12 +186,12 @@ pub extern "C" fn rb_yjit_method_lookup_change(klass: VALUE, mid: ID) {
     }
 
     Invariants::get_instance().method_lookup.entry(klass).and_modify(|deps| {
-        deps.remove(&mid).map(|deps| {
-            for (block, mid) in deps.iter() {
+        if let Some(deps) = deps.remove(&mid) {
+            for block in &deps {
                 invalidate_block_version(block);
                 incr_counter!(invalidate_method_lookup);
             }
-        });
+        }
     });
 }
 
@@ -270,23 +270,43 @@ pub extern "C" fn rb_yjit_root_mark() {
 
 /// Remove all invariant assumptions made by the block by removing the block as
 /// as a key in all of the relevant tables.
-pub fn block_assumptions_free(block: BlockRef) {
+pub fn block_assumptions_free(blockref: &BlockRef) {
     let invariants = Invariants::get_instance();
 
-    // Remove tracking for basic operators that the given block assumes have
-    // not been redefined.
-    if let Some(bops) = invariants.block_basic_operators.remove(&block) {
-        // Remove tracking for the given block from the list of blocks associated
-        // with the given basic operator.
-        for key in &bops {
-            if let Some(blocks) = invariants.basic_operator_blocks.get_mut(key) {
-                blocks.remove(&block);
+    {
+        let block = blockref.borrow();
+
+        // For each method lookup dependency
+        for dep in block.iter_cme_deps() {
+            // Remove tracking for cme validity
+            if let Some(blockset) = invariants.cme_validity.get_mut(&dep.callee_cme) {
+                blockset.remove(blockref);
+            }
+
+            // Remove tracking for lookup stability
+            if let Some(id_to_block_set) = invariants.method_lookup.get_mut(&dep.receiver_klass) {
+                let mid = unsafe { (*dep.callee_cme).called_id };
+                if let Some(block_set) = id_to_block_set.get_mut(&mid) {
+                    block_set.remove(&blockref);
+                }
             }
         }
     }
 
-    invariants.single_ractor.remove(&block);
-    invariants.global_constant_state.remove(&block);
+    // Remove tracking for basic operators that the given block assumes have
+    // not been redefined.
+    if let Some(bops) = invariants.block_basic_operators.remove(&blockref) {
+        // Remove tracking for the given block from the list of blocks associated
+        // with the given basic operator.
+        for key in &bops {
+            if let Some(blocks) = invariants.basic_operator_blocks.get_mut(key) {
+                blocks.remove(&blockref);
+            }
+        }
+    }
+
+    invariants.single_ractor.remove(&blockref);
+    invariants.global_constant_state.remove(&blockref);
 }
 
 /*
