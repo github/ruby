@@ -69,6 +69,7 @@ Note: We're only listing outstanding class updates.
 
 * Proc
     * Proc#dup returns an instance of subclass. [[Bug #17545]]
+    * Proc#parameters now accepts lambda keyword. [[Feature #15357]]
 
 * Refinement
     * Refinement#refined_class has been added. [[Feature #12737]]
@@ -81,6 +82,7 @@ Note: We're only listing outstanding class updates.
     * String#byteindex and String#byterindex have been added. [[Feature #13110]]
     * Update Unicode to Version 14.0.0 and Emoji Version 14.0. [[Feature #18037]]
       (also applies to Regexp)
+    * String#bytesplice has been added.  [[Feature #18598]]
 
 * Struct
     * A Struct class can also be initialized with keyword arguments
@@ -97,6 +99,7 @@ Note: We're only listing outstanding class updates.
     * io-console 0.5.11
     * io-wait 0.2.2.pre1
     * ipaddr 1.2.4
+    * logger 1.5.1
     * ostruct 0.5.3
     * reline 0.3.1
     * securerandom 0.2.0
@@ -169,6 +172,7 @@ The following deprecated APIs are removed.
 [Feature #13110]: https://bugs.ruby-lang.org/issues/13110
 [Feature #14332]: https://bugs.ruby-lang.org/issues/14332
 [Feature #15231]: https://bugs.ruby-lang.org/issues/15231
+[Feature #15357]: https://bugs.ruby-lang.org/issues/15357
 [Bug #15928]:     https://bugs.ruby-lang.org/issues/15928
 [Feature #16131]: https://bugs.ruby-lang.org/issues/16131
 [Feature #16806]: https://bugs.ruby-lang.org/issues/16806
@@ -181,3 +185,4 @@ The following deprecated APIs are removed.
 [Feature #18037]: https://bugs.ruby-lang.org/issues/18037
 [Feature #18351]: https://bugs.ruby-lang.org/issues/18351
 [Feature #18585]: https://bugs.ruby-lang.org/issues/18585
+[Feature #18598]: https://bugs.ruby-lang.org/issues/18598
