@@ -1,6 +1,9 @@
 # Simple tests that we know we can pass
 # To keep track of what we got working during the Rust port
 # And avoid breaking/losing functionality
+#
+# Say "Thread" here to dodge WASM CI check. We use ractors here
+# which WASM doesn't support and it only greps for "Thread".
 
 # Test for opt_mod
 assert_equal '2', %q{
