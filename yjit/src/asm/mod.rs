@@ -365,15 +365,6 @@ impl CodeBlock
         }
     }
 
-    pub fn mark_all_writable(&mut self) {
-        todo!();
-
-        //if (mprotect(cb->mem_block_, cb->mem_size, PROT_READ | PROT_WRITE)) {
-        //    fprintf(stderr, "Couldn't make JIT page (%p) writable, errno: %s", (void *)cb->mem_block_, strerror(errno));
-        //    abort();
-        //}
-    }
-
     pub fn mark_all_executable(&mut self) {
         self.current_aligned_write_pos = ALIGNED_WRITE_POSITION_NONE;
 

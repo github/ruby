@@ -9,12 +9,10 @@ use crate::utils::*;
 use InsnOpnd::*;
 use CodegenStatus::*;
 
-use std::cell::{RefCell, RefMut};
-use std::rc::Rc;
+use std::cell::{RefMut};
 use std::mem;
 use std::mem::size_of;
 use std::os::raw::{c_uint};
-use std::slice;
 use std::collections::{HashMap};
 
 // Callee-saved registers
@@ -1083,7 +1081,6 @@ fn gen_opt_plus(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::asm::x86_64::*;
 
     fn setup_codegen() -> (JITState, Context, CodeBlock, OutlinedCb) {
         let block = Block::new(BLOCKID_NULL, &Context::default());
@@ -1453,7 +1450,6 @@ fn guard_object_is_heap(cb: &mut CodeBlock, object_opnd: X86Opnd, ctx: &mut Cont
     jnz_ptr(cb, side_exit);
 
     // Test that the object is not false or nil
-    let VALUE(qnilval) = Qnil;
     cmp(cb, object_opnd, uimm_opnd(Qnil.into()));
     jbe_ptr(cb, side_exit);
 }
@@ -1898,7 +1894,7 @@ pub const SEND_MAX_DEPTH:i32 = 5;
 //   - receiver is in REG0
 //   - receiver has the same class as CLASS_OF(comptime_receiver)
 //   - no stack push or pops to ctx since the entry to the codegen of the instruction being compiled
-fn gen_set_ivar(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, recv:VALUE, klass:VALUE, ivar_name: ID) -> CodegenStatus
+fn gen_set_ivar(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, recv:VALUE, ivar_name: ID) -> CodegenStatus
 {
     // Save the PC and SP because the callee may allocate
     // Note that this modifies REG_SP, which is why we do it first
@@ -4339,7 +4335,7 @@ fn gen_send_general(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
                 }
                 else {
                     let ivar_name = unsafe { get_cme_def_body_attr_id(cme) };
-                    return gen_set_ivar(jit, ctx, cb, comptime_recv, comptime_recv_klass, ivar_name);
+                    return gen_set_ivar(jit, ctx, cb, comptime_recv, ivar_name);
                 }
             },
             // Block method, e.g. define_method(:foo) { :my_block }
