@@ -589,6 +589,19 @@ fn get_version_list(blockid: BlockId) -> &'static mut VersionList
     return payload.version_map.get_mut(insn_idx).unwrap();
 }
 
+/// Take all of the blocks for a particular place in an iseq
+pub fn take_version_list(blockid: BlockId) -> VersionList
+{
+    let payload = get_iseq_payload(blockid.iseq);
+    let insn_idx = blockid.idx.as_usize();
+
+    if insn_idx >= payload.version_map.len() {
+        VersionList::default()
+    } else {
+        payload.version_map.remove(insn_idx)
+    }
+}
+
 /// Count the number of block versions matching a given blockid
 fn get_num_versions(blockid: BlockId) -> usize
 {

@@ -6,6 +6,7 @@ use crate::cruby::*;
 use crate::codegen::*;
 use crate::stats::*;
 use crate::asm::OutlinedCb;
+use crate::utils::IntoUsize;
 use crate::yjit::yjit_enabled_p;
 
 use std::collections::{HashMap, HashSet};
@@ -309,66 +310,52 @@ pub fn block_assumptions_free(blockref: &BlockRef) {
     invariants.global_constant_state.remove(&blockref);
 }
 
-/*
-// Callback from the opt_setinlinecache instruction in the interpreter.
-// Invalidate the block for the matching opt_getinlinecache so it could regenerate code
-// using the new value in the constant cache.
-void
-rb_yjit_constant_ic_update(const rb_iseq_t *const iseq, IC ic)
-{
-    if (!rb_yjit_enabled_p()) return;
-
-    // We can't generate code in these situations, so no need to invalidate.
-    // See gen_opt_getinlinecache.
-    if (ic->entry->ic_cref || rb_multi_ractor_p()) {
+/// Callback from the opt_setinlinecache instruction in the interpreter.
+/// Invalidate the block for the matching opt_getinlinecache so it could regenerate code
+/// using the new value in the constant cache.
+#[no_mangle]
+pub extern "C" fn rb_yjit_constant_ic_update(iseq: *const rb_iseq_t, ic: IC) {
+    // If YJIT isn't enabled, do nothing
+    if !yjit_enabled_p() {
         return;
     }
 
-    RB_VM_LOCK_ENTER();
-    rb_vm_barrier(); // Stop other ractors since we are going to patch machine code.
-    {
-        const struct rb_iseq_constant_body *const body = iseq->body;
-        VALUE *code = body->iseq_encoded;
-        const unsigned get_insn_idx = ic->get_insn_idx;
+    if !unsafe { (*(*ic).entry).ic_cref }.is_null() || unsafe { rb_yjit_multi_ractor_p() } {
+        // We can't generate code in these situations, so no need to invalidate.
+        // See gen_opt_getinlinecache.
+        return;
+    }
+
+    with_vm_lock(src_loc!(), || {
+        let code = unsafe { get_iseq_body_iseq_encoded(iseq) };
+        let get_insn_idx = unsafe { (*ic).get_insn_idx };
 
         // This should come from a running iseq, so direct threading translation
         // should have been done
-        RUBY_ASSERT(FL_TEST((VALUE)iseq, ISEQ_TRANSLATED));
-        RUBY_ASSERT(get_insn_idx < body->iseq_size);
-        RUBY_ASSERT(rb_vm_insn_addr2insn((const void *)code[get_insn_idx]) == BIN(opt_getinlinecache));
+        assert!(unsafe { FL_TEST(iseq.into(), VALUE(ISEQ_TRANSLATED)) } != VALUE(0));
+        assert!(get_insn_idx < unsafe { get_iseq_encoded_size(iseq) });
+
+        // Ensure that the instruction the get_insn_idx is pointing to is in
+        // fact a opt_getinlinecache instruction.
+        let opcode_pc = unsafe { code.add(get_insn_idx.as_usize()) };
+        assert!(unsafe { rb_iseq_opcode_at_pc(iseq, opcode_pc) } == OP_OPT_GETINLINECACHE.try_into().unwrap());
 
         // Find the matching opt_getinlinecache and invalidate all the blocks there
-        RUBY_ASSERT(insn_op_type(BIN(opt_getinlinecache), 1) == TS_IC);
-        if (ic == (IC)code[get_insn_idx + 1 + 1]) {
-            rb_yjit_block_array_t getinlinecache_blocks = yjit_get_version_array(iseq, get_insn_idx);
+        // RUBY_ASSERT(insn_op_type(BIN(opt_getinlinecache), 1) == TS_IC);
 
-            // Put a bound for loop below to be defensive
-            const int32_t initial_version_count = rb_darray_size(getinlinecache_blocks);
-            for (int32_t iteration=0; iteration<initial_version_count; ++iteration) {
-                getinlinecache_blocks = yjit_get_version_array(iseq, get_insn_idx);
+        let ic_pc = unsafe { code.add(get_insn_idx.as_usize() + 2) };
+        let ic_operand: IC = unsafe { ic_pc.read() }.as_mut_ptr();
 
-                if (rb_darray_size(getinlinecache_blocks) > 0) {
-                    block_t *block = rb_darray_get(getinlinecache_blocks, 0);
-                    invalidate_block_version(block);
-#if YJIT_STATS
-                    yjit_runtime_counters.invalidate_constant_ic_fill++;
-#endif
-                }
-                else {
-                    break;
-                }
+        if ic == ic_operand {
+            for block in take_version_list(BlockId { iseq, idx: get_insn_idx }) {
+                invalidate_block_version(&block);
+                incr_counter!(invalidate_constant_ic_fill);
             }
-
-            // All versions at get_insn_idx should now be gone
-            RUBY_ASSERT(0 == rb_darray_size(yjit_get_version_array(iseq, get_insn_idx)));
+        } else {
+            panic!("ic->get_insn_index not set properly");
         }
-        else {
-            RUBY_ASSERT(false && "ic->get_insn_diex not set properly");
-        }
-    }
-    RB_VM_LOCK_LEAVE();
+    });
 }
-*/
 
 // Invalidate all generated code and patch C method return code to contain
 // logic for firing the c_return TracePoint event. Once rb_vm_barrier()
