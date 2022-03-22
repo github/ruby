@@ -233,8 +233,7 @@ impl CodeBlock
 
     // Get a direct pointer to the current write position
     pub fn get_write_ptr(&mut self) -> CodePtr {
-         self.get_ptr(self.write_pos)
-
+        self.get_ptr(self.write_pos)
     }
 
     // Write a single byte at the current position

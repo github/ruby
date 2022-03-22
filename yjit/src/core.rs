@@ -1,6 +1,7 @@
 use std::rc::{Rc, Weak};
 use std::cell::*;
 use std::ptr;
+use std::mem;
 use std::mem::size_of;
 use std::hash::{Hash, Hasher};
 use crate::cruby::*;
@@ -389,12 +390,31 @@ impl Eq for BlockRef { }
 /// C code should pass an &mut IseqPayload to us
 /// when calling into YJIT
 #[derive(Default)]
-struct IseqPayload
+pub struct IseqPayload
 {
     version_map: VersionMap
 }
 
-/// Get the payload object associated with an iseq
+impl IseqPayload {
+    /// Remove all block versions from the payload and then return them as an iterator
+    pub fn take_all_blocks(&mut self) -> impl Iterator<Item = BlockRef> {
+        // Empty the blocks
+        let version_map = mem::take(&mut self.version_map);
+
+        // Turn it into an iterator that owns the blocks and return
+        version_map.into_iter().flat_map(|versions| versions)
+    }
+}
+
+/// Get the payload for an iseq. For safety it's up to the caller to ensure the returned `&mut`
+/// upholds aliasing rules and that the argument is a valid iseq.
+pub unsafe fn load_iseq_payload(iseq: IseqPtr) -> Option<&'static mut IseqPayload> {
+    let payload = rb_iseq_get_yjit_payload(iseq);
+    let payload: *mut IseqPayload = payload.cast();
+    payload.as_mut()
+}
+
+/// Get the payload object associated with an iseq. Create one if none exists.
 fn get_iseq_payload(iseq: IseqPtr) -> &'static mut IseqPayload
 {
     use core::ffi::c_void;

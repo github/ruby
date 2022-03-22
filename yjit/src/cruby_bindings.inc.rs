@@ -760,6 +760,10 @@ extern "C" {
 extern "C" {
     pub fn rb_assert_cme_handle(handle: VALUE);
 }
+pub type iseq_callback = ::std::option::Option<unsafe extern "C" fn(arg1: *const rb_iseq_t)>;
+extern "C" {
+    pub fn rb_yjit_for_each_iseq(callback: iseq_callback);
+}
 extern "C" {
     pub fn rb_yjit_vm_lock_then_barrier(
         file: *const ::std::os::raw::c_char,

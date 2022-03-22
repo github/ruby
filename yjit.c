@@ -3,6 +3,7 @@
 // in headers and prefixing function names.
 
 #include "internal.h"
+#include "internal/sanitizers.h"
 #include "internal/string.h"
 #include "internal/hash.h"
 #include "internal/variable.h"
@@ -94,28 +95,6 @@ rb_yjit_mark_executable(void *mem_block, uint32_t mem_size) {
         abort();
     }
 }
-
-// TODO: not yet ported
-/*
-void rb_yjit_mark_position_writeable(codeblock_t * cb, uint32_t write_pos)
-{
-#ifdef _WIN32
-    uint32_t pagesize = 0x1000; // 4KB
-#else
-    uint32_t pagesize = (uint32_t)sysconf(_SC_PAGESIZE);
-#endif
-    uint32_t aligned_position = (write_pos / pagesize) * pagesize;
-
-    if (cb->current_aligned_write_pos != aligned_position) {
-        cb->current_aligned_write_pos = aligned_position;
-        void *const page_addr = cb_get_ptr(cb, aligned_position);
-        if (mprotect(page_addr, pagesize, PROT_READ | PROT_WRITE)) {
-            fprintf(stderr, "Couldn't make JIT page (%p) writeable, errno: %s", page_addr, strerror(errno));
-            abort();
-        }
-    }
-}
-*/
 
 uint32_t
 rb_yjit_get_page_size(void)
@@ -289,13 +268,20 @@ void *
 rb_iseq_get_yjit_payload(const rb_iseq_t *iseq)
 {
     RUBY_ASSERT_ALWAYS(IMEMO_TYPE_P(iseq, imemo_iseq));
-    return iseq->body->yjit_payload;
+    if (iseq->body) {
+        return iseq->body->yjit_payload;
+    }
+    else {
+        // Body is NULL when constructing the iseq.
+        return NULL;
+    }
 }
 
 void
 rb_iseq_set_yjit_payload(const rb_iseq_t *iseq, void *payload)
 {
     RUBY_ASSERT_ALWAYS(IMEMO_TYPE_P(iseq, imemo_iseq));
+    RUBY_ASSERT_ALWAYS(iseq->body);
     RUBY_ASSERT_ALWAYS(NULL == iseq->body->yjit_payload);
     iseq->body->yjit_payload = payload;
 }
@@ -713,6 +699,36 @@ rb_assert_cme_handle(VALUE handle)
 {
     RUBY_ASSERT_ALWAYS(rb_objspace_markable_object_p(handle));
     RUBY_ASSERT_ALWAYS(IMEMO_TYPE_P(handle, imemo_ment));
+}
+
+typedef void (*iseq_callback)(const rb_iseq_t *);
+
+// Heap-walking callback for rb_yjit_for_each_iseq().
+static int
+for_each_iseq_i(void *vstart, void *vend, size_t stride, void *data)
+{
+    const iseq_callback callback = (iseq_callback)data;
+    VALUE v = (VALUE)vstart;
+    for (; v != (VALUE)vend; v += stride) {
+        void *ptr = asan_poisoned_object_p(v);
+        asan_unpoison_object(v, false);
+
+        if (rb_obj_is_iseq(v)) {
+            rb_iseq_t *iseq = (rb_iseq_t *)v;
+            callback(iseq);
+        }
+
+        asan_poison_object_if(ptr, v);
+    }
+    return 0;
+}
+
+// Iterate through the whole GC heap and invoke a callback for each iseq.
+// Used for global code invalidation.
+void
+rb_yjit_for_each_iseq(iseq_callback callback)
+{
+    rb_objspace_each_objects(for_each_iseq_i, (void *)callback);
 }
 
 // Acquire the VM lock and then signal all other Ruby threads (ractors) to

@@ -384,87 +384,58 @@ pub extern "C" fn rb_yjit_tracing_invalidate_all()
         return;
     }
 
-    todo!("rb_yjit_tracing_invalidate_all");
-/*
+    use crate::asm::x86_64::jmp_ptr;
+
     // Stop other ractors since we are going to patch machine code.
-    RB_VM_LOCK_ENTER();
-    rb_vm_barrier();
+    with_vm_lock(src_loc!(), || {
+        // Make it so all live block versions are no longer valid branch targets
+        unsafe { rb_yjit_for_each_iseq(Some(invalidate_all_blocks_for_tracing)) };
 
-    // Make it so all live block versions are no longer valid branch targets
-    rb_objspace_each_objects(tracing_invalidate_all_i, NULL);
+        extern "C" fn invalidate_all_blocks_for_tracing(iseq: IseqPtr) {
+            if let Some(payload) = unsafe { load_iseq_payload(iseq) } {
+                // C comment:
+                //   Leaking the blocks for now since we might have situations where
+                //   a different ractor is waiting for the VM lock in branch_stub_hit().
+                //   If we free the block that ractor can wake up with a dangling block.
+                //
+                // Deviation: since we ref count the the blocks now, we might be deallocating and
+                //   not leak the block.
+                //
+                // Empty all blocks on the iseq so we don't compile new blocks that jump to the
+                // invalidated region.
+                let blocks = payload.take_all_blocks();
+                for blockref in blocks {
+                    block_assumptions_free(&blockref);
+                }
+            }
 
-    // Apply patches
-    const uint32_t old_pos = cb->write_pos;
-    rb_darray_for(global_inval_patches, patch_idx) {
-        struct codepage_patch patch = rb_darray_get(global_inval_patches, patch_idx);
-        cb.set_pos(patch.inline_patch_pos);
-        uint8_t *jump_target = cb_get_ptr(ocb, patch.outlined_target_pos);
-        jmp_ptr(cb, jump_target);
-    }
-    cb.set_pos(old_pos);
-
-    // Freeze invalidated part of the codepage. We only want to wait for
-    // running instances of the code to exit from now on, so we shouldn't
-    // change the code. There could be other ractors sleeping in
-    // branch_stub_hit(), for example. We could harden this by changing memory
-    // protection on the frozen range.
-    RUBY_ASSERT_ALWAYS(yjit_codepage_frozen_bytes <= old_pos && "frozen bytes should increase monotonically");
-    yjit_codepage_frozen_bytes = old_pos;
-
-    cb_mark_all_executable(ocb);
-    cb_mark_all_executable(cb);
-    RB_VM_LOCK_LEAVE();
-*/
-}
-
-/*
-static int
-tracing_invalidate_all_i(void *vstart, void *vend, size_t stride, void *data)
-{
-    VALUE v = (VALUE)vstart;
-    for (; v != (VALUE)vend; v += stride) {
-        void *ptr = asan_poisoned_object_p(v);
-        asan_unpoison_object(v, false);
-
-        if (rb_obj_is_iseq(v)) {
-            rb_iseq_t *iseq = (rb_iseq_t *)v;
-            invalidate_all_blocks_for_tracing(iseq);
+            // Reset output code entry point
+            unsafe { rb_iseq_reset_jit_func(iseq) };
         }
 
-        asan_poison_object_if(ptr, v);
-    }
-    return 0;
-}
+        let cb = CodegenGlobals::get_inline_cb();
 
-static void
-invalidate_all_blocks_for_tracing(const rb_iseq_t *iseq)
-{
-    struct rb_iseq_constant_body *body = iseq->body;
-    if (!body) return; // iseq yet to be initialized
+        // Apply patches
+        let old_pos = cb.get_write_pos();
+        let patches = CodegenGlobals::take_global_inval_patches();
+        for patch in &patches {
+            cb.set_write_ptr(patch.inline_patch_pos);
+            jmp_ptr(cb, patch.outlined_target_pos);
 
-    ASSERT_vm_locking();
-
-    // Empty all blocks on the iseq so we don't compile new blocks that jump to the
-    // invalidted region.
-    // TODO Leaking the blocks for now since we might have situations where
-    // a different ractor is waiting in branch_stub_hit(). If we free the block
-    // that ractor can wake up with a dangling block.
-    rb_darray_for(body->yjit_blocks, version_array_idx) {
-        rb_yjit_block_array_t version_array = rb_darray_get(body->yjit_blocks, version_array_idx);
-        rb_darray_for(version_array, version_idx) {
-            // Stop listening for invalidation events like basic operation redefinition.
-            block_t *block = rb_darray_get(version_array, version_idx);
-            yjit_unlink_method_lookup_dependency(block);
-            yjit_block_assumptions_free(block);
+            // FIXME: Can't easily check we actually wrote out the JMP at the moment.
+            // assert!(!cb.has_dropped_bytes(), "patches should have space and jump offsets should fit in JMP rel32");
         }
-        rb_darray_free(version_array);
-    }
-    rb_darray_free(body->yjit_blocks);
-    body->yjit_blocks = NULL;
+        cb.set_pos(old_pos);
 
-#if USE_MJIT
-    // Reset output code entry point
-    body->jit_func = NULL;
-#endif
+        // Freeze invalidated part of the codepage. We only want to wait for
+        // running instances of the code to exit from now on, so we shouldn't
+        // change the code. There could be other ractors sleeping in
+        // branch_stub_hit(), for example. We could harden this by changing memory
+        // protection on the frozen range.
+        assert!(CodegenGlobals::get_inline_frozen_bytes() <= old_pos, "frozen bytes should increase monotonically");
+        CodegenGlobals::set_inline_frozen_bytes(old_pos);
+
+        CodegenGlobals::get_outlined_cb().unwrap().mark_all_executable();
+        cb.mark_all_executable();
+    });
 }
-*/

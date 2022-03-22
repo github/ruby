@@ -209,6 +209,7 @@ fn main() {
         .allowlist_function("rb_assert_(iseq|cme)_handle")
         .allowlist_function("rb_iseq_reset_jit_func")
         .allowlist_function("rb_yjit_dump_iseq_loc")
+        .allowlist_function("rb_yjit_for_each_iseq")
 
         // from vm_sync.h
         .allowlist_function("rb_vm_barrier")

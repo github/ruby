@@ -11,6 +11,7 @@ use CodegenStatus::*;
 
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
+use std::mem;
 use std::mem::size_of;
 use std::os::raw::{c_uint};
 use std::slice;
@@ -5153,18 +5154,26 @@ pub struct CodegenGlobals
     // Code for full logic of returning from C method and exiting to the interpreter
     outline_full_cfunc_return_pos: CodePtr,
 
-    // For implementing global code invalidation
+    /// For implementing global code invalidation
     global_inval_patches: Vec<CodepagePatch>,
+
+    /// For implementing global code invalidation. The number of bytes counting from the beginning
+    /// of the inline code block that should not be changed. After patching for global invalidation,
+    /// no one should make changes to the invalidated code region anymore. This is used to
+    /// break out of invalidation race when there are multiple ractors.
+    inline_frozen_bytes: usize,
 
     // Methods for generating code for hardcoded (usually C) methods
     method_codegen_table: HashMap<u64, MethodGenFn>,
 }
 
-// For implementing global code invalidation
+/// For implementing global code invalidation. A position in the inline
+/// codeblock to patch into a JMP rel32 which jumps into some code in
+/// the outlined codeblock to exit to the interpreter.
 pub struct CodepagePatch
 {
-    inline_patch_pos: CodePtr,
-    outlined_target_pos: CodePtr,
+    pub inline_patch_pos: CodePtr,
+    pub outlined_target_pos: CodePtr,
 }
 
 /// Private singleton instance of the codegen globals
@@ -5208,6 +5217,7 @@ impl CodegenGlobals {
                     leave_exit_code: leave_exit_code,
                     stub_exit_code: stub_exit_code,
                     global_inval_patches: Vec::new(),
+                    inline_frozen_bytes: 0,
                     outline_full_cfunc_return_pos: return_pos,
                     method_codegen_table: HashMap::new(),
                 }
@@ -5246,6 +5256,20 @@ impl CodegenGlobals {
     pub fn push_global_inval_patch(i_pos: CodePtr, o_pos: CodePtr) {
         let patch = CodepagePatch { inline_patch_pos: i_pos, outlined_target_pos: o_pos };
         CodegenGlobals::get_instance().global_inval_patches.push(patch);
+    }
+
+    // Drain the list of patches and return it
+    pub fn take_global_inval_patches() -> Vec<CodepagePatch> {
+        let globals = CodegenGlobals::get_instance();
+        mem::take(&mut globals.global_inval_patches)
+    }
+
+    pub fn get_inline_frozen_bytes() -> usize {
+        CodegenGlobals::get_instance().inline_frozen_bytes
+    }
+
+    pub fn set_inline_frozen_bytes(frozen_bytes: usize) {
+        CodegenGlobals::get_instance().inline_frozen_bytes = frozen_bytes;
     }
 
     pub fn get_outline_full_cfunc_return_pos() -> CodePtr {
