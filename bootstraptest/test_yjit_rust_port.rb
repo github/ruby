@@ -433,3 +433,18 @@ assert_equal 'ok', %q{
   r.send 'ok'
   r.take
 }
+
+assert_equal '[1, 2, 3]', %q{
+  def foo(arr)
+    arr << 1
+    arr << 2
+    arr << 3
+    arr
+  end
+
+  def bar()
+    foo([])
+  end
+
+  bar()
+}
