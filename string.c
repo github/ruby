@@ -1810,7 +1810,17 @@ rb_ec_str_resurrect(struct rb_execution_context_struct *ec, VALUE str)
     return ec_str_duplicate(ec, rb_cString, str);
 }
 
-/* :nodoc: documented in doc/string.rdoc */
+/*
+ *
+ *  call-seq:
+ *    String.new(string = '') -> new_string
+ *    String.new(string = '', encoding: encoding) -> new_string
+ *    String.new(string = '', capacity: size) -> new_string
+ *
+ *  :include: doc/string/new.rdoc
+ *
+ */
+
 static VALUE
 rb_str_init(int argc, VALUE *argv, VALUE str)
 {
@@ -6298,6 +6308,76 @@ rb_str_byteslice(int argc, VALUE *argv, VALUE str)
 
 /*
  *  call-seq:
+ *    bytesplice(index, length, str) -> string
+ *    bytesplice(range, str)         -> string
+ *
+ *  Replaces some or all of the content of +self+ with +str+, and returns +str+.
+ *  The portion of the string affected is determined using
+ *  the same criteria as String#byteslice, except that +length+ cannot be omitted.
+ *  If the replacement string is not the same length as the text it is replacing,
+ *  the string will be adjusted accordingly.
+ *  The form that take an Integer will raise an IndexError if the value is out
+ *  of range; the Range form will raise a RangeError.
+ *  If the beginning or ending offset does not land on character (codepoint)
+ *  boundary, an IndexError will be raised.
+ */
+
+static VALUE
+rb_str_bytesplice(int argc, VALUE *argv, VALUE str)
+{
+    long beg, end, len, slen;
+    VALUE val;
+    rb_encoding *enc;
+    int cr;
+
+    rb_check_arity(argc, 2, 3);
+    if (argc == 2) {
+        if (!rb_range_beg_len(argv[0], &beg, &len, RSTRING_LEN(str), 2)) {
+            rb_raise(rb_eTypeError, "wrong argument type %s (expected Range)",
+                     rb_builtin_class_name(argv[0]));
+        }
+        val = argv[1];
+    }
+    else {
+        beg = NUM2LONG(argv[0]);
+        len = NUM2LONG(argv[1]);
+        val = argv[2];
+    }
+    if (len < 0) rb_raise(rb_eIndexError, "negative length %ld", len);
+    slen = RSTRING_LEN(str);
+    if ((slen < beg) || ((beg < 0) && (beg + slen < 0))) {
+        rb_raise(rb_eIndexError, "index %ld out of string", beg);
+    }
+    if (beg < 0) {
+        beg += slen;
+    }
+    assert(beg >= 0);
+    assert(beg <= slen);
+    if (len > slen - beg) {
+        len = slen - beg;
+    }
+    end = beg + len;
+    if (!str_check_byte_pos(str, beg)) {
+        rb_raise(rb_eIndexError,
+                 "offset %ld does not land on character boundary", beg);
+    }
+    if (!str_check_byte_pos(str, end)) {
+        rb_raise(rb_eIndexError,
+                 "offset %ld does not land on character boundary", end);
+    }
+    StringValue(val);
+    enc = rb_enc_check(str, val);
+    str_modify_keep_cr(str);
+    rb_str_splice_0(str, beg, len, val);
+    rb_enc_associate(str, enc);
+    cr = ENC_CODERANGE_AND(ENC_CODERANGE(str), ENC_CODERANGE(val));
+    if (cr != ENC_CODERANGE_BROKEN)
+        ENC_CODERANGE_SET(str, cr);
+    return val;
+}
+
+/*
+ *  call-seq:
  *    reverse -> string
  *
  *  Returns a new string with the characters from +self+ in reverse order.
@@ -8583,57 +8663,11 @@ literal_split_pattern(VALUE spat, split_type_t default_type)
 }
 
 /*
- *  call-seq:
- *     str.split(pattern=nil, [limit])                -> an_array
- *     str.split(pattern=nil, [limit]) {|sub| block } -> str
+ *  :call-seq:
+ *    split(field_sep = $;, limit = nil) -> array
+ *    split(field_sep = $;, limit = nil) {|substring| ... } -> self
  *
- *  Divides <i>str</i> into substrings based on a delimiter, returning an array
- *  of these substrings.
- *
- *  If <i>pattern</i> is a String, then its contents are used as
- *  the delimiter when splitting <i>str</i>. If <i>pattern</i> is a single
- *  space, <i>str</i> is split on whitespace, with leading and trailing
- *  whitespace and runs of contiguous whitespace characters ignored.
- *
- *  If <i>pattern</i> is a Regexp, <i>str</i> is divided where the
- *  pattern matches. Whenever the pattern matches a zero-length string,
- *  <i>str</i> is split into individual characters. If <i>pattern</i> contains
- *  groups, the respective matches will be returned in the array as well.
- *
- *  If <i>pattern</i> is <code>nil</code>, the value of <code>$;</code> is used.
- *  If <code>$;</code> is <code>nil</code> (which is the default), <i>str</i> is
- *  split on whitespace as if ' ' were specified.
- *
- *  If the <i>limit</i> parameter is omitted, trailing null fields are
- *  suppressed. If <i>limit</i> is a positive number, at most that number
- *  of split substrings will be returned (captured groups will be returned
- *  as well, but are not counted towards the limit).
- *  If <i>limit</i> is <code>1</code>, the entire
- *  string is returned as the only entry in an array. If negative, there is no
- *  limit to the number of fields returned, and trailing null fields are not
- *  suppressed.
- *
- *  When the input +str+ is empty an empty Array is returned as the string is
- *  considered to have no fields to split.
- *
- *     " now's  the time ".split       #=> ["now's", "the", "time"]
- *     " now's  the time ".split(' ')  #=> ["now's", "the", "time"]
- *     " now's  the time".split(/ /)   #=> ["", "now's", "", "the", "time"]
- *     "1, 2.34,56, 7".split(%r{,\s*}) #=> ["1", "2.34", "56", "7"]
- *     "hello".split(//)               #=> ["h", "e", "l", "l", "o"]
- *     "hello".split(//, 3)            #=> ["h", "e", "llo"]
- *     "hi mom".split(%r{\s*})         #=> ["h", "i", "m", "o", "m"]
- *
- *     "mellow yellow".split("ello")   #=> ["m", "w y", "w"]
- *     "1,2,,3,4,,".split(',')         #=> ["1", "2", "", "3", "4"]
- *     "1,2,,3,4,,".split(',', 4)      #=> ["1", "2", "", "3,4,,"]
- *     "1,2,,3,4,,".split(',', -4)     #=> ["1", "2", "", "3", "4", "", ""]
- *
- *     "1:2:3".split(/(:)()()/, 2)     #=> ["1", ":", "", "", "2:3"]
- *
- *     "".split(',', -1)               #=> []
- *
- *  If a block is given, invoke the block with each split substring.
+ *  :include: doc/string/split.rdoc
  *
  */
 
@@ -9048,48 +9082,10 @@ rb_str_enumerate_lines(int argc, VALUE *argv, VALUE str, VALUE ary)
 
 /*
  *  call-seq:
- *     str.each_line(separator=$/, chomp: false) {|substr| block } -> str
- *     str.each_line(separator=$/, chomp: false)                   -> an_enumerator
+ *    each_line(line_sep = $/, chomp: false) {|substring| ... } -> self
+ *    each_line(line_sep = $/, chomp: false)                    -> enumerator
  *
- *  Splits <i>str</i> using the supplied parameter as the record
- *  separator (<code>$/</code> by default), passing each substring in
- *  turn to the supplied block.  If a zero-length record separator is
- *  supplied, the string is split into paragraphs delimited by
- *  multiple successive newlines.
- *
- *  If +chomp+ is +true+, +separator+ will be removed from the end of each
- *  line.
- *
- *  If no block is given, an enumerator is returned instead.
- *
- *     "hello\nworld".each_line {|s| p s}
- *     # prints:
- *     #   "hello\n"
- *     #   "world"
- *
- *     "hello\nworld".each_line('l') {|s| p s}
- *     # prints:
- *     #   "hel"
- *     #   "l"
- *     #   "o\nworl"
- *     #   "d"
- *
- *     "hello\n\n\nworld".each_line('') {|s| p s}
- *     # prints
- *     #   "hello\n\n"
- *     #   "world"
- *
- *     "hello\nworld".each_line(chomp: true) {|s| p s}
- *     # prints:
- *     #   "hello"
- *     #   "world"
- *
- *     "hello\nworld".each_line('l', chomp: true) {|s| p s}
- *     # prints:
- *     #   "he"
- *     #   ""
- *     #   "o\nwor"
- *     #   "d"
+ *  :include: doc/string/each_line.rdoc
  *
  */
 
@@ -9102,21 +9098,11 @@ rb_str_each_line(int argc, VALUE *argv, VALUE str)
 
 /*
  *  call-seq:
- *     str.lines(separator=$/, chomp: false)  -> an_array
+ *    lines(Line_sep = $/, chomp: false) -> array_of_strings
  *
- *  Returns an array of lines in <i>str</i> split using the supplied
- *  record separator (<code>$/</code> by default).  This is a
- *  shorthand for <code>str.each_line(separator, getline_args).to_a</code>.
+ *  Forms substrings ("lines") of +self+ according to the given arguments
+ *  (see String#each_line for details); returns the lines in an array.
  *
- *  If +chomp+ is +true+, +separator+ will be removed from the end of each
- *  line.
- *
- *     "hello\nworld\n".lines              #=> ["hello\n", "world\n"]
- *     "hello  world".lines(' ')           #=> ["hello ", " ", "world"]
- *     "hello\nworld\n".lines(chomp: true) #=> ["hello", "world"]
- *
- *  If a block is given, which is a deprecated form, works the same as
- *  <code>each_line</code>.
  */
 
 static VALUE
@@ -9148,17 +9134,11 @@ rb_str_enumerate_bytes(VALUE str, VALUE ary)
 
 /*
  *  call-seq:
- *     str.each_byte {|integer| block }    -> str
- *     str.each_byte                      -> an_enumerator
+ *    each_byte {|byte| ... } -> self
+ *    each_byte               -> enumerator
  *
- *  Passes each byte in <i>str</i> to the given block, or returns an
- *  enumerator if no block is given.
+ *  :include: doc/string/each_byte.rdoc
  *
- *     "hello".each_byte {|c| print c, ' ' }
- *
- *  <em>produces:</em>
- *
- *     104 101 108 108 111
  */
 
 static VALUE
@@ -9170,13 +9150,10 @@ rb_str_each_byte(VALUE str)
 
 /*
  *  call-seq:
- *     str.bytes    -> an_array
+ *    bytes -> array_of_bytes
  *
- *  Returns an array of bytes in <i>str</i>.  This is a shorthand for
- *  <code>str.each_byte.to_a</code>.
+ *  :include: doc/string/bytes.rdoc
  *
- *  If a block is given, which is a deprecated form, works the same as
- *  <code>each_byte</code>.
  */
 
 static VALUE
@@ -12611,6 +12588,7 @@ Init_String(void)
     rb_define_method(rb_cString, "getbyte", rb_str_getbyte, 1);
     rb_define_method(rb_cString, "setbyte", rb_str_setbyte, 2);
     rb_define_method(rb_cString, "byteslice", rb_str_byteslice, -1);
+    rb_define_method(rb_cString, "bytesplice", rb_str_bytesplice, -1);
     rb_define_method(rb_cString, "scrub", str_scrub, -1);
     rb_define_method(rb_cString, "scrub!", str_scrub_bang, -1);
     rb_define_method(rb_cString, "freeze", rb_str_freeze, 0);
