@@ -2088,7 +2088,6 @@ assert_equal '[:itself]', %q{
     itself
   end
 
-
   tracing_ractor = Ractor.new do
     # 1: start tracing
     events = []
@@ -2851,4 +2850,34 @@ assert_equal '3,12', %q{
 
   # Make sure it's returning '3,12' instead of e.g. '3,false'
   pt_inspect(p)
+}
+
+# Regression test for deadlock between branch_stub_hit and ractor_receive_if
+assert_equal '10', %q{
+  r = Ractor.new Ractor.current do |main|
+    main << 1
+    main << 2
+    main << 3
+    main << 4
+    main << 5
+    main << 6
+    main << 7
+    main << 8
+    main << 9
+    main << 10
+  end
+
+  a = []
+  a << Ractor.receive_if{|msg| msg == 10}
+  a << Ractor.receive_if{|msg| msg == 9}
+  a << Ractor.receive_if{|msg| msg == 8}
+  a << Ractor.receive_if{|msg| msg == 7}
+  a << Ractor.receive_if{|msg| msg == 6}
+  a << Ractor.receive_if{|msg| msg == 5}
+  a << Ractor.receive_if{|msg| msg == 4}
+  a << Ractor.receive_if{|msg| msg == 3}
+  a << Ractor.receive_if{|msg| msg == 2}
+  a << Ractor.receive_if{|msg| msg == 1}
+
+  a.length
 }

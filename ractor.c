@@ -871,6 +871,9 @@ ractor_receive_if(rb_execution_context_t *ec, VALUE crv, VALUE b)
         }
         RACTOR_UNLOCK_SELF(cr);
 
+        // This was needed to prevent a deadlock with YJIT branch_stub_hit()
+        RUBY_VM_CHECK_INTS(ec);
+
         if (v != Qundef) {
             struct receive_block_data data = {
                 .cr = cr,
