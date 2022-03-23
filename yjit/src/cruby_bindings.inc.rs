@@ -773,3 +773,6 @@ extern "C" {
 extern "C" {
     pub fn rb_yjit_vm_unlock(file: *const ::std::os::raw::c_char, line: ::std::os::raw::c_int);
 }
+extern "C" {
+    pub fn rb_vm_insn_decode(encoded: VALUE) -> ::std::os::raw::c_int;
+}

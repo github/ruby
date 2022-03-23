@@ -218,6 +218,9 @@ fn main() {
         .blocklist_type("FILE")
         .blocklist_type("_IO_.*")
 
+        // From internal/compile.h
+        .allowlist_function("rb_vm_insn_decode")
+
         // From iseq.h
         .allowlist_function("rb_vm_insn_addr2opcode")
         .allowlist_function("rb_iseqw_to_iseq")

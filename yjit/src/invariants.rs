@@ -337,8 +337,14 @@ pub extern "C" fn rb_yjit_constant_ic_update(iseq: *const rb_iseq_t, ic: IC) {
 
         // Ensure that the instruction the get_insn_idx is pointing to is in
         // fact a opt_getinlinecache instruction.
-        let opcode_pc = unsafe { code.add(get_insn_idx.as_usize()) };
-        assert!(unsafe { rb_iseq_opcode_at_pc(iseq, opcode_pc) } == OP_OPT_GETINLINECACHE.try_into().unwrap());
+        assert_eq!(
+            unsafe {
+                let opcode_pc = code.add(get_insn_idx.as_usize());
+                let translated_opcode: VALUE = opcode_pc.read();
+                rb_vm_insn_decode(translated_opcode)
+            },
+            OP_OPT_GETINLINECACHE.try_into().unwrap()
+        );
 
         // Find the matching opt_getinlinecache and invalidate all the blocks there
         // RUBY_ASSERT(insn_op_type(BIN(opt_getinlinecache), 1) == TS_IC);

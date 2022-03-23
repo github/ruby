@@ -304,6 +304,7 @@ rb_iseq_pc_at_idx(const rb_iseq_t *iseq, uint32_t insn_idx)
     return pc;
 }
 
+// Get the opcode given a program counter. Can return trace opcode variants.
 int
 rb_iseq_opcode_at_pc(const rb_iseq_t *iseq, const VALUE *pc)
 {

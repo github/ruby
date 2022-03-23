@@ -726,20 +726,13 @@ pub fn gen_single_block(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &m
         jit.pc = pc;
         jit.side_exit_for_pc = None;
 
-        // Disabled for now because invalidation isn't implemented
-        // and this currently prevents any tests from passing
-        /*
         // If previous instruction requested to record the boundary
         if jit.record_boundary_patch_point {
-            todo!();
-            /*
             // Generate an exit to this instruction and record it
-            uint32_t exit_pos = gen_exit(jit.pc, ctx, ocb);
+            let exit_pos = gen_exit(jit.pc, &ctx, ocb.unwrap());
             record_global_inval_patch(cb, exit_pos);
             jit.record_boundary_patch_point = false;
-            */
         }
-        */
 
         // In debug mode, verify our existing assumption
         //if (jit_at_current_insn(&jit)) {
