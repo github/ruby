@@ -159,9 +159,13 @@ pub extern "C" fn rb_yjit_stats_enabled_p(ec: EcPtr, ruby_self: VALUE) -> VALUE 
 
 /// Primitive called in yjit.rb.
 /// Export all YJIT statistics as a Ruby hash.
-/// This needs to be wrapped on the C side with RB_VM_LOCK_ENTER()
 #[no_mangle]
-pub extern "C" fn rb_yjit_gen_stats_dict(ec: EcPtr, ruby_self: VALUE) -> VALUE {
+pub extern "C" fn rb_yjit_get_stats(ec: EcPtr, ruby_self: VALUE) -> VALUE {
+    with_vm_lock(src_loc!(), || rb_yjit_gen_stats_dict())
+}
+
+/// Export all YJIT statistics as a Ruby hash.
+fn rb_yjit_gen_stats_dict() -> VALUE {
 
     // If YJIT is not enabled, return Qnil
     if !yjit_enabled_p() {
