@@ -36,34 +36,10 @@ rb_yjit_compile_iseq(const rb_iseq_t *iseq, rb_execution_context_t *ec)
     return success;
 }
 
-/*
-// Verify that calling with cd on receiver goes to callee
-static void
-check_cfunc_dispatch(VALUE receiver, struct rb_callinfo *ci, void *callee, rb_callable_method_entry_t *compile_time_cme)
-{
-    if (METHOD_ENTRY_INVALIDATED(compile_time_cme)) {
-        rb_bug("yjit: output code uses invalidated cme %p", (void *)compile_time_cme);
-    }
-
-    bool callee_correct = false;
-    const rb_callable_method_entry_t *cme = rb_callable_method_entry(CLASS_OF(receiver), vm_ci_mid(ci));
-    if (cme->def->type == VM_METHOD_TYPE_CFUNC) {
-        const rb_method_cfunc_t *cfunc = UNALIGNED_MEMBER_PTR(cme->def, body.cfunc);
-        if ((void *)cfunc->func == callee) {
-            callee_correct = true;
-        }
-    }
-    if (!callee_correct) {
-        rb_bug("yjit: output code calls wrong method");
-    }
-}
-*/
-
 // GC root for interacting with the GC
 struct yjit_root_struct {
     bool unused; // empty structs are not legal in C99
 };
-
 
 static void
 yjit_root_free(void *ptr)
