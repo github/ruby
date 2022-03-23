@@ -82,6 +82,12 @@ pub extern "C" fn rb_yjit_iseq_gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> *con
 /// Simulate a situation where we are out of executable memory
 #[no_mangle]
 pub extern "C" fn rb_yjit_simulate_oom_bang(ec: EcPtr, ruby_self: VALUE) -> VALUE {
+    // If YJIT is not enabled, do nothing
+    if !yjit_enabled_p() {
+        return Qnil;
+    }
+
+    // Enabled in debug mode only for security
     #[cfg(debug_assertions)]
     {
         let cb = CodegenGlobals::get_inline_cb();
