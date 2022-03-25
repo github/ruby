@@ -169,12 +169,12 @@ pub extern "C" fn rb_yjit_cme_invalidate(callee_cme: *const rb_callable_method_e
         return;
     }
 
-    Invariants::get_instance().cme_validity.remove(&callee_cme).map(|blocks| {
+    if let Some(blocks) = Invariants::get_instance().cme_validity.remove(&callee_cme) {
         for block in blocks.iter() {
             invalidate_block_version(block);
             incr_counter!(invalidate_method_lookup);
         }
-    });
+    }
 }
 
 /// Callback for when rb_callable_method_entry(klass, mid) is going to change.

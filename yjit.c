@@ -740,6 +740,14 @@ rb_yjit_for_each_iseq(iseq_callback callback)
     rb_objspace_each_objects(for_each_iseq_i, (void *)callback);
 }
 
+// For running write barriers from Rust. Required when we add a new edge in the
+// object graph from `old` to `young`.
+void
+rb_yjit_obj_written(VALUE old, VALUE young, const char *file, int line)
+{
+    rb_obj_written(old, Qundef, young, file, line);
+}
+
 // Acquire the VM lock and then signal all other Ruby threads (ractors) to
 // contend for the VM lock, putting them to sleep. YJIT uses this to evict
 // threads running inside generated code so among other things, it can
