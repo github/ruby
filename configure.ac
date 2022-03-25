@@ -3788,7 +3788,8 @@ AS_CASE(["${YJIT_SUPPORT}"],
             [rb_rust_target_subdir=release
              CARGO_BUILD_ARGS='--release'],
             [rb_rust_target_subdir=debug
-             CARGO_BUILD_ARGS='--features stats,disasm,asm_comments'])
+             CARGO_BUILD_ARGS='--features stats,disasm,asm_comments'
+             AC_DEFINE(RUBY_DEBUG, 1)])
     YJIT_LIBS="yjit/target/${rb_rust_target_subdir}/libyjit.a"
     YJIT_OBJ='yjit.$(OBJEXT)'
     AC_DEFINE(USE_YJIT, 1)

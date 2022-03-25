@@ -14,9 +14,6 @@
 #ifndef YJIT_STATS
 # define YJIT_STATS RUBY_DEBUG
 #endif
-// For porting, disable YJIT_STATS. C code mostly for textual reference now.
-#undef YJIT_STATS
-#define YJIT_STATS 0
 
 // We generate x86 assembly
 #if (defined(__x86_64__) && !defined(_WIN32)) || (defined(_WIN32) && defined(_M_AMD64)) // x64 platforms without mingw/msys
