@@ -424,6 +424,9 @@ fn get_iseq_payload(iseq: IseqPtr) -> &'static mut IseqPayload
     let payload_non_null = unsafe {
         let payload = rb_iseq_get_yjit_payload(iseq);
         if payload.is_null() {
+            // Increment the compiled iseq count
+            incr_counter!(compiled_iseq_count);
+
             // Allocate a new payload with Box and transfer ownership to the GC.
             // We drop the payload with Box::from_raw when the GC frees the iseq and calls us.
             // NOTE(alan): Sometimes we read from an iseq without ever writing to it.

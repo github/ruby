@@ -37,8 +37,11 @@ macro_rules! incr_counter {
     // Unsafe is ok here because options are initialized
     // once before any Ruby code executes
     ($counter_name:ident) => {
-        unsafe {
-            COUNTERS.$counter_name += 1
+        #[allow(unused_unsafe)]
+        {
+            unsafe {
+                COUNTERS.$counter_name += 1
+            }
         }
     };
 }
