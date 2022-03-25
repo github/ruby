@@ -697,6 +697,12 @@ rb_assert_iseq_handle(VALUE handle)
     RUBY_ASSERT_ALWAYS(IMEMO_TYPE_P(handle, imemo_iseq));
 }
 
+int
+rb_IMEMO_TYPE_P(VALUE imemo, enum imemo_type imemo_type)
+{
+    return IMEMO_TYPE_P(imemo, imemo_type);
+}
+
 void
 rb_assert_cme_handle(VALUE handle)
 {

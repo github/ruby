@@ -16,7 +16,7 @@ use TempMapping::*;
 use core::ffi::{c_void};
 
 // Maximum number of temp value types we keep track of
-const MAX_TEMP_TYPES: usize = 8;
+pub const MAX_TEMP_TYPES: usize = 8;
 
 // Maximum number of local variable types we keep track of
 const MAX_LOCAL_TYPES: usize = 8;
@@ -106,7 +106,7 @@ impl Type {
     /// Returns 0 if the two are the same
     /// Returns > 0 if different but compatible
     /// Returns usize::MAX if incompatible
-    fn diff(self, dst: Self) -> usize
+    pub fn diff(self, dst: Self) -> usize
     {
         // Perfect match, difference is zero
         if self == dst {
@@ -1864,17 +1864,15 @@ fn free_block(blockref: &BlockRef)
     // No explicit deallocation here as blocks are ref-counted.
 }
 
-
-/*
 // Some runtime checks for integrity of a program location
-static void
-verify_blockid(const blockid_t blockid)
+pub fn verify_blockid(blockid: BlockId)
 {
-    const rb_iseq_t *const iseq = blockid.iseq;
-    RUBY_ASSERT_ALWAYS(IMEMO_TYPE_P(iseq, imemo_iseq));
-    RUBY_ASSERT_ALWAYS(blockid.idx < iseq->body->iseq_size);
+    #[cfg(debug_assertions)]
+    unsafe {
+        assert!(rb_IMEMO_TYPE_P(blockid.iseq.into(), imemo_iseq) != 0);
+        assert!(blockid.idx < get_iseq_encoded_size(blockid.iseq));
+    }
 }
-*/
 
 // Invalidate one specific block version
 pub fn invalidate_block_version(blockref: &BlockRef)
@@ -1884,11 +1882,11 @@ pub fn invalidate_block_version(blockref: &BlockRef)
     // TODO: want to assert that all other ractors are stopped here. Can't patch
     // machine code that some other thread is running.
 
-    //verify_blockid(block->blockid);
-
     let block = blockref.borrow();
     let cb = CodegenGlobals::get_inline_cb();
     let ocb = CodegenGlobals::get_outlined_cb();
+
+    verify_blockid(block.blockid);
 
     // Remove this block from the version array
     remove_block_version(blockref);

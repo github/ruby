@@ -451,6 +451,24 @@ pub type rb_serial_t = ::std::os::raw::c_ulonglong;
 extern "C" {
     pub fn rb_class_allocate_instance(klass: VALUE) -> VALUE;
 }
+extern "C" {
+    pub fn rb_obj_info(obj: VALUE) -> *const ::std::os::raw::c_char;
+}
+pub const imemo_env: imemo_type = 0;
+pub const imemo_cref: imemo_type = 1;
+pub const imemo_svar: imemo_type = 2;
+pub const imemo_throw_data: imemo_type = 3;
+pub const imemo_ifunc: imemo_type = 4;
+pub const imemo_memo: imemo_type = 5;
+pub const imemo_ment: imemo_type = 6;
+pub const imemo_iseq: imemo_type = 7;
+pub const imemo_tmpbuf: imemo_type = 8;
+pub const imemo_ast: imemo_type = 9;
+pub const imemo_parser_strterm: imemo_type = 10;
+pub const imemo_callinfo: imemo_type = 11;
+pub const imemo_callcache: imemo_type = 12;
+pub const imemo_constcache: imemo_type = 13;
+pub type imemo_type = u32;
 pub const METHOD_VISI_UNDEF: rb_method_visibility_t = 0;
 pub const METHOD_VISI_PUBLIC: rb_method_visibility_t = 1;
 pub const METHOD_VISI_PRIVATE: rb_method_visibility_t = 2;
@@ -756,6 +774,9 @@ extern "C" {
 }
 extern "C" {
     pub fn rb_assert_iseq_handle(handle: VALUE);
+}
+extern "C" {
+    pub fn rb_IMEMO_TYPE_P(imemo: VALUE, imemo_type: imemo_type) -> ::std::os::raw::c_int;
 }
 extern "C" {
     pub fn rb_assert_cme_handle(handle: VALUE);

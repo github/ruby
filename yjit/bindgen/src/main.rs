@@ -207,6 +207,7 @@ fn main() {
         .allowlist_function("rb_yjit_vm_lock_then_barrier")
         .allowlist_function("rb_yjit_vm_unlock")
         .allowlist_function("rb_assert_(iseq|cme)_handle")
+        .allowlist_function("rb_IMEMO_TYPE_P")
         .allowlist_function("rb_iseq_reset_jit_func")
         .allowlist_function("rb_yjit_dump_iseq_loc")
         .allowlist_function("rb_yjit_for_each_iseq")
@@ -239,8 +240,9 @@ fn main() {
         // From include/ruby/internal/intern/vm.h
         .allowlist_function("rb_get_alloc_func")
 
-        // From internal/gc.h
+        // From gc.h and internal/gc.h
         .allowlist_function("rb_class_allocate_instance")
+        .allowlist_function("rb_obj_info")
 
         // We define VALUE manually, don't import it
         .blocklist_type("VALUE")

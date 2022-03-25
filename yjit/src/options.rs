@@ -26,6 +26,9 @@ pub struct Options {
 
     /// Dump compiled and executed instructions for debugging
     pub dump_insns: bool,
+
+    /// Verify context objects (debug mode only)
+    pub verify_ctx: bool,
 }
 
 // Initialize the options to default values
@@ -37,6 +40,7 @@ pub static mut OPTIONS: Options = Options {
     max_versions : 4,
     gen_stats : false,
     dump_insns: false,
+    verify_ctx: false,
 };
 
 /// Macro to get an option value by name
@@ -97,6 +101,7 @@ pub fn parse_option(str_ptr: *const std::os::raw::c_char) -> Option<()>
         ("no-type-prop", "") => { unsafe { OPTIONS.no_type_prop = true }},
         ("stats", "") => { unsafe { OPTIONS.gen_stats = true }},
         ("dump-insns", "") => { unsafe { OPTIONS.dump_insns = true }},
+        ("verify-ctx", "") => { unsafe { OPTIONS.verify_ctx = true }},
 
         // Option name not recognized
         _ => {
