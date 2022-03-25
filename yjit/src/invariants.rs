@@ -122,6 +122,7 @@ pub fn assume_method_lookup_stable(jit: &mut JITState, ocb: &mut OutlinedCb, rec
 }
 
 /// Tracks that a block is assuming it is operating in single-ractor mode.
+#[must_use]
 pub fn assume_single_ractor_mode(jit: &mut JITState, ocb: &mut OutlinedCb) -> bool {
     if unsafe { rb_yjit_multi_ractor_p() } {
         false

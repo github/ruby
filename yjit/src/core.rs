@@ -263,6 +263,7 @@ impl std::fmt::Debug for Branch
         formatter.debug_struct("Branch")
             .field("start", &self.start_addr)
             .field("end", &self.end_addr)
+            .field("targets", &self.targets)
             .finish()
     }
 }
@@ -618,7 +619,7 @@ pub fn take_version_list(blockid: BlockId) -> VersionList
     if insn_idx >= payload.version_map.len() {
         VersionList::default()
     } else {
-        payload.version_map.remove(insn_idx)
+        mem::take(&mut payload.version_map[insn_idx])
     }
 }
 
@@ -1267,7 +1268,7 @@ impl Context {
 impl BlockId {
     /// Print Ruby source location for debugging
     #[cfg(debug_assertions)]
-    fn dump_src_loc(&self) {
+    pub fn dump_src_loc(&self) {
         unsafe { rb_yjit_dump_iseq_loc(self.iseq, self.idx) }
     }
 }
