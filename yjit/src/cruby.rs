@@ -518,6 +518,20 @@ impl VALUE {
         us as *mut T
     }
 
+    /// For working with opague pointers and encoding null check.
+    /// Similar to [std::ptr::NonNull], but for `*const T`. `NonNull<T>`
+    /// is for `*mut T` while our C functions are setup to use `*const T`.
+    /// Casting from `NonNull<T>` to `*const T` is too noisy.
+    pub fn as_optional_ptr<T>(self: VALUE) -> Option<*const T> {
+        let ptr: *const T = self.as_ptr();
+
+        if ptr.is_null() {
+            None
+        } else {
+            Some(ptr)
+        }
+    }
+
     /// Assert that `self` is an iseq in debug builds
     pub fn as_iseq(self) -> IseqPtr {
         let ptr: IseqPtr = self.as_ptr();

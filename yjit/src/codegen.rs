@@ -16,6 +16,7 @@ use std::os::raw::{c_uint};
 use std::collections::{HashMap};
 use std::cmp;
 use std::ffi::{CStr};
+use std::ptr;
 
 // Callee-saved registers
 pub const REG_CFP: X86Opnd = R13;
@@ -73,8 +74,6 @@ pub struct JITState
 
 impl JITState {
     pub fn new(blockref: &BlockRef) -> Self {
-        use std::ptr;
-
         JITState {
             block: blockref.clone(),
             iseq: ptr::null(), // TODO: initialize this from the blockid
@@ -4433,14 +4432,14 @@ fn gen_opt_send_without_block(jit: &mut JITState, ctx: &mut Context, cb: &mut Co
 fn gen_send(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let cd = jit_get_arg(jit, 0).as_ptr();
-    let block = jit_get_arg(jit, 1).as_ptr();
-    return gen_send_general(jit, ctx, cb, ocb, cd, Some(block));
+    let block = jit_get_arg(jit, 1).as_optional_ptr();
+    return gen_send_general(jit, ctx, cb, ocb, cd, block);
 }
 
 fn gen_invokesuper(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let cd: *const rb_call_data = jit_get_arg(jit, 0).as_ptr();
-    let block:IseqPtr = jit_get_arg(jit, 1).as_ptr();
+    let block: Option<IseqPtr> = jit_get_arg(jit, 1).as_optional_ptr();
 
     // Defer compilation so we can specialize on class of receiver
     if !jit_at_current_insn(jit) {
@@ -4539,7 +4538,7 @@ fn gen_invokesuper(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
     cmp(cb, ep_me_opnd, REG1);
     jne_ptr(cb, counted_exit!(ocb, side_exit, invokesuper_me_changed));
 
-    if block.is_null() {
+    if block.is_none() {
         // Guard no block passed
         // rb_vm_frame_block_handler(GET_EC()->cfp) == VM_BLOCK_HANDLER_NONE
         // note, we assume VM_ASSERT(VM_ENV_LOCAL_P(ep))
@@ -4566,8 +4565,8 @@ fn gen_invokesuper(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
     ctx.clear_local_types();
 
     match cme_def_type {
-        VM_METHOD_TYPE_ISEQ => gen_send_iseq(jit, ctx, cb, ocb, ci, cme, Some(block), argc),
-        VM_METHOD_TYPE_CFUNC => gen_send_cfunc(jit, ctx, cb, ocb, ci, cme, Some(block), argc, std::ptr::null()),
+        VM_METHOD_TYPE_ISEQ => gen_send_iseq(jit, ctx, cb, ocb, ci, cme, block, argc),
+        VM_METHOD_TYPE_CFUNC => gen_send_cfunc(jit, ctx, cb, ocb, ci, cme, block, argc, ptr::null()),
         _ => unreachable!(),
     }
 }
