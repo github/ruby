@@ -1954,6 +1954,7 @@ pub fn invalidate_block_version(blockref: &BlockRef)
         // }
 
         // Create a stub for this branch target
+        mem::drop(branch); // end RefCell borrow as get_branch_target() can borrow the branch.
         let mut branch_target = get_branch_target(
             block.blockid,
             &block.ctx,
@@ -1971,6 +1972,7 @@ pub fn invalidate_block_version(blockref: &BlockRef)
             branch_target = block.entry_exit;
         }
 
+        branch = branchref.borrow_mut();
         branch.dst_addrs[target_idx] = branch_target;
 
         // Check if the invalidated block immediately follows
