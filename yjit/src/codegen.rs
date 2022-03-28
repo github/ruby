@@ -3406,7 +3406,17 @@ fn c_method_tracing_currently_enabled(jit: &JITState) -> bool
     unsafe { rb_c_method_tracing_currently_enabled(jit.ec.unwrap() as *mut rb_execution_context_struct) }
 }
 
-fn gen_send_cfunc(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: * const rb_callinfo, cme: * const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, recv_known_klass: *const VALUE) -> CodegenStatus
+fn gen_send_cfunc(
+    jit: &mut JITState,
+    ctx: &mut Context,
+    cb: &mut CodeBlock,
+    ocb: &mut OutlinedCb,
+    ci: *const rb_callinfo,
+    cme: *const rb_callable_method_entry_t,
+    block: Option<IseqPtr>,
+    argc: i32,
+    recv_known_klass: *const VALUE,
+) -> CodegenStatus
 {
     let cfunc = unsafe { get_cme_def_body_cfunc(cme) };
     let cfunc_argc = unsafe { get_mct_argc(cfunc) };
@@ -3621,7 +3631,16 @@ fn gen_return_branch(cb: &mut CodeBlock, target0: CodePtr, target1: Option<CodeP
     }
 }
 
-fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: * const rb_callinfo, cme: * const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32) -> CodegenStatus
+fn gen_send_iseq(
+    jit: &mut JITState,
+    ctx: &mut Context,
+    cb: &mut CodeBlock,
+    ocb: &mut OutlinedCb,
+    ci: *const rb_callinfo,
+    cme: *const rb_callable_method_entry_t,
+    block: Option<IseqPtr>,
+    argc: i32,
+) -> CodegenStatus
 {
     let iseq = unsafe { get_def_iseq_ptr((*cme).def) };
     let mut argc = argc;
@@ -3797,37 +3816,34 @@ fn gen_send_iseq(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
 
     let leaf_builtin_raw = unsafe { rb_leaf_builtin_function(iseq) };
     let leaf_builtin: Option<*const rb_builtin_function> = if leaf_builtin_raw.is_null() { None } else { Some(leaf_builtin_raw) };
-    match (block, leaf_builtin) {
-        (None, Some(builtin_info)) => {
-            let builtin_argc = unsafe { (*builtin_info).argc };
-            if builtin_argc + 1 /* for self */ + 1 /* for ec */ <= (C_ARG_REGS.len() as i32) {
-                add_comment(cb, "inlined leaf builtin");
+    if let (None, Some(builtin_info)) = (block, leaf_builtin) {
+        let builtin_argc = unsafe { (*builtin_info).argc };
+        if builtin_argc + 1 /* for self */ + 1 /* for ec */ <= (C_ARG_REGS.len() as i32) {
+            add_comment(cb, "inlined leaf builtin");
 
-                // Call the builtin func (ec, recv, arg1, arg2, ...)
-                mov(cb, C_ARG_REGS[0], REG_EC);
+            // Call the builtin func (ec, recv, arg1, arg2, ...)
+            mov(cb, C_ARG_REGS[0], REG_EC);
 
-                // Copy self and arguments
-                for i in 0..=builtin_argc {
-                    let stack_opnd = ctx.stack_opnd(builtin_argc - i);
-                    let idx:usize = (i + 1).try_into().unwrap();
-                    let c_arg_reg = C_ARG_REGS[idx];
-                    mov(cb, c_arg_reg, stack_opnd);
-                }
-                ctx.stack_pop((builtin_argc + 1).try_into().unwrap());
-                let builtin_func_ptr = unsafe { (*builtin_info).func_ptr as *const u8 };
-                call_ptr(cb, REG0, builtin_func_ptr);
-
-                // Push the return value
-                let stack_ret = ctx.stack_push(Type::Unknown);
-                mov(cb, stack_ret, RAX);
-
-                // Note: assuming that the leaf builtin doesn't change local variables here.
-                // Seems like a safe assumption.
-
-                return KeepCompiling
+            // Copy self and arguments
+            for i in 0..=builtin_argc {
+                let stack_opnd = ctx.stack_opnd(builtin_argc - i);
+                let idx:usize = (i + 1).try_into().unwrap();
+                let c_arg_reg = C_ARG_REGS[idx];
+                mov(cb, c_arg_reg, stack_opnd);
             }
-        },
-        _ => (),
+            ctx.stack_pop((builtin_argc + 1).try_into().unwrap());
+            let builtin_func_ptr = unsafe { (*builtin_info).func_ptr as *const u8 };
+            call_ptr(cb, REG0, builtin_func_ptr);
+
+            // Push the return value
+            let stack_ret = ctx.stack_push(Type::Unknown);
+            mov(cb, stack_ret, RAX);
+
+            // Note: assuming that the leaf builtin doesn't change local variables here.
+            // Seems like a safe assumption.
+
+            return KeepCompiling
+        }
     }
 
     // Stack overflow check
@@ -5001,14 +5017,6 @@ fn gen_opt_invokebuiltin_delegate(jit: &mut JITState, ctx: &mut Context, cb: &mu
 
     KeepCompiling
 }
-
-
-
-
-
-
-
-
 
 /// Maps a YARV opcode to a code generation function (if supported)
 fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn>
