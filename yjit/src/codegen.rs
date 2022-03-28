@@ -384,6 +384,26 @@ fn verify_ctx(jit: &JITState, ctx: &Context)
             );
         }
     }
+
+    /*
+    // Verify local variable types
+    let local_table_size = unsafe { get_iseq_body_local_table_size(jit.iseq) };
+    let top_idx: usize = cmp::min(local_table_size as usize, MAX_TEMP_TYPES);
+    for i in 0..top_idx {
+        let learned_type = ctx.get_local_type(i);
+        let local_val = jit_peek_at_local(jit, ctx, i as i32);
+        let local_type = Type::from(local_val);
+
+        if local_type.diff(learned_type) == usize::MAX {
+            panic!(
+                "verify_ctx: ctx type ({:?}) incompatible with actual value of local: {} (type {:?})",
+                learned_type,
+                obj_info_str(local_val),
+                local_type
+            );
+        }
+    }
+    */
 }
 
 /// Generate an exit to return to the interpreter

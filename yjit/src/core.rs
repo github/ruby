@@ -1031,6 +1031,15 @@ impl Context {
         }
     }
 
+    /// Get the currently tracked type for a local variable
+    pub fn get_local_type(&self, idx: usize) -> Type {
+        if idx > MAX_LOCAL_TYPES {
+            return Type::Unknown
+        }
+
+        return self.local_types[idx];
+    }
+
     /// Upgrade (or "learn") the type of an instruction operand
     /// This value must be compatible and at least as specific as the previously known type.
     /// If this value originated from self, or an lvar, the learned type will be
