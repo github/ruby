@@ -24,7 +24,7 @@ fn main() {
         .header("vm_callinfo.h")
 
         // Some C functions that were expressly for Rust YJIT in this
-        // file. TODO: Might want to move them later.
+        // file. TODO(alan): doesn't work in out-of-src builds.
         .header("yjit.c")
 
         // Don't want to copy over C comment
@@ -211,6 +211,7 @@ fn main() {
         .allowlist_function("rb_iseq_reset_jit_func")
         .allowlist_function("rb_yjit_dump_iseq_loc")
         .allowlist_function("rb_yjit_for_each_iseq")
+        .allowlist_function("rb_yjit_obj_written")
 
         // from vm_sync.h
         .allowlist_function("rb_vm_barrier")

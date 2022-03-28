@@ -620,7 +620,8 @@ pub struct SourceLocation {
 /// Make a [SourceLocation] at the current spot.
 macro_rules! src_loc {
     () => {
-        crate::cruby::SourceLocation{
+        // NOTE(alan): `CString::new` allocates so we might want to limit this to debug builds.
+        $crate::cruby::SourceLocation {
             file: std::ffi::CString::new(file!()).unwrap(), // ASCII source file paths
             line: line!().try_into().unwrap(), // not that many lines
         }
@@ -628,6 +629,17 @@ macro_rules! src_loc {
 }
 
 pub(crate) use src_loc;
+
+/// Run GC write barrier. Required after making a new edge in the object reference
+/// graph from `old` to `young`.
+macro_rules! obj_written {
+    ($old: expr, $young: expr) => {
+        let (old, young): (VALUE, VALUE) = ($old, $young);
+        let src_loc = $crate::cruby::src_loc!();
+        unsafe { rb_yjit_obj_written(old, young, src_loc.file.as_ptr(), src_loc.line) };
+    }
+}
+pub(crate) use obj_written;
 
 /// Acquire the VM lock, make sure all other Ruby threads are asleep then run
 /// some code while holding the lock. Returns whatever `func` returns.

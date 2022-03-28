@@ -460,9 +460,19 @@ pub extern "C" fn rb_yjit_iseq_free(payload: *mut c_void)
         }
     };
 
-    // Drop the payload with Box::from_raw().
+    use crate::invariants;
+
+    // Take ownership of the payload with Box::from_raw().
+    // It drops right before this function returns.
     // SAFETY: We got the pointer from Box::into_raw().
-    let _ = unsafe { Box::from_raw(payload) };
+    let payload = unsafe { Box::from_raw(payload) };
+
+    // Remove all blocks in the payload from global invariants table.
+    for versions in &payload.version_map {
+        for block in versions {
+            invariants::block_assumptions_free(&block);
+        }
+    }
 }
 
 /// GC callback for marking GC objects in the the per-iseq payload.
@@ -716,7 +726,8 @@ pub fn limit_block_versions(blockid: BlockId, ctx: &Context) -> Context
 }
 
 /// Keep track of a block version. Block should be fully constructed.
-fn add_block_version(blockref: &BlockRef)
+/// Uses `cb` for running write barriers.
+fn add_block_version(blockref: &BlockRef, cb: &CodeBlock)
 {
     let block = blockref.borrow();
 
@@ -727,28 +738,23 @@ fn add_block_version(blockref: &BlockRef)
 
     version_list.push(blockref.clone());
 
-    /*
-    {
-        // By writing the new block to the iseq, the iseq now
-        // contains new references to Ruby objects. Run write barriers.
-        cme_dependency_t *cme_dep;
-        rb_darray_foreach(block->cme_dependencies, cme_dependency_idx, cme_dep) {
-            RB_OBJ_WRITTEN(iseq, Qundef, cme_dep->receiver_klass);
-            RB_OBJ_WRITTEN(iseq, Qundef, cme_dep->callee_cme);
-        }
-
-        // Run write barriers for all objects in generated code.
-        uint32_t *offset_element;
-        rb_darray_foreach(block->gc_object_offsets, offset_idx, offset_element) {
-            uint32_t offset_to_value = *offset_element;
-            uint8_t *value_address = cb_get_ptr(cb, offset_to_value);
-
-            VALUE object;
-            memcpy(&object, value_address, SIZEOF_VALUE);
-            RB_OBJ_WRITTEN(iseq, Qundef, object);
-        }
+    // By writing the new block to the iseq, the iseq now
+    // contains new references to Ruby objects. Run write barriers.
+    let iseq: VALUE = block.blockid.iseq.into();
+    for dep in block.iter_cme_deps() {
+        obj_written!(iseq, dep.receiver_klass);
+        obj_written!(iseq, dep.callee_cme.into());
     }
-    */
+
+    // Run write barriers for all objects in generated code.
+    for offset in &block.gc_object_offsets {
+        let value_address: *const u8 = cb.get_ptr(offset.as_usize()).raw_ptr();
+        // Creating an unaligned pointer is well defined unlike in C.
+        let value_address: *const VALUE = value_address.cast();
+
+        let object = unsafe { value_address.read_unaligned() };
+        obj_written!(iseq, object);
+    }
 
     incr_counter!(compiled_block_count);
 }
@@ -1309,7 +1315,7 @@ fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &
     batch.push(first_block.clone()); // Keep track of this block version
 
     // Add the block version to the VersionMap for this ISEQ
-    add_block_version(&first_block);
+    add_block_version(&first_block, cb);
 
     // Loop variable
     let mut last_blockref = first_block.clone();
@@ -1358,7 +1364,7 @@ fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &
         let new_blockref = result.unwrap();
 
         // Add the block version to the VersionMap for this ISEQ
-        add_block_version(&new_blockref);
+        add_block_version(&new_blockref, cb);
 
         // Connect the last branch and the new block
         last_branch.blocks[0] = Some(new_blockref.clone());
@@ -1948,6 +1954,7 @@ pub fn invalidate_block_version(blockref: &BlockRef)
         // }
 
         // Create a stub for this branch target
+        mem::drop(branch); // end RefCell borrow as get_branch_target() can borrow the branch.
         let mut branch_target = get_branch_target(
             block.blockid,
             &block.ctx,
@@ -1965,6 +1972,7 @@ pub fn invalidate_block_version(blockref: &BlockRef)
             branch_target = block.entry_exit;
         }
 
+        branch = branchref.borrow_mut();
         branch.dst_addrs[target_idx] = branch_target;
 
         // Check if the invalidated block immediately follows

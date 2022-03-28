@@ -680,6 +680,9 @@ extern "C" {
 extern "C" {
     pub fn rb_gvar_set(arg1: ID, arg2: VALUE) -> VALUE;
 }
+extern "C" {
+    pub fn rb_vm_insn_decode(encoded: VALUE) -> ::std::os::raw::c_int;
+}
 #[repr(C)]
 pub struct rb_iv_index_tbl_entry {
     pub index: u32,
@@ -786,6 +789,14 @@ extern "C" {
     pub fn rb_yjit_for_each_iseq(callback: iseq_callback);
 }
 extern "C" {
+    pub fn rb_yjit_obj_written(
+        old: VALUE,
+        young: VALUE,
+        file: *const ::std::os::raw::c_char,
+        line: ::std::os::raw::c_int,
+    );
+}
+extern "C" {
     pub fn rb_yjit_vm_lock_then_barrier(
         file: *const ::std::os::raw::c_char,
         line: ::std::os::raw::c_int,
@@ -793,7 +804,4 @@ extern "C" {
 }
 extern "C" {
     pub fn rb_yjit_vm_unlock(file: *const ::std::os::raw::c_char, line: ::std::os::raw::c_int);
-}
-extern "C" {
-    pub fn rb_vm_insn_decode(encoded: VALUE) -> ::std::os::raw::c_int;
 }
