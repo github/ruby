@@ -71,7 +71,7 @@ pub extern "C" fn rb_yjit_init_rust()
 /// NOTE: this should be wrapped in RB_VM_LOCK_ENTER(), rb_vm_barrier() on the C side
 #[no_mangle]
 pub extern "C" fn rb_yjit_iseq_gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> *const u8 {
-    let maybe_code_ptr = gen_entry_point(iseq, 0, ec);
+    let maybe_code_ptr = gen_entry_point(iseq, ec);
 
     match maybe_code_ptr {
         Some(ptr) => ptr.raw_ptr(),

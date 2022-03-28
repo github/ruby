@@ -167,7 +167,7 @@ fn jit_next_insn_idx(jit: &JITState) -> u32
 // Meaning we are compiling the instruction that is next to execute
 fn jit_at_current_insn(jit: &JITState) -> bool
 {
-    let ec_pc:*mut VALUE = unsafe { get_cfp_pc(get_ec_cfp(jit.ec.unwrap())) };
+    let ec_pc: *mut VALUE = unsafe { get_cfp_pc(get_ec_cfp(jit.ec.unwrap())) };
     ec_pc == jit.pc
 }
 
@@ -384,7 +384,6 @@ fn verify_ctx(jit: &JITState, ctx: &Context)
         }
     }
 
-    /*
     // Verify local variable types
     let local_table_size = unsafe { get_iseq_body_local_table_size(jit.iseq) };
     let top_idx: usize = cmp::min(local_table_size as usize, MAX_TEMP_TYPES);
@@ -402,7 +401,6 @@ fn verify_ctx(jit: &JITState, ctx: &Context)
             );
         }
     }
-    */
 }
 
 /// Generate an exit to return to the interpreter
@@ -510,25 +508,24 @@ pub fn jit_ensure_block_entry_exit(jit: &mut JITState, ocb: &mut OutlinedCb)
     }
 }
 
-// Generate a runtime guard that ensures the PC is at the start of the iseq,
-// otherwise take a side exit.  This is to handle the situation of optional
-// parameters.  When a function with optional parameters is called, the entry
-// PC for the method isn't necessarily 0, but we always generated code that
-// assumes the entry point is 0.
-fn gen_pc_guard(cb: &mut CodeBlock, iseq: IseqPtr)
+// Generate a runtime guard that ensures the PC is at the expected
+// instruction index in the iseq, otherwise takes a side-exit.
+// This is to handle the situation of optional parameters.
+// When a function with optional parameters is called, the entry
+// PC for the method isn't necessarily 0.
+fn gen_pc_guard(cb: &mut CodeBlock, iseq: IseqPtr, insn_idx: u32)
 {
     //RUBY_ASSERT(cb != NULL);
 
     let pc_opnd = mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_PC);
+    let expected_pc = unsafe { rb_iseq_pc_at_idx(iseq, insn_idx) };
+    let expected_pc_opnd = const_ptr_opnd(expected_pc as *const u8);
     mov(cb, REG0, pc_opnd);
-    let encoded_iseq: *mut VALUE = unsafe { get_iseq_body_iseq_encoded(iseq) };
-    let encoded_iseq_opnd = const_ptr_opnd(encoded_iseq as *const u8);
-    mov(cb, REG1, encoded_iseq_opnd);
-    xor(cb, REG0, REG1);
+    mov(cb, REG1, expected_pc_opnd);
+    cmp(cb, REG0, REG1);
 
-    // xor should impact ZF, so we can jz here
-    let pc_is_zero = cb.new_label("pc_is_zero".to_string());
-    jz_label(cb, pc_is_zero);
+    let pc_match = cb.new_label("pc_match".to_string());
+    je_label(cb, pc_match);
 
     // We're not starting at the first PC, so we need to exit.
     gen_counter_incr!(cb, leave_start_pc_non_zero);
@@ -540,8 +537,8 @@ fn gen_pc_guard(cb: &mut CodeBlock, iseq: IseqPtr)
     mov(cb, RAX, imm_opnd(Qundef.into()));
     ret(cb);
 
-    // PC should be at the beginning
-    cb.write_label(pc_is_zero);
+    // PC should match the expected insn_idx
+    cb.write_label(pc_match);
     cb.link_labels();
 }
 
@@ -570,9 +567,6 @@ fn gen_full_cfunc_return(ocb: &mut OutlinedCb)
     ret(cb);
 }
 
-
-
-
 /// Generate a continuation for leave that exits to the interpreter at REG_CFP->pc.
 /// This is used by gen_leave() and gen_entry_prologue()
 fn gen_leave_exit(ocb: &mut OutlinedCb) -> CodePtr
@@ -597,7 +591,7 @@ fn gen_leave_exit(ocb: &mut OutlinedCb) -> CodePtr
 
 /// Compile an interpreter entry block to be inserted into an iseq
 /// Returns None if compilation fails.
-pub fn gen_entry_prologue(cb: &mut CodeBlock, iseq: IseqPtr) -> Option<CodePtr>
+pub fn gen_entry_prologue(cb: &mut CodeBlock, iseq: IseqPtr, insn_idx: u32) -> Option<CodePtr>
 {
     const MAX_PROLOGUE_SIZE: usize = 1024;
 
@@ -636,7 +630,7 @@ pub fn gen_entry_prologue(cb: &mut CodeBlock, iseq: IseqPtr) -> Option<CodePtr>
     // compiled for is the same PC that the interpreter wants us to run with.
     // If they don't match, then we'll take a side exit.
     if unsafe { get_iseq_flags_has_opt(iseq) } {
-        gen_pc_guard(cb, iseq);
+        gen_pc_guard(cb, iseq, insn_idx);
     }
 
     // Verify MAX_PROLOGUE_SIZE
