@@ -74,7 +74,7 @@ To support disassembly of the generated code, `libcapstone` is also required (`b
 ```
 # Configure with debugging/stats options for development, build and install
 ./autogen.sh
-./configure cppflags="-DRUBY_DEBUG -DYJIT_STATS" --prefix=$HOME/.rubies/ruby-yjit --disable-install-doc --disable--install-rdoc
+./configure --enable-yjit=dev --prefix=$HOME/.rubies/ruby-yjit --disable-install-doc --disable--install-rdoc
 make -j16 install
 ```
 
@@ -82,7 +82,7 @@ On macOS, you may need to specify where to find openssl, libyaml and gdbm:
 
 ```
 # Configure with debugging/stats options for development, build and install
-./configure cppflags="-DRUBY_DEBUG -DYJIT_STATS" --prefix=$HOME/.rubies/ruby-yjit --disable-install-doc --disable--install-rdoc --with-opt-dir=$(brew --prefix openssl):$(brew --prefix readline):$(brew --prefix libyaml):$(brew --prefix gdbm)
+./configure --enable-yjit=dev --prefix=$HOME/.rubies/ruby-yjit --disable-install-doc --disable--install-rdoc --with-opt-dir=$(brew --prefix openssl):$(brew --prefix readline):$(brew --prefix libyaml):$(brew --prefix gdbm)
 make -j16 install
 ```
 
