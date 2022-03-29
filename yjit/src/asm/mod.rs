@@ -351,7 +351,7 @@ impl CodeBlock
 
     pub fn mark_position_writable(&mut self, write_pos: usize) {
         let page_size = self.page_size;
-        let aligned_position = (self.write_pos / page_size) * page_size;
+        let aligned_position = (write_pos / page_size) * page_size;
 
         if self.current_aligned_write_pos != aligned_position {
             self.current_aligned_write_pos = aligned_position;
