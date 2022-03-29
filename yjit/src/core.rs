@@ -90,6 +90,21 @@ impl Type {
         }
     }
 
+    /// Returns true when the type is not specific.
+    pub fn is_unknown(&self) -> bool {
+        match self {
+            Type::Unknown | Type::UnknownImm | Type::UnknownHeap => true,
+            _ => false,
+        }
+    }
+
+    /// Returns true when we know the VALUE is a specific handle type,
+    /// such as a static symbol ([Type::ImmSymbol], i.e. true from RB_STATIC_SYM_P()).
+    /// Opposite of [Self::is_unknown].
+    pub fn is_specific(&self) -> bool {
+        !self.is_unknown()
+    }
+
     /// Check if the type is a heap object
     pub fn is_heap(&self) -> bool {
         match self {

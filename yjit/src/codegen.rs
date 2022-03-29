@@ -2155,25 +2155,28 @@ fn gen_checktype(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
 {
     let type_val = jit_get_arg(jit, 0).as_u32();
 
-    // Only three types are emitted by compile.c
-    if type_val == RUBY_T_STRING || type_val == RUBY_T_ARRAY || type_val == RUBY_T_HASH {
+    // Only three types are emitted by compile.c at the moment
+    if let RUBY_T_STRING | RUBY_T_ARRAY | RUBY_T_HASH = type_val {
         let val_type = ctx.get_opnd_type(StackOpnd(0));
         let val = ctx.stack_pop(1);
 
         // Check if we know from type information
-        if (type_val == RUBY_T_STRING && val_type == Type::String) ||
-                (type_val == RUBY_T_ARRAY && val_type == Type::Array) ||
-                (type_val == RUBY_T_HASH && val_type == Type::Hash) {
-            // guaranteed type match
-            let stack_ret = ctx.stack_push(Type::True);
-            mov(cb, stack_ret, uimm_opnd(Qtrue.as_u64()));
-            return KeepCompiling;
-        }
-        else if val_type.is_imm() || val_type != Type::Unknown {
-            // guaranteed not to match T_STRING/T_ARRAY/T_HASH
-            let stack_ret = ctx.stack_push(Type::False);
-            mov(cb, stack_ret, uimm_opnd(Qfalse.as_u64()));
-            return KeepCompiling;
+        match (type_val, val_type) {
+            (RUBY_T_STRING, Type::String) |
+            (RUBY_T_ARRAY, Type::Array) |
+            (RUBY_T_HASH, Type::Hash) => {
+                // guaranteed type match
+                let stack_ret = ctx.stack_push(Type::True);
+                mov(cb, stack_ret, uimm_opnd(Qtrue.as_u64()));
+                return KeepCompiling;
+            },
+            _ if val_type.is_imm() || val_type.is_specific() => {
+                // guaranteed not to match T_STRING/T_ARRAY/T_HASH
+                let stack_ret = ctx.stack_push(Type::False);
+                mov(cb, stack_ret, uimm_opnd(Qfalse.as_u64()));
+                return KeepCompiling;
+            },
+            _ => (),
         }
 
         mov(cb, REG0, val);
@@ -2242,20 +2245,20 @@ fn guard_two_fixnums(ctx: &mut Context, cb: &mut CodeBlock, side_exit: CodePtr)
         return;
     }
 
-    if arg0_type != Type::Fixnum && arg0_type != Type::Unknown {
+    if arg0_type != Type::Fixnum && arg0_type.is_specific() {
         jmp_ptr(cb, side_exit);
         return;
     }
 
-    if arg1_type != Type::Fixnum && arg1_type != Type::Unknown {
+    if arg1_type != Type::Fixnum && arg0_type.is_specific() {
         jmp_ptr(cb, side_exit);
         return;
     }
 
     assert!(! arg0_type.is_heap());
     assert!(! arg1_type.is_heap());
-    assert!(arg0_type == Type::Fixnum || arg0_type == Type::Unknown);
-    assert!(arg1_type == Type::Fixnum || arg1_type == Type::Unknown);
+    assert!(arg0_type == Type::Fixnum || arg0_type.is_unknown());
+    assert!(arg1_type == Type::Fixnum || arg1_type.is_unknown());
 
     // Get stack operands without popping them
     let arg1 = ctx.stack_opnd(0);
@@ -3100,7 +3103,7 @@ fn jit_guard_known_klass(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlo
     if unsafe { known_klass == rb_cNilClass } {
         assert!(!val_type.is_heap());
         if val_type != Type::Nil {
-            assert!(val_type == Type::Unknown);
+            assert!(val_type.is_unknown());
 
             add_comment(cb, "guard object is nil");
             cmp(cb, REG0, imm_opnd(Qnil.into()));
@@ -3112,7 +3115,7 @@ fn jit_guard_known_klass(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlo
     else if unsafe { known_klass == rb_cTrueClass } {
         assert!(!val_type.is_heap());
         if val_type != Type::True {
-            assert!(val_type == Type::Unknown);
+            assert!(val_type.is_unknown());
 
             add_comment(cb, "guard object is true");
             cmp(cb, REG0, imm_opnd(Qtrue.into()));
@@ -3124,7 +3127,7 @@ fn jit_guard_known_klass(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlo
     else if unsafe { known_klass == rb_cFalseClass } {
         assert!(!val_type.is_heap());
         if val_type != Type::False {
-            assert!(val_type == Type::Unknown);
+            assert!(val_type.is_unknown());
 
             add_comment(cb, "guard object is false");
             assert!(Qfalse.as_i32() == 0);
@@ -3139,7 +3142,7 @@ fn jit_guard_known_klass(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlo
         // We will guard fixnum and bignum as though they were separate classes
         // BIGNUM can be handled by the general else case below
         if val_type != Type::Fixnum || !val_type.is_imm() {
-            assert!(val_type == Type::Unknown);
+            assert!(val_type.is_unknown());
 
             add_comment(cb, "guard object is fixnum");
             test(cb, REG0, imm_opnd(RUBY_FIXNUM_FLAG as i64));
@@ -3152,7 +3155,7 @@ fn jit_guard_known_klass(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlo
         // We will guard STATIC vs DYNAMIC as though they were separate classes
         // DYNAMIC symbols can be handled by the general else case below
         if val_type != Type::ImmSymbol || !val_type.is_imm() {
-            assert!(val_type == Type::Unknown);
+            assert!(val_type.is_unknown());
 
             add_comment(cb, "guard object is static symbol");
             assert!(RUBY_SPECIAL_SHIFT == 8);
@@ -3164,7 +3167,7 @@ fn jit_guard_known_klass(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlo
     else if unsafe { known_klass == rb_cFloat } && sample_instance.flonum_p() {
         assert!(!val_type.is_heap());
         if val_type != Type::Flonum || !val_type.is_imm() {
-            assert!(val_type == Type::Unknown);
+            assert!(val_type.is_unknown());
 
             // We will guard flonum vs heap float as though they were separate classes
             add_comment(cb, "guard object is flonum");
@@ -3282,7 +3285,7 @@ fn jit_rb_obj_not(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
         let out_opnd = ctx.stack_push(Type::True);
         mov(cb, out_opnd, uimm_opnd(Qtrue.into()));
     }
-    else if recv_opnd.is_heap() || recv_opnd != Type::Unknown {
+    else if recv_opnd.is_heap() || recv_opnd.is_specific() {
         // Note: recv_opnd != Type::Nil && recv_opnd != Type::False.
         add_comment(cb, "rb_obj_not(truthy)");
         ctx.stack_pop(1);
