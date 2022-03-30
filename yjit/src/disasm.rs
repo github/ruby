@@ -8,9 +8,11 @@ use crate::yjit::yjit_enabled_p;
 /// Primitive called in yjit.rb
 /// Produce a string representing the disassembly for an ISEQ
 #[no_mangle]
-pub extern "C" fn rb_yjit_disasm_iseq(ec: EcPtr, ruby_self: VALUE, iseqw: VALUE) -> VALUE {
+pub extern "C" fn rb_yjit_disasm_iseq(_ec: EcPtr, _ruby_self: VALUE, iseqw: VALUE) -> VALUE {
+
     #[cfg(not(feature = "disasm"))]
     {
+        let _ = iseqw;
         return Qnil;
     }
 

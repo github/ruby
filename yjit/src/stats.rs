@@ -151,7 +151,7 @@ make_counters!(
 /// Primitive called in yjit.rb
 /// Check if stats generation is enabled
 #[no_mangle]
-pub extern "C" fn rb_yjit_stats_enabled_p(ec: EcPtr, ruby_self: VALUE) -> VALUE {
+pub extern "C" fn rb_yjit_stats_enabled_p(_ec: EcPtr, _ruby_self: VALUE) -> VALUE {
     #[cfg(feature = "stats")]
     if get_option!(gen_stats) {
         return Qtrue
@@ -163,7 +163,7 @@ pub extern "C" fn rb_yjit_stats_enabled_p(ec: EcPtr, ruby_self: VALUE) -> VALUE 
 /// Primitive called in yjit.rb.
 /// Export all YJIT statistics as a Ruby hash.
 #[no_mangle]
-pub extern "C" fn rb_yjit_get_stats(ec: EcPtr, ruby_self: VALUE) -> VALUE {
+pub extern "C" fn rb_yjit_get_stats(_ec: EcPtr, _ruby_self: VALUE) -> VALUE {
     with_vm_lock(src_loc!(), || rb_yjit_gen_stats_dict())
 }
 
@@ -241,7 +241,7 @@ fn rb_yjit_gen_stats_dict() -> VALUE {
 
 /// Primitive called in yjit.rb. Zero out all the counters.
 #[no_mangle]
-pub extern "C" fn rb_yjit_reset_stats_bang(ec: EcPtr, ruby_self: VALUE) -> VALUE {
+pub extern "C" fn rb_yjit_reset_stats_bang(_ec: EcPtr, _ruby_self: VALUE) -> VALUE {
     unsafe {
         EXIT_OP_COUNT = [0; VM_INSTRUCTION_SIZE];
         COUNTERS = Counters::default();

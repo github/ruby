@@ -81,7 +81,7 @@ pub extern "C" fn rb_yjit_iseq_gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> *con
 
 /// Simulate a situation where we are out of executable memory
 #[no_mangle]
-pub extern "C" fn rb_yjit_simulate_oom_bang(ec: EcPtr, ruby_self: VALUE) -> VALUE {
+pub extern "C" fn rb_yjit_simulate_oom_bang(_ec: EcPtr, _ruby_self: VALUE) -> VALUE {
     // If YJIT is not enabled, do nothing
     if !yjit_enabled_p() {
         return Qnil;

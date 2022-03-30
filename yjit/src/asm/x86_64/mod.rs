@@ -451,7 +451,7 @@ fn write_rm(cb: &mut CodeBlock, sz_pref: bool, rex_w: bool, r_opnd: X86Opnd, rm_
     let rm_mod = match rm_opnd {
         X86Opnd::Reg(_) => 3,
         X86Opnd::IPRel(_) => 0,
-        X86Opnd::Mem(mem) => {
+        X86Opnd::Mem(_mem) => {
             match rm_opnd.disp_size() {
                 0 => 0,
                 8 => 1,
@@ -678,7 +678,7 @@ pub fn call_rel32(cb: &mut CodeBlock, rel32: i32) {
 
 /// call - Call a pointer, encode with a 32-bit offset if possible
 pub fn call_ptr(cb: &mut CodeBlock, scratch_opnd: X86Opnd, dst_ptr: *const u8) {
-    if let X86Opnd::Reg(scratch_reg) = scratch_opnd {
+    if let X86Opnd::Reg(_scratch_reg) = scratch_opnd {
         // Pointer to the end of this call instruction
         let end_ptr = cb.get_ptr(cb.write_pos + 5);
 
@@ -1037,7 +1037,7 @@ pub fn mov(cb: &mut CodeBlock, dst: X86Opnd, src: X86Opnd) {
 
 /// movsx - Move with sign extension (signed integers)
 pub fn movsx(cb: &mut CodeBlock, dst: X86Opnd, src: X86Opnd) {
-    if let X86Opnd::Reg(dst_reg) = dst {
+    if let X86Opnd::Reg(_dst_reg) = dst {
         assert!(matches!(src, X86Opnd::Reg(_) | X86Opnd::Mem(_)));
 
         let src_num_bits = src.num_bits();
@@ -1182,7 +1182,7 @@ pub fn push(cb: &mut CodeBlock, opnd: X86Opnd) {
             }
             write_opcode(cb, 0x50, reg);
         },
-        X86Opnd::Mem(mem) => {
+        X86Opnd::Mem(_mem) => {
             write_rm(cb, false, false, X86Opnd::None, opnd, 6, &[0xff]);
         },
         _ => unreachable!()
@@ -1200,7 +1200,7 @@ pub fn ret(cb: &mut CodeBlock) {
 }
 
 // Encode a single-operand shift instruction
-fn write_shift(cb: &mut CodeBlock, op_mem_one_pref: u8, op_mem_cl_pref: u8, op_mem_imm_pref: u8, op_ext: u8, opnd0: X86Opnd, opnd1: X86Opnd) {
+fn write_shift(cb: &mut CodeBlock, op_mem_one_pref: u8, _op_mem_cl_pref: u8, op_mem_imm_pref: u8, op_ext: u8, opnd0: X86Opnd, opnd1: X86Opnd) {
     assert!(matches!(opnd0, X86Opnd::Reg(_) | X86Opnd::Mem(_)));
 
     // Check the size of opnd0

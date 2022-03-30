@@ -173,7 +173,7 @@ fn jit_at_current_insn(jit: &JITState) -> bool
 
 // Peek at the nth topmost value on the Ruby stack.
 // Returns the topmost value when n == 0.
-fn jit_peek_at_stack(jit: &JITState, ctx: &Context, n:isize) -> VALUE
+fn jit_peek_at_stack(jit: &JITState, _ctx: &Context, n:isize) -> VALUE
 {
     assert!(jit_at_current_insn(jit));
 
@@ -188,12 +188,12 @@ fn jit_peek_at_stack(jit: &JITState, ctx: &Context, n:isize) -> VALUE
     }
 }
 
-fn jit_peek_at_self(jit: &JITState, ctx: &Context) -> VALUE
+fn jit_peek_at_self(jit: &JITState, _ctx: &Context) -> VALUE
 {
     unsafe { get_cfp_self(get_ec_cfp(jit.ec.unwrap())) }
 }
 
-fn jit_peek_at_local(jit: &JITState, ctx: &Context, n: i32) -> VALUE
+fn jit_peek_at_local(jit: &JITState, _ctx: &Context, n: i32) -> VALUE
 {
     assert!(jit_at_current_insn(jit));
 
@@ -211,8 +211,7 @@ fn jit_peek_at_local(jit: &JITState, ctx: &Context, n: i32) -> VALUE
 // Add a comment at the current position in the code block
 fn add_comment(cb: &mut CodeBlock, comment_str: &str)
 {
-    #[cfg(feature = "asm_comments")]
-    {
+    if cfg!(feature = "asm_comments") {
         cb.add_comment(comment_str);
     }
 }
@@ -241,7 +240,10 @@ macro_rules! gen_counter_incr {
 #[cfg(not(feature = "stats"))]
 macro_rules! counted_exit {
     ($ocb:tt, $existing_side_exit:tt, $counter_name:ident) => {
-        $existing_side_exit
+        {
+            let _ = $ocb;
+            $existing_side_exit
+        }
     }
 }
 #[cfg(feature = "stats")]
@@ -834,20 +836,20 @@ pub fn gen_single_block(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &m
     Ok(blockref)
 }
 
-fn gen_nop(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_nop(_jit: &mut JITState, _ctx: &mut Context, _cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // Do nothing
     KeepCompiling
 }
 
-fn gen_pop(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_pop(_jit: &mut JITState, ctx: &mut Context, _cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // Decrement SP
     ctx.stack_pop(1);
     KeepCompiling
 }
 
-fn gen_dup(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_dup(_jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let dup_val = ctx.stack_pop(0);
     let (mapping, tmp_type) = ctx.get_opnd_mapping(StackOpnd(0));
@@ -860,7 +862,7 @@ fn gen_dup(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut 
 }
 
 // duplicate stack top n elements
-fn gen_dupn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_dupn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let nval:VALUE = jit_get_arg(jit, 0);
     let VALUE(n) = nval;
@@ -888,13 +890,13 @@ fn gen_dupn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut
 }
 
 // Swap top 2 stack entries
-fn gen_swap(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_swap(_jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     stack_swap(ctx, cb, 0, 1, REG0, REG1);
     KeepCompiling
 }
 
-fn stack_swap(ctx: &mut Context, cb: &mut CodeBlock, offset0: u16, offset1: u16, reg0: X86Opnd, reg1: X86Opnd)
+fn stack_swap(ctx: &mut Context, cb: &mut CodeBlock, offset0: u16, offset1: u16, _reg0: X86Opnd, _reg1: X86Opnd)
 {
     let opnd0 = ctx.stack_opnd(offset0 as i32);
     let opnd1 = ctx.stack_opnd(offset1 as i32);
@@ -911,7 +913,7 @@ fn stack_swap(ctx: &mut Context, cb: &mut CodeBlock, offset0: u16, offset1: u16,
     ctx.set_opnd_mapping(StackOpnd(offset1), mapping0);
 }
 
-fn gen_putnil(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_putnil(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     jit_putobject(jit, ctx, cb, Qnil);
     KeepCompiling
@@ -944,7 +946,7 @@ fn jit_putobject(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, arg:
     }
 }
 
-fn gen_putobject_int2fix(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_putobject_int2fix(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let opcode = jit.opcode;
     let cst_val: usize = if opcode == OP_PUTOBJECT_INT2FIX_0_ { 0 } else { 1 };
@@ -953,7 +955,7 @@ fn gen_putobject_int2fix(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlo
     KeepCompiling
 }
 
-fn gen_putobject(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_putobject(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let arg: VALUE = jit_get_arg(jit, 0);
 
@@ -961,7 +963,7 @@ fn gen_putobject(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
     KeepCompiling
 }
 
-fn gen_putself(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_putself(_jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // Load self from CFP
     let cf_opnd = mem_opnd((8 * SIZEOF_VALUE) as u8, REG_CFP, RUBY_OFFSET_CFP_SELF);
@@ -974,7 +976,7 @@ fn gen_putself(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &
     KeepCompiling
 }
 
-fn gen_putspecialobject(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_putspecialobject(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let object_type = jit_get_arg(jit, 0);
 
@@ -992,7 +994,7 @@ fn gen_putspecialobject(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBloc
 }
 
 // set Nth stack entry to stack top
-fn gen_setn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_setn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let nval:VALUE = jit_get_arg(jit, 0);
     let VALUE(n) = nval;
@@ -1009,7 +1011,7 @@ fn gen_setn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut
 }
 
 // get nth stack value, then push it
-fn gen_topn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_topn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let nval:VALUE = jit_get_arg(jit, 0);
     let VALUE(n) = nval;
@@ -1025,7 +1027,7 @@ fn gen_topn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut
 }
 
 // Pop n values off the stack
-fn gen_adjuststack(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_adjuststack(jit: &mut JITState, ctx: &mut Context, _cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let nval:VALUE = jit_get_arg(jit, 0);
     let VALUE(n) = nval;
@@ -1114,7 +1116,7 @@ mod tests {
 
     #[test]
     fn test_gen_check_ints() {
-        let (_, ctx, mut cb, mut ocb) = setup_codegen();
+        let (_, _ctx, mut cb, mut ocb) = setup_codegen();
         let side_exit = ocb.unwrap().get_write_ptr();
         gen_check_ints(&mut cb, side_exit);
     }
@@ -1336,7 +1338,7 @@ mod tests {
 }
 
 // new array initialized from top N values
-fn gen_newarray(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_newarray(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let n = jit_get_arg(jit, 0).as_u32();
 
@@ -1360,7 +1362,7 @@ fn gen_newarray(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
 }
 
 // dup array
-fn gen_duparray(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_duparray(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let ary = jit_get_arg(jit, 0);
 
@@ -1378,7 +1380,7 @@ fn gen_duparray(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
 }
 
 // dup hash
-fn gen_duphash(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_duphash(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let hash = jit_get_arg(jit, 0);
 
@@ -1396,7 +1398,7 @@ fn gen_duphash(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &
 }
 
 // call to_a on the array on the stack
-fn gen_splatarray(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_splatarray(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let flag = jit_get_arg(jit, 0);
 
@@ -1419,7 +1421,7 @@ fn gen_splatarray(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
 }
 
 // new range initialized from top 2 values
-fn gen_newrange(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_newrange(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let flag = jit_get_arg(jit, 0);
 
@@ -1439,7 +1441,7 @@ fn gen_newrange(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
     KeepCompiling
 }
 
-fn guard_object_is_heap(cb: &mut CodeBlock, object_opnd: X86Opnd, ctx: &mut Context, side_exit: CodePtr)
+fn guard_object_is_heap(cb: &mut CodeBlock, object_opnd: X86Opnd, _ctx: &mut Context, side_exit: CodePtr)
 {
     add_comment(cb, "guard object is heap");
 
@@ -1452,7 +1454,7 @@ fn guard_object_is_heap(cb: &mut CodeBlock, object_opnd: X86Opnd, ctx: &mut Cont
     jbe_ptr(cb, side_exit);
 }
 
-fn guard_object_is_array(cb: &mut CodeBlock, object_opnd: X86Opnd, flags_opnd: X86Opnd, ctx: &mut Context, side_exit: CodePtr)
+fn guard_object_is_array(cb: &mut CodeBlock, object_opnd: X86Opnd, flags_opnd: X86Opnd, _ctx: &mut Context, side_exit: CodePtr)
 {
     add_comment(cb, "guard object is array");
 
@@ -1494,7 +1496,7 @@ fn gen_expandarray(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
     if matches!(array_type, Type::Nil) {
         // special case for a, b = nil pattern
         // push N nils onto the stack
-        for i in 0..(num.into()) {
+        for _i in 0..(num.into()) {
             let push_opnd = ctx.stack_push(Type::Nil);
             mov(cb, push_opnd, uimm_opnd(Qnil.into()));
         }
@@ -1550,7 +1552,7 @@ fn gen_expandarray(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
     KeepCompiling
 }
 
-fn gen_getlocal_wc0(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_getlocal_wc0(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // Compute the offset from BP to the local
     let slot_idx = jit_get_arg(jit, 0).as_i32();
@@ -1628,14 +1630,14 @@ fn gen_getlocal_generic(ctx:&mut Context, cb: &mut CodeBlock, local_idx: u32, le
     KeepCompiling
 }
 
-fn gen_getlocal(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_getlocal(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let idx = jit_get_arg(jit, 0);
     let level = jit_get_arg(jit, 1);
     gen_getlocal_generic(ctx, cb, idx.as_u32(), level.as_u32())
 }
 
-fn gen_getlocal_wc1(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_getlocal_wc1(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let idx = jit_get_arg(jit, 0);
     gen_getlocal_generic(ctx, cb, idx.as_u32(), 1)
@@ -1727,7 +1729,7 @@ fn gen_setlocal_wc1(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
 }
 
 // new hash initialized from top N values
-fn gen_newhash(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_newhash(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let num:i64 = jit_get_arg(jit, 0).as_i64();
 
@@ -1767,7 +1769,7 @@ fn gen_newhash(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &
     KeepCompiling
 }
 
-fn gen_putstring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_putstring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let put_val = jit_get_arg(jit, 0);
 
@@ -1786,7 +1788,7 @@ fn gen_putstring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
 
 // Push Qtrue or Qfalse depending on whether the given keyword was supplied by
 // the caller
-fn gen_checkkeyword(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_checkkeyword(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // When a keyword is unspecified past index 32, a hash will be used
     // instead. This can only happen in iseqs taking more than 32 keywords.
@@ -1822,7 +1824,7 @@ fn gen_checkkeyword(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
     KeepCompiling
 }
 
-fn gen_jnz_to_target0(cb: &mut CodeBlock, target0: CodePtr, target1: Option<CodePtr>, shape: BranchShape)
+fn gen_jnz_to_target0(cb: &mut CodeBlock, target0: CodePtr, _target1: Option<CodePtr>, shape: BranchShape)
 {
     match shape {
         BranchShape::Next0 | BranchShape::Next1 => unreachable!(),
@@ -1830,7 +1832,7 @@ fn gen_jnz_to_target0(cb: &mut CodeBlock, target0: CodePtr, target1: Option<Code
     }
 }
 
-fn gen_jz_to_target0(cb: &mut CodeBlock, target0: CodePtr, target1: Option<CodePtr>, shape: BranchShape)
+fn gen_jz_to_target0(cb: &mut CodeBlock, target0: CodePtr, _target1: Option<CodePtr>, shape: BranchShape)
 {
     match shape {
         BranchShape::Next0 | BranchShape::Next1 => unreachable!(),
@@ -1838,7 +1840,7 @@ fn gen_jz_to_target0(cb: &mut CodeBlock, target0: CodePtr, target1: Option<CodeP
     }
 }
 
-fn gen_jbe_to_target0(cb: &mut CodeBlock, target0: CodePtr, target1: Option<CodePtr>, shape: BranchShape)
+fn gen_jbe_to_target0(cb: &mut CodeBlock, target0: CodePtr, _target1: Option<CodePtr>, shape: BranchShape)
 {
     match shape {
         BranchShape::Next0 | BranchShape::Next1 => unreachable!(),
@@ -2090,7 +2092,7 @@ fn gen_getinstancevariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeB
     gen_get_ivar(jit, ctx, cb, ocb, GET_IVAR_MAX_DEPTH, comptime_val, ivar_name, SelfOpnd, side_exit)
 }
 
-fn gen_setinstancevariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_setinstancevariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let id = jit_get_arg(jit, 0);
     let ic = jit_get_arg(jit, 1).as_u64(); // type IVC
@@ -2114,7 +2116,7 @@ fn gen_setinstancevariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeB
     KeepCompiling
 }
 
-fn gen_defined(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_defined(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let op_type = jit_get_arg(jit, 0);
     let obj = jit_get_arg(jit, 1);
@@ -2151,7 +2153,7 @@ fn gen_defined(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &
     KeepCompiling
 }
 
-fn gen_checktype(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_checktype(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let type_val = jit_get_arg(jit, 0).as_u32();
 
@@ -2213,7 +2215,7 @@ fn gen_checktype(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
     }
 }
 
-fn gen_concatstrings(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_concatstrings(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let n = jit_get_arg(jit, 0);
 
@@ -2895,7 +2897,7 @@ fn gen_opt_regexpmatch2(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBloc
     return gen_opt_send_without_block(jit, ctx, cb, ocb);
 }
 
-fn gen_opt_case_dispatch(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_opt_case_dispatch(_jit: &mut JITState, ctx: &mut Context, _cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // Normally this instruction would lookup the key in a hash and jump to an
     // offset based on that.
@@ -3275,7 +3277,7 @@ fn yjit_reg_method(klass: VALUE, mid_str: &str, gen_fn: MethodGenFn)
 // Codegen for rb_obj_not().
 // Note, caller is responsible for generating all the right guards, including
 // arity guards.
-fn jit_rb_obj_not(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
+fn jit_rb_obj_not(_jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb, _ci: *const rb_callinfo, _cme: *const rb_callable_method_entry_t, _block: Option<IseqPtr>, _argc: i32, _known_recv_class: *const VALUE) -> bool
 {
     let recv_opnd = ctx.get_opnd_type(StackOpnd(0));
 
@@ -3302,7 +3304,7 @@ fn jit_rb_obj_not(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
 }
 
 // Codegen for rb_true()
-fn jit_rb_true(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
+fn jit_rb_true(_jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb, _ci: *const rb_callinfo, _cme: *const rb_callable_method_entry_t, _block: Option<IseqPtr>, _argc: i32, _known_recv_class: *const VALUE) -> bool
 {
     add_comment(cb, "nil? == true");
     ctx.stack_pop(1);
@@ -3312,7 +3314,7 @@ fn jit_rb_true(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &
 }
 
 // Codegen for rb_false()
-fn jit_rb_false(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
+fn jit_rb_false(_jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb, _ci: *const rb_callinfo, _cme: *const rb_callable_method_entry_t, _block: Option<IseqPtr>, _argc: i32, _known_recv_class: *const VALUE) -> bool
 {
     add_comment(cb, "nil? == false");
     ctx.stack_pop(1);
@@ -3323,7 +3325,7 @@ fn jit_rb_false(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
 
 // Codegen for rb_obj_equal()
 // object identity comparison
-fn jit_rb_obj_equal(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
+fn jit_rb_obj_equal(_jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb, _ci: *const rb_callinfo, _cme: *const rb_callable_method_entry_t, _block: Option<IseqPtr>, _argc: i32, _known_recv_class: *const VALUE) -> bool
 {
     add_comment(cb, "equal?");
     let obj1 = ctx.stack_pop(1);
@@ -3340,7 +3342,7 @@ fn jit_rb_obj_equal(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
     true
 }
 
-fn jit_rb_str_bytesize(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
+fn jit_rb_str_bytesize(_jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb, _ci: *const rb_callinfo, _cme: *const rb_callable_method_entry_t, _block: Option<IseqPtr>, _argc: i32, _known_recv_class: *const VALUE) -> bool
 {
     add_comment(cb, "String#bytesize");
 
@@ -3358,7 +3360,7 @@ fn jit_rb_str_bytesize(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock
 // When String#to_s is called on a String instance, the method returns self and
 // most of the overhead comes from setting up the method call. We observed that
 // this situation happens a lot in some workloads.
-fn jit_rb_str_to_s(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
+fn jit_rb_str_to_s(_jit: &mut JITState, _ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb, _ci: *const rb_callinfo, _cme: *const rb_callable_method_entry_t, _block: Option<IseqPtr>, _argc: i32, known_recv_class: *const VALUE) -> bool
 {
     if !known_recv_class.is_null() && unsafe { *known_recv_class == rb_cString } {
         add_comment(cb, "to_s on plain string");
@@ -3369,7 +3371,7 @@ fn jit_rb_str_to_s(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
     false
 }
 
-fn jit_thread_s_current(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool
+fn jit_thread_s_current(_jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb, _ci: *const rb_callinfo, _cme: *const rb_callable_method_entry_t, _block: Option<IseqPtr>, _argc: i32, _known_recv_class: *const VALUE) -> bool
 {
     add_comment(cb, "Thread.current");
     ctx.stack_pop(1);
@@ -3495,7 +3497,7 @@ fn gen_send_cfunc(
 
     // Write block handler at sp[-2]
     // sp[-2] = block_handler;
-    if let Some(block_iseq) = block {
+    if let Some(_block_iseq) = block {
         // reg1 = VM_BH_FROM_ISEQ_BLOCK(VM_CFP_TO_CAPTURED_BLOCK(reg_cfp));
         let cfp_self = mem_opnd(64, REG_CFP, RUBY_OFFSET_CFP_SELF);
         lea(cb, REG1, cfp_self);
@@ -3613,7 +3615,7 @@ fn gen_send_cfunc(
     EndBlock
 }
 
-fn gen_return_branch(cb: &mut CodeBlock, target0: CodePtr, target1: Option<CodePtr>, shape: BranchShape)
+fn gen_return_branch(cb: &mut CodeBlock, target0: CodePtr, _target1: Option<CodePtr>, shape: BranchShape)
 {
     match shape {
         BranchShape::Next0 | BranchShape::Next1 => unreachable!(),
@@ -4128,7 +4130,7 @@ fn gen_send_iseq(
     EndBlock
 }
 
-fn gen_struct_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, comptime_recv: VALUE, comptime_recv_klass: VALUE) -> CodegenStatus
+fn gen_struct_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, comptime_recv: VALUE, _comptime_recv_klass: VALUE) -> CodegenStatus
 {
     if unsafe { vm_ci_argc(ci) } != 0 {
         return CantCompile;
@@ -4178,7 +4180,7 @@ fn gen_struct_aref(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
     EndBlock
 }
 
-fn gen_struct_aset(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, comptime_recv: VALUE, comptime_recv_klass: VALUE) -> CodegenStatus
+fn gen_struct_aset(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, comptime_recv: VALUE, _comptime_recv_klass: VALUE) -> CodegenStatus
 {
     if unsafe { vm_ci_argc(ci) } != 1 {
         return CantCompile;
@@ -4601,7 +4603,7 @@ fn gen_leave(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mu
     EndBlock
 }
 
-fn gen_getglobal(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_getglobal(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let gid = jit_get_arg(jit, 0);
 
@@ -4618,7 +4620,7 @@ fn gen_getglobal(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
     KeepCompiling
 }
 
-fn gen_setglobal(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_setglobal(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let gid = jit_get_arg(jit, 0);
 
@@ -4637,7 +4639,7 @@ fn gen_setglobal(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb:
     KeepCompiling
 }
 
-fn gen_anytostring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_anytostring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // Save the PC and SP because we might make a Ruby call for
     // Kernel#set_trace_var
@@ -4682,7 +4684,7 @@ fn gen_objtostring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
     }
 }
 
-fn gen_toregexp(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_toregexp(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let opt = jit_get_arg(jit, 0).as_i64();
     let cnt = jit_get_arg(jit, 1).as_usize();
@@ -4721,7 +4723,7 @@ fn gen_toregexp(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
     KeepCompiling
 }
 
-fn gen_getspecial(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_getspecial(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // This takes two arguments, key and type
     // key is only used when type == 0
@@ -4793,7 +4795,7 @@ fn gen_getspecial(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb
     }
 }
 
-fn gen_getclassvariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_getclassvariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // rb_vm_getclassvariable can raise exceptions.
     jit_prepare_routine_call(jit, ctx, cb, REG0);
@@ -4812,7 +4814,7 @@ fn gen_getclassvariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBloc
     KeepCompiling
 }
 
-fn gen_setclassvariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_setclassvariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     // rb_vm_setclassvariable can raise exceptions.
     jit_prepare_routine_call(jit, ctx, cb, REG0);
@@ -4933,7 +4935,7 @@ fn gen_getblockparamproxy(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBl
     KeepCompiling
 }
 
-fn gen_invokebuiltin(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_invokebuiltin(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let bf: *const rb_builtin_function = jit_get_arg(jit, 0).as_ptr();
     let bf_argc: usize = unsafe { (*bf).argc }.try_into().expect("non negative argc");
@@ -4970,7 +4972,7 @@ fn gen_invokebuiltin(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, 
 // opt_invokebuiltin_delegate calls a builtin function, like
 // invokebuiltin does, but instead of taking arguments from the top of the
 // stack uses the argument locals (and self) from the current method.
-fn gen_opt_invokebuiltin_delegate(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> CodegenStatus
+fn gen_opt_invokebuiltin_delegate(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let bf: *const rb_builtin_function = jit_get_arg(jit, 0).as_ptr();
     let bf_argc = unsafe { (*bf).argc };
