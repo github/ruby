@@ -10,10 +10,10 @@ use InsnOpnd::*;
 use CodegenStatus::*;
 
 use std::cell::{RefMut};
-use std::mem;
-use std::mem::size_of;
+use std::mem::{self, size_of};
 use std::os::raw::{c_uint};
 use std::collections::{HashMap};
+use std::slice;
 use std::cmp;
 use std::ffi::{CStr};
 use std::ptr;
@@ -3736,8 +3736,8 @@ fn gen_send_iseq(
         // This struct represents the metadata about the callee-specified
         // keyword parameters.
         let keyword = unsafe { get_iseq_body_param_keyword(iseq) };
-        let keyword_num = unsafe { (*keyword).num };
-        let keyword_required_num = unsafe { (*keyword).required_num };
+        let keyword_num: usize = unsafe { (*keyword).num }.try_into().unwrap();
+        let keyword_required_num: usize = unsafe { (*keyword).required_num }.try_into().unwrap();
 
         let mut required_kwargs_filled = 0;
 
@@ -3753,7 +3753,10 @@ fn gen_send_iseq(
         if supplying_kws {
             // This is the list of keyword arguments that the callee specified
             // in its initial declaration.
-            let callee_kwargs = unsafe { (*keyword).table };
+            // SAFETY: see compile.c for sizing of this slice.
+            let callee_kwargs = unsafe {
+                slice::from_raw_parts((*keyword).table, keyword_num)
+            };
 
             // Here we're going to build up a list of the IDs that correspond to
             // the caller-specified keyword arguments. If they're not in the
@@ -3764,33 +3767,31 @@ fn gen_send_iseq(
             let mut caller_kwargs: Vec<ID> = vec![0; kw_arg_keyword_len];
             for kwarg_idx in 0..kw_arg_keyword_len {
                 let sym = unsafe { get_cikw_keywords_idx(kw_arg, kwarg_idx.try_into().unwrap()) };
-                caller_kwargs[kwarg_idx as usize] = unsafe { rb_sym2id(sym) };
+                caller_kwargs[kwarg_idx] = unsafe { rb_sym2id(sym) };
             }
 
             // First, we're going to be sure that the names of every
             // caller-specified keyword argument correspond to a name in the
             // list of callee-specified keyword parameters.
-            let mut callee_idx = keyword_num + 1; // will never be equal to keyword_num
-            for caller_idx in 0..kw_arg_keyword_len {
-                for tmp_callee_idx in 0..keyword_num {
-                    let callee_arg_id = unsafe { *(callee_kwargs.offset(tmp_callee_idx as isize)) };
-                    if caller_kwargs[caller_idx] == callee_arg_id {
-                        callee_idx = tmp_callee_idx;
-                        break;
-                    }
-                }
+            for caller_kwarg in caller_kwargs {
+                let search_result = callee_kwargs
+                    .iter()
+                    .enumerate() // inject element index
+                    .find(|(_, &kwarg)| kwarg == caller_kwarg);
 
-                // If the keyword was never found, then we know we have a
-                // mismatch in the names of the keyword arguments, so we need to
-                // bail.
-                if callee_idx == keyword_num {
-                    gen_counter_incr!(cb, send_iseq_kwargs_mismatch);
-                    return CantCompile;
-                }
-
-                // Keep a count to ensure all required kwargs are specified
-                if callee_idx < keyword_required_num {
-                    required_kwargs_filled += 1;
+                match search_result {
+                    None => {
+                        // If the keyword was never found, then we know we have a
+                        // mismatch in the names of the keyword arguments, so we need to
+                        // bail.
+                        gen_counter_incr!(cb, send_iseq_kwargs_mismatch);
+                        return CantCompile;
+                    },
+                    Some((callee_idx, _)) if callee_idx < keyword_required_num => {
+                        // Keep a count to ensure all required kwargs are specified
+                        required_kwargs_filled += 1;
+                    },
+                    _ => (),
                 }
             }
         }
@@ -3888,8 +3889,7 @@ fn gen_send_iseq(
 
         for kwarg_idx in 0..caller_keyword_len {
             let sym = unsafe { get_cikw_keywords_idx(ci_kwarg, kwarg_idx.try_into().unwrap()) };
-            let kwarg_idx_usize:usize = kwarg_idx.try_into().unwrap();
-            caller_kwargs[kwarg_idx_usize] = unsafe { rb_sym2id(sym) };
+            caller_kwargs[kwarg_idx] = unsafe { rb_sym2id(sym) };
         }
         let mut kwarg_idx = caller_keyword_len;
 
