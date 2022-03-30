@@ -143,7 +143,7 @@ pub fn jit_get_arg(jit: &JITState, arg_idx: isize) -> VALUE
 // Load a VALUE into a register and keep track of the reference if it is on the GC heap.
 pub fn jit_mov_gc_ptr(jit:&mut JITState, cb: &mut CodeBlock, reg:X86Opnd, ptr: VALUE)
 {
-    assert!( matches!(reg, X86Opnd::Reg(x)) );
+    assert!( matches!(reg, X86Opnd::Reg(_)) );
     assert!( reg.num_bits() == 64 );
 
     // Load the pointer constant into the specified register
@@ -1124,7 +1124,7 @@ mod tests {
         let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
         let status = gen_nop(&mut jit, &mut context, &mut cb, &mut ocb);
 
-        assert!(matches!(KeepCompiling, status));
+        assert_eq!(status, KeepCompiling);
         assert_eq!(context.diff(&Context::new()), 0);
         assert_eq!(cb.get_write_pos(), 0);
     }
@@ -1135,7 +1135,7 @@ mod tests {
         let mut context = Context::new_with_stack_size(1);
         let status = gen_pop(&mut jit, &mut context, &mut cb, &mut ocb);
 
-        assert!(matches!(KeepCompiling, status));
+        assert_eq!(status, KeepCompiling);
         assert_eq!(context.diff(&Context::new()), 0);
     }
 
@@ -1145,7 +1145,7 @@ mod tests {
         context.stack_push(Type::Fixnum);
         let status = gen_dup(&mut jit, &mut context, &mut cb, &mut ocb);
 
-        assert!(matches!(KeepCompiling, status));
+        assert_eq!(status, KeepCompiling);
 
         // Did we duplicate the type information for the Fixnum type?
         assert_eq!(Type::Fixnum, context.get_opnd_type(StackOpnd(0)));
@@ -1166,7 +1166,7 @@ mod tests {
 
         let status = gen_dupn(&mut jit, &mut context, &mut cb, &mut ocb);
 
-        assert!(matches!(KeepCompiling, status));
+        assert_eq!(status, KeepCompiling);
 
         assert_eq!(Type::Fixnum, context.get_opnd_type(StackOpnd(3)));
         assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(2)));
@@ -1187,7 +1187,7 @@ mod tests {
         let (_, tmp_type_top) = context.get_opnd_mapping(StackOpnd(0));
         let (_, tmp_type_next) = context.get_opnd_mapping(StackOpnd(1));
 
-        assert!(matches!(KeepCompiling, status));
+        assert_eq!(status, KeepCompiling);
         assert_eq!(tmp_type_top, Type::Fixnum);
         assert_eq!(tmp_type_next, Type::Flonum);
     }
@@ -1199,7 +1199,7 @@ mod tests {
 
         let (_, tmp_type_top) = context.get_opnd_mapping(StackOpnd(0));
 
-        assert!(matches!(KeepCompiling, status));
+        assert_eq!(status, KeepCompiling);
         assert_eq!(tmp_type_top, Type::Nil);
         assert!(cb.get_write_pos() > 0);
     }
@@ -1217,7 +1217,7 @@ mod tests {
 
         let (_, tmp_type_top) = context.get_opnd_mapping(StackOpnd(0));
 
-        assert!(matches!(KeepCompiling, status));
+        assert_eq!(status, KeepCompiling);
         assert_eq!(tmp_type_top, Type::True);
         assert!(cb.get_write_pos() > 0);
     }
@@ -1236,7 +1236,7 @@ mod tests {
 
         let (_, tmp_type_top) = context.get_opnd_mapping(StackOpnd(0));
 
-        assert!(matches!(KeepCompiling, status));
+        assert_eq!(status, KeepCompiling);
         assert_eq!(tmp_type_top, Type::Fixnum);
         assert!(cb.get_write_pos() > 0);
     }
@@ -1250,7 +1250,7 @@ mod tests {
         let (_, tmp_type_top) = context.get_opnd_mapping(StackOpnd(0));
 
         // Right now we're not testing the generated machine code to make sure a literal 1 or 0 was pushed. I've checked locally.
-        assert!(matches!(KeepCompiling, status));
+        assert_eq!(status, KeepCompiling);
         assert_eq!(tmp_type_top, Type::Fixnum);
     }
 
@@ -1259,7 +1259,7 @@ mod tests {
         let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
         let status = gen_putself(&mut jit, &mut context, &mut cb, &mut ocb);
 
-        assert!(matches!(KeepCompiling, status));
+        assert_eq!(status, KeepCompiling);
         assert!(cb.get_write_pos() > 0);
     }
 
@@ -1276,7 +1276,7 @@ mod tests {
 
         let status = gen_setn(&mut jit, &mut context, &mut cb, &mut ocb);
 
-        assert!(matches!(KeepCompiling, status));
+        assert_eq!(status, KeepCompiling);
 
         assert_eq!(Type::String, context.get_opnd_type(StackOpnd(2)));
         assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(1)));
@@ -1297,7 +1297,7 @@ mod tests {
 
         let status = gen_topn(&mut jit, &mut context, &mut cb, &mut ocb);
 
-        assert!(matches!(KeepCompiling, status));
+        assert_eq!(status, KeepCompiling);
 
         assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(2)));
         assert_eq!(Type::String, context.get_opnd_type(StackOpnd(1)));
@@ -1319,7 +1319,7 @@ mod tests {
 
         let status = gen_adjuststack(&mut jit, &mut context, &mut cb, &mut ocb);
 
-        assert!(matches!(KeepCompiling, status));
+        assert_eq!(status, KeepCompiling);
 
         assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(0)));
 
