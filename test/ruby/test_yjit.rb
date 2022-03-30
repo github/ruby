@@ -228,9 +228,9 @@ class TestYJIT < Test::Unit::TestCase
   #   assert_compiles('-> {}', insns: %i[putspecialobject])
   # end
 
-  # def test_compile_tostring
-  #   assert_no_exits('"i am a string #{true}"')
-  # end
+  def test_compile_tostring
+    assert_no_exits('"i am a string #{true}"')
+  end
 
   # def test_compile_opt_aset
   #   assert_compiles('[1,2,3][2] = 4', insns: %i[opt_aset])
@@ -356,7 +356,7 @@ class TestYJIT < Test::Unit::TestCase
   # end
 
   # def test_compile_opt_getinlinecache
-  #   assert_compiles(<<~RUBY, insns: %i[opt_getinlinecache], result: 123, min_calls: 2)
+  #   assert_compiles(<<~RUBY, insns: %i[opt_getinlinecache], result: 123, call_threshold: 2)
   #     def get_foo
   #       FOO
   #     end
@@ -369,7 +369,7 @@ class TestYJIT < Test::Unit::TestCase
   # end
 
   # def test_opt_getinlinecache_slowpath
-  #   assert_compiles(<<~RUBY, exits: { opt_getinlinecache: 1 }, result: [42, 42, 1, 1], min_calls: 2)
+  #   assert_compiles(<<~RUBY, exits: { opt_getinlinecache: 1 }, result: [42, 42, 1, 1], call_threshold: 2)
   #     class A
   #       FOO = 42
   #       class << self
@@ -397,7 +397,7 @@ class TestYJIT < Test::Unit::TestCase
   # end
 
   # def test_string_interpolation
-  #   assert_compiles(<<~'RUBY', insns: %i[objtostring anytostring concatstrings], result: "foobar", min_calls: 2)
+  #   assert_compiles(<<~'RUBY', insns: %i[objtostring anytostring concatstrings], result: "foobar", call_threshold: 2)
   #     def make_str(foo, bar)
   #       "#{foo}#{bar}"
   #     end
@@ -427,31 +427,31 @@ class TestYJIT < Test::Unit::TestCase
   #   RUBY
   # end
 
-  # def test_struct_aref
-  #   assert_compiles(<<~RUBY)
-  #     def foo(obj)
-  #       obj.foo
-  #       obj.bar
-  #     end
+  def test_struct_aref
+    assert_compiles(<<~RUBY)
+      def foo(obj)
+        obj.foo
+        obj.bar
+      end
 
-  #     Foo = Struct.new(:foo, :bar)
-  #     foo(Foo.new(123))
-  #     foo(Foo.new(123))
-  #   RUBY
-  # end
+      Foo = Struct.new(:foo, :bar)
+      foo(Foo.new(123))
+      foo(Foo.new(123))
+    RUBY
+  end
 
-  # def test_struct_aset
-  #   assert_compiles(<<~RUBY)
-  #     def foo(obj)
-  #       obj.foo = 123
-  #       obj.bar = 123
-  #     end
+  def test_struct_aset
+    assert_compiles(<<~RUBY)
+      def foo(obj)
+        obj.foo = 123
+        obj.bar = 123
+      end
 
-  #     Foo = Struct.new(:foo, :bar)
-  #     foo(Foo.new(123))
-  #     foo(Foo.new(123))
-  #   RUBY
-  # end
+      Foo = Struct.new(:foo, :bar)
+      foo(Foo.new(123))
+      foo(Foo.new(123))
+    RUBY
+  end
 
   # def test_super_iseq
   #   assert_compiles(<<~'RUBY', insns: %i[invokesuper opt_plus opt_mult], result: 15)
@@ -489,7 +489,7 @@ class TestYJIT < Test::Unit::TestCase
 
   # # Tests calling a variadic cfunc with many args
   # def test_build_large_struct
-  #   assert_compiles(<<~RUBY, insns: %i[opt_send_without_block], min_calls: 2)
+  #   assert_compiles(<<~RUBY, insns: %i[opt_send_without_block], call_threshold: 2)
   #     ::Foo = Struct.new(:a, :b, :c, :d, :e, :f, :g, :h)
 
   #     def build_foo
@@ -512,35 +512,35 @@ class TestYJIT < Test::Unit::TestCase
   #   RUBY
   # end
 
-  # def test_optarg_and_kwarg
-  #   assert_no_exits(<<~'RUBY')
-  #     def opt_and_kwarg(a, b=nil, c: nil)
-  #     end
+  def test_optarg_and_kwarg
+    assert_no_exits(<<~'RUBY')
+      def opt_and_kwarg(a, b=nil, c: nil)
+      end
 
-  #     2.times do
-  #       opt_and_kwarg(1, 2, c: 3)
-  #     end
-  #   RUBY
-  # end
+      2.times do
+        opt_and_kwarg(1, 2, c: 3)
+      end
+    RUBY
+  end
 
-  # def test_cfunc_kwarg
-  #   assert_no_exits('{}.store(:value, foo: 123)')
-  #   assert_no_exits('{}.store(:value, foo: 123, bar: 456, baz: 789)')
-  #   assert_no_exits('{}.merge(foo: 123)')
-  #   assert_no_exits('{}.merge(foo: 123, bar: 456, baz: 789)')
-  # end
+  def test_cfunc_kwarg
+    assert_no_exits('{}.store(:value, foo: 123)')
+    assert_no_exits('{}.store(:value, foo: 123, bar: 456, baz: 789)')
+    assert_no_exits('{}.merge(foo: 123)')
+    assert_no_exits('{}.merge(foo: 123, bar: 456, baz: 789)')
+  end
 
-  # def test_ctx_different_mappings
-  #   # regression test simplified from URI::Generic#hostname=
-  #   assert_compiles(<<~'RUBY', frozen_string_literal: true)
-  #     def foo(v)
-  #       !(v&.start_with?('[')) && v&.index(':')
-  #     end
+  def test_ctx_different_mappings
+    # regression test simplified from URI::Generic#hostname=
+    assert_compiles(<<~'RUBY', frozen_string_literal: true)
+      def foo(v)
+        !(v&.start_with?('[')) && v&.index(':')
+      end
 
-  #     foo(nil)
-  #     foo("example.com")
-  #   RUBY
-  # end
+      foo(nil)
+      foo("example.com")
+    RUBY
+  end
 
   # def test_no_excessive_opt_getinlinecache_invalidation
   #   assert_compiles(<<~'RUBY', exits: :any, result: :ok)
@@ -567,118 +567,118 @@ class TestYJIT < Test::Unit::TestCase
   #   RUBY
   # end
 
-  # def assert_no_exits(script)
-  #   assert_compiles(script)
-  # end
+  def assert_no_exits(script)
+    assert_compiles(script)
+  end
 
-  # ANY = Object.new
-  # def assert_compiles(test_script, insns: [], min_calls: 1, stdout: nil, exits: {}, result: ANY, frozen_string_literal: nil)
-  #   reset_stats = <<~RUBY
-  #     RubyVM::YJIT.runtime_stats
-  #     RubyVM::YJIT.reset_stats!
-  #   RUBY
+  ANY = Object.new
+  def assert_compiles(test_script, insns: [], call_threshold: 1, stdout: nil, exits: {}, result: ANY, frozen_string_literal: nil)
+    reset_stats = <<~RUBY
+      RubyVM::YJIT.runtime_stats
+      RubyVM::YJIT.reset_stats!
+    RUBY
 
-  #   write_results = <<~RUBY
-  #     stats = RubyVM::YJIT.runtime_stats
+    write_results = <<~RUBY
+      stats = RubyVM::YJIT.runtime_stats
 
-  #     def collect_blocks(blocks)
-  #       blocks.sort_by(&:address).map { |b| [b.iseq_start_index, b.iseq_end_index] }
-  #     end
+      # def collect_blocks(blocks)
+      #   blocks.sort_by(&:address).map { |b| [b.iseq_start_index, b.iseq_end_index] }
+      # end
 
-  #     def collect_iseqs(iseq)
-  #       iseq_array = iseq.to_a
-  #       insns = iseq_array.last.grep(Array)
-  #       blocks = RubyVM::YJIT.blocks_for(iseq)
-  #       h = {
-  #         name: iseq_array[5],
-  #         insns: insns,
-  #         blocks: collect_blocks(blocks),
-  #       }
-  #       arr = [h]
-  #       iseq.each_child { |c| arr.concat collect_iseqs(c) }
-  #       arr
-  #     end
+      # def collect_iseqs(iseq)
+      #   iseq_array = iseq.to_a
+      #   insns = iseq_array.last.grep(Array)
+      #   blocks = RubyVM::YJIT.blocks_for(iseq)
+      #   h = {
+      #     name: iseq_array[5],
+      #     insns: insns,
+      #     blocks: collect_blocks(blocks),
+      #   }
+      #   arr = [h]
+      #   iseq.each_child { |c| arr.concat collect_iseqs(c) }
+      #   arr
+      # end
 
-  #     iseq = RubyVM::InstructionSequence.of(_test_proc)
-  #     IO.open(3).write Marshal.dump({
-  #       result: #{result == ANY ? "nil" : "result"},
-  #       stats: stats,
-  #       iseqs: collect_iseqs(iseq),
-  #       disasm: iseq.disasm
-  #     })
-  #   RUBY
+      iseq = RubyVM::InstructionSequence.of(_test_proc)
+      IO.open(3).write Marshal.dump({
+        result: #{result == ANY ? "nil" : "result"},
+        stats: stats,
+        #iseqs: collect_iseqs(iseq),
+        #disasm: iseq.disasm
+      })
+    RUBY
 
-  #   script = <<~RUBY
-  #     #{"# frozen_string_literal: true" if frozen_string_literal}
-  #     _test_proc = -> {
-  #       #{test_script}
-  #     }
-  #     #{reset_stats}
-  #     result = _test_proc.call
-  #     #{write_results}
-  #   RUBY
+    script = <<~RUBY
+      #{"# frozen_string_literal: true" if frozen_string_literal}
+      _test_proc = -> {
+        #{test_script}
+      }
+      #{reset_stats}
+      result = _test_proc.call
+      #{write_results}
+    RUBY
 
-  #   status, out, err, stats = eval_with_jit(script, min_calls: min_calls)
+    status, out, err, stats = eval_with_jit(script, call_threshold: call_threshold)
 
-  #   assert status.success?, "exited with status #{status.to_i}, stderr:\n#{err}"
+    assert status.success?, "exited with status #{status.to_i}, stderr:\n#{err}"
 
-  #   assert_equal stdout.chomp, out.chomp if stdout
+    assert_equal stdout.chomp, out.chomp if stdout
 
-  #   unless ANY.equal?(result)
-  #     assert_equal result, stats[:result]
-  #   end
+    # unless ANY.equal?(result)
+    #   assert_equal result, stats[:result]
+    # end
 
-  #   runtime_stats = stats[:stats]
-  #   iseqs = stats[:iseqs]
-  #   disasm = stats[:disasm]
+    # runtime_stats = stats[:stats]
+    # iseqs = stats[:iseqs]
+    # disasm = stats[:disasm]
 
-  #   # Only available when RUBY_DEBUG enabled
-  #   if runtime_stats[:all_stats]
-  #     recorded_exits = runtime_stats.select { |k, v| k.to_s.start_with?("exit_") }
-  #     recorded_exits = recorded_exits.reject { |k, v| v == 0 }
+    # # Only available when RUBY_DEBUG enabled
+    # if runtime_stats[:all_stats]
+    #   recorded_exits = runtime_stats.select { |k, v| k.to_s.start_with?("exit_") }
+    #   recorded_exits = recorded_exits.reject { |k, v| v == 0 }
 
-  #     recorded_exits.transform_keys! { |k| k.to_s.gsub("exit_", "").to_sym }
-  #     if exits != :any && exits != recorded_exits
-  #       flunk "Expected #{exits.empty? ? "no" : exits.inspect} exits" \
-  #         ", but got\n#{recorded_exits.inspect}"
-  #     end
-  #   end
+    #   recorded_exits.transform_keys! { |k| k.to_s.gsub("exit_", "").to_sym }
+    #   if exits != :any && exits != recorded_exits
+    #     flunk "Expected #{exits.empty? ? "no" : exits.inspect} exits" \
+    #       ", but got\n#{recorded_exits.inspect}"
+    #   end
+    # end
 
-  #   # Only available when RUBY_DEBUG enabled
-  #   if runtime_stats[:all_stats]
-  #     missed_insns = insns.dup
-  #     all_compiled_blocks = {}
-  #     iseqs.each do |iseq|
-  #       compiled_blocks = iseq[:blocks].map { |from, to| (from...to) }
-  #       all_compiled_blocks[iseq[:name]] = compiled_blocks
-  #       compiled_insns = iseq[:insns]
-  #       next_idx = 0
-  #       compiled_insns.map! do |insn|
-  #         # TODO: not sure this is accurate for determining insn size
-  #         idx = next_idx
-  #         next_idx += insn.length
-  #         [idx, *insn]
-  #       end
+    # # Only available when RUBY_DEBUG enabled
+    # if runtime_stats[:all_stats]
+    #   missed_insns = insns.dup
+    #   all_compiled_blocks = {}
+    #   iseqs.each do |iseq|
+    #     compiled_blocks = iseq[:blocks].map { |from, to| (from...to) }
+    #     all_compiled_blocks[iseq[:name]] = compiled_blocks
+    #     compiled_insns = iseq[:insns]
+    #     next_idx = 0
+    #     compiled_insns.map! do |insn|
+    #       # TODO: not sure this is accurate for determining insn size
+    #       idx = next_idx
+    #       next_idx += insn.length
+    #       [idx, *insn]
+    #     end
 
-  #       compiled_insns.each do |idx, op, *arguments|
-  #         next unless missed_insns.include?(op)
-  #         next unless compiled_blocks.any? { |block| block === idx }
+    #     compiled_insns.each do |idx, op, *arguments|
+    #       next unless missed_insns.include?(op)
+    #       next unless compiled_blocks.any? { |block| block === idx }
 
-  #         # This instruction was compiled
-  #         missed_insns.delete(op)
-  #       end
-  #     end
+    #       # This instruction was compiled
+    #       missed_insns.delete(op)
+    #     end
+    #   end
 
-  #     unless missed_insns.empty?
-  #       flunk "Expected to compile instructions #{missed_insns.join(", ")} but didn't.\nCompiled ranges: #{all_compiled_blocks.inspect}\niseq:\n#{disasm}"
-  #     end
-  #   end
-  # end
+    #   unless missed_insns.empty?
+    #     flunk "Expected to compile instructions #{missed_insns.join(", ")} but didn't.\nCompiled ranges: #{all_compiled_blocks.inspect}\niseq:\n#{disasm}"
+    #   end
+    # end
+  end
 
-  def eval_with_jit(script, min_calls: 1, timeout: 1000)
+  def eval_with_jit(script, call_threshold: 1, timeout: 1000)
     args = [
       "--disable-gems",
-      "--yjit-call-threshold=#{min_calls}",
+      "--yjit-call-threshold=#{call_threshold}",
       "--yjit-stats"
     ]
     args << "-e" << script
