@@ -3453,9 +3453,6 @@ fn gen_send_cfunc(
         }
     }
 
-    // Callee method ID
-    let mid = unsafe { vm_ci_mid(ci) };
-
     // Create a side-exit to fall back to the interpreter
     let side_exit = get_side_exit(jit, ocb, ctx);
 
