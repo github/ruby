@@ -1643,7 +1643,7 @@ fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -
     // Finish building the new block
     let dst_addr = match block {
         Some(block_rc) => {
-            let mut block = block_rc.borrow_mut();
+            let mut block: RefMut<_> = block_rc.borrow_mut();
 
             // Branch shape should reflect layout
             assert!(! (branch.shape == target_branch_shape && block.start_addr != branch.end_addr));
@@ -1659,12 +1659,13 @@ fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -
             branch.blocks[target_idx] = Some(block_rc.clone());
 
             // Rewrite the branch with the new jump target address
+            mem::drop(block); // end mut borrow
             regenerate_branch(cb, &mut branch);
 
             // Restore interpreter sp, since the code hitting the stub expects the original.
             unsafe { rb_set_cfp_sp(cfp, original_interp_sp) };
 
-            block.start_addr.unwrap()
+            block_rc.borrow().start_addr.unwrap()
         }
         None => {
             // Failed to service the stub by generating a new block so now we
