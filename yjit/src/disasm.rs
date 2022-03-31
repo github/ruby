@@ -139,9 +139,10 @@ fn disasm_iseq(iseq: IseqPtr) -> String {
 /// Primitive called in yjit.rb
 /// Produce a list of instructions compiled for an isew
 #[no_mangle]
-pub extern "C" fn rb_yjit_insns_compiled(ec: EcPtr, ruby_self: VALUE, iseqw: VALUE) -> VALUE {
+pub extern "C" fn rb_yjit_insns_compiled(_ec: EcPtr, _ruby_self: VALUE, iseqw: VALUE) -> VALUE {
     #[cfg(not(feature = "disasm"))]
     {
+        let _ = iseqw;
         return Qnil;
     }
 
