@@ -107,11 +107,11 @@ MJIT_MIN_HEADER_NAME = rb_mjit_min_header-$(RUBY_PROGRAM_VERSION).h
 MJIT_MIN_HEADER = $(MJIT_HEADER_BUILD_DIR)/$(MJIT_MIN_HEADER_NAME)
 MJIT_HEADER_BUILD_DIR = $(EXTOUT)/include/$(arch)
 MJIT_TABS=@MJIT_TABS@
-YJIT_SUPPORT = @YJIT_SUPPORT@
-YJIT_LIBS = @YJIT_LIBS@
-YJIT_OBJ = @YJIT_OBJ@
+YJIT_SUPPORT=@YJIT_SUPPORT@
+YJIT_LIBS=@YJIT_LIBS@
+YJIT_OBJ=@YJIT_OBJ@
 CARGO_TARGET_DIR=@abs_top_builddir@/yjit/target
-CARGO_BUILD_ARGS = @CARGO_BUILD_ARGS@
+CARGO_BUILD_ARGS=@CARGO_BUILD_ARGS@
 LDFLAGS = @STATIC@ $(CFLAGS) @LDFLAGS@
 EXE_LDFLAGS = $(LDFLAGS)
 EXTLDFLAGS = @EXTLDFLAGS@
@@ -305,6 +305,8 @@ $(LIBRUBY_A):
 		$(Q) $(AR) $(ARFLAGS) $@ $(LIBRUBY_A_OBJS) $(INITOBJS)
 # In YJIT builds, merge libyjit.a with libruby_static.a
 		$(Q) if [ -f '$(YJIT_LIBS)' ]; then \
+		  set -eu && \
+		  echo 'merging $(YJIT_LIBS) into $@' && \
 		  $(RMALL)    '$(CARGO_TARGET_DIR)/libyjit/' && \
 		  $(MAKEDIRS) '$(CARGO_TARGET_DIR)/libyjit/' && \
 		  $(CP) '$(YJIT_LIBS)' '$(CARGO_TARGET_DIR)/libyjit/' && \
