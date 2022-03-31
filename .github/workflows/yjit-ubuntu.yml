@@ -41,9 +41,9 @@ jobs:
         test_task: [
           "btest",
           "test-all TESTS=--repeat-count=2",
-          #"check",
-          #"test-bundled-gems",
-          #"test-bundler-parallel",
+          "check",
+          "test-bundled-gems",
+          "test-bundler-parallel",
         ]
         configure: [
           "--enable-yjit=dev",
