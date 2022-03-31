@@ -310,6 +310,7 @@ pub fn insn_name(opcode: usize) -> String
     }
 }
 
+#[allow(unused_variables)]
 pub fn insn_len(opcode: usize) -> u32
 {
     #[cfg(test)]

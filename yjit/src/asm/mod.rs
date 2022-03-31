@@ -157,8 +157,7 @@ impl CodeBlock
     /// If not, this becomes an inline no-op.
     #[inline]
     pub fn add_comment(&mut self, comment: &str) {
-        #[cfg(feature="asm_comments")]
-        {
+        if cfg!(feature = "asm_comments") {
             let cur_ptr = self.get_write_ptr().into_usize();
             let this_line_comments = self.asm_comments.get(&cur_ptr);
 
@@ -282,7 +281,7 @@ impl CodeBlock
                 let mut cur = val;
 
                 // Write out the bytes
-                for byte in 0..(num_bits / 8) {
+                for _byte in 0..(num_bits / 8) {
                     self.write_byte((cur & 0xff) as u8);
                     cur >>= 8;
                 }

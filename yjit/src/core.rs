@@ -1770,7 +1770,7 @@ pub fn gen_branch(
     regenerate_branch(cb, &mut branch);
 }
 
-fn gen_jump_branch(cb: &mut CodeBlock, target0: CodePtr, target1: Option<CodePtr>, shape: BranchShape)
+fn gen_jump_branch(cb: &mut CodeBlock, target0: CodePtr, _target1: Option<CodePtr>, shape: BranchShape)
 {
     if shape == BranchShape::Next1 {
         panic!("Branch shape Next1 not allowed in gen_jump_branch!");
