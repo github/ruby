@@ -9,7 +9,6 @@ use crate::yjit::yjit_enabled_p;
 /// Produce a string representing the disassembly for an ISEQ
 #[no_mangle]
 pub extern "C" fn rb_yjit_disasm_iseq(ec: EcPtr, ruby_self: VALUE, iseqw: VALUE) -> VALUE {
-
     #[cfg(not(feature = "disasm"))]
     {
         return Qnil;
@@ -133,4 +132,86 @@ fn disasm_iseq(iseq: IseqPtr) -> String {
     }
 
     return out;
+}
+
+/// Primitive called in yjit.rb
+/// Produce a list of instructions compiled for an isew
+#[no_mangle]
+pub extern "C" fn rb_yjit_insns_compiled(ec: EcPtr, ruby_self: VALUE, iseqw: VALUE) -> VALUE {
+    #[cfg(not(feature = "disasm"))]
+    {
+        return Qnil;
+    }
+
+    #[cfg(feature = "disasm")]
+    {
+        // TODO:
+        //if unsafe { CLASS_OF(iseqw) != rb_cISeq } {
+        //    return Qnil;
+        //}
+
+        if !yjit_enabled_p() {
+            return Qnil;
+        }
+
+        // Get the iseq pointer from the wrapper
+        let iseq = unsafe { rb_iseqw_to_iseq(iseqw) };
+
+        // Get the list of instructions compiled
+        let insn_vec = insns_compiled(iseq);
+
+        unsafe {
+            let insn_ary = rb_ary_new_capa((insn_vec.len() * 2) as i64);
+
+            // For each instruction compiled
+            for idx in 0..insn_vec.len() {
+                let op_name = &insn_vec[idx].0;
+                let insn_idx = insn_vec[idx].1;
+
+                let op_sym = rust_str_to_sym(&op_name);
+
+                // Store the instruction index and opcode symbol
+                rb_ary_store(insn_ary, (2 * idx + 0) as i64, VALUE::fixnum_from_usize(insn_idx as usize));
+                rb_ary_store(insn_ary, (2 * idx + 1) as i64, op_sym);
+            }
+
+            insn_ary
+        }
+    }
+}
+
+#[cfg(feature = "disasm")]
+fn insns_compiled(iseq: IseqPtr) -> Vec<(String, u32)> {
+    let mut insn_vec = Vec::new();
+
+    // Get a list of block versions generated for this iseq
+    let block_list = get_iseq_block_list(iseq);
+
+    // For each block associated with this iseq
+    for blockref in &block_list {
+        let block = blockref.borrow();
+        let start_idx = block.get_blockid().idx;
+        let end_idx = block.get_end_idx();
+        assert!(end_idx <= unsafe { get_iseq_encoded_size(iseq) });
+
+        // For each YARV instruction in the block
+        let mut insn_idx = start_idx;
+        while insn_idx < end_idx {
+            // Get the current pc and opcode
+            let pc = unsafe { rb_iseq_pc_at_idx(iseq, insn_idx) };
+            // try_into() call below is unfortunate. Maybe pick i32 instead of usize for opcodes.
+            let opcode: usize = unsafe { rb_iseq_opcode_at_pc(iseq, pc) }.try_into().unwrap();
+
+            // Get the mnemonic for this opcode
+            let op_name = insn_name(opcode);
+
+            // Add the instruction to the list
+            insn_vec.push((op_name, insn_idx));
+
+            // Move to the next instruction
+            insn_idx += insn_len(opcode);
+        }
+    }
+
+    return insn_vec;
 }

@@ -1403,14 +1403,6 @@ fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &
 /// NOTE: this function assumes that the VM lock has been taken
 pub fn gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> Option<CodePtr>
 {
-    /*
-    // If we aren't at PC 0, don't generate code
-    // See yjit_pc_guard
-    if (iseq->body->iseq_encoded != ec->cfp->pc) {
-        return NULL;
-    }
-    */
-
     // Compute the current instruction index based on the current PC
     let insn_idx: u32 = unsafe {
         let pc_zero = rb_iseq_pc_at_idx(iseq, 0);

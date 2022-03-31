@@ -43,6 +43,18 @@ module RubyVM::YJIT
     end
   end
 
+  # Produce a list of instructions compiled by YJIT for an iseq
+  def self.insns_compiled(iseq)
+    # If a method or proc is passed in, get its iseq
+    iseq = RubyVM::InstructionSequence.of(iseq)
+
+    if self.enabled?
+      Primitive.rb_yjit_insns_compiled(iseq)
+    else
+      Qnil
+    end
+  end
+
   def self.simulate_oom!
     Primitive.rb_yjit_simulate_oom_bang
   end

@@ -67,9 +67,10 @@ fn main() {
         .allowlist_function("rb_hash_bulk_insert")
 
         // From include/ruby/internal/intern/array.h
+        .allowlist_function("rb_ary_new_capa")
+        .allowlist_function("rb_ary_store")
         .allowlist_function("rb_ary_resurrect")
         .allowlist_function("rb_ary_clear")
-        .allowlist_function("rb_ary_store")
 
         // From internal/array.h
         .allowlist_function("rb_ec_ary_new_from_values")

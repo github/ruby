@@ -144,6 +144,9 @@ extern "C" {
     pub static mut rb_cTrueClass: VALUE;
 }
 extern "C" {
+    pub fn rb_ary_new_capa(capa: ::std::os::raw::c_long) -> VALUE;
+}
+extern "C" {
     pub fn rb_ary_store(ary: VALUE, key: ::std::os::raw::c_long, val: VALUE);
 }
 extern "C" {
