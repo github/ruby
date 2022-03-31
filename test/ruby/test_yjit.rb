@@ -62,182 +62,182 @@ class TestYJIT < Test::Unit::TestCase
     assert_in_out_err([yjit_child_env, '-e p RubyVM::YJIT.enabled?'], '', ['true'])
   end
 
-  # def test_compile_setclassvariable
-  #   script = 'class Foo; def self.foo; @@foo = 1; end; end; Foo.foo'
-  #   assert_compiles(script, insns: %i[setclassvariable], result: 1)
-  # end
+  def test_compile_setclassvariable
+    script = 'class Foo; def self.foo; @@foo = 1; end; end; Foo.foo'
+    assert_compiles(script, insns: %i[setclassvariable], result: 1)
+  end
 
-  # def test_compile_getclassvariable
-  #   script = 'class Foo; @@foo = 1; def self.foo; @@foo; end; end; Foo.foo'
-  #   assert_compiles(script, insns: %i[getclassvariable], result: 1)
-  # end
+  def test_compile_getclassvariable
+    script = 'class Foo; @@foo = 1; def self.foo; @@foo; end; end; Foo.foo'
+    assert_compiles(script, insns: %i[getclassvariable], result: 1)
+  end
 
-  # def test_compile_putnil
-  #   assert_compiles('nil', insns: %i[putnil], result: nil)
-  # end
+  def test_compile_putnil
+    assert_compiles('nil', insns: %i[putnil], result: nil)
+  end
 
-  # def test_compile_putobject
-  #   assert_compiles('true', insns: %i[putobject], result: true)
-  #   assert_compiles('123', insns: %i[putobject], result: 123)
-  #   assert_compiles(':foo', insns: %i[putobject], result: :foo)
-  # end
+  def test_compile_putobject
+    assert_compiles('true', insns: %i[putobject], result: true)
+    assert_compiles('123', insns: %i[putobject], result: 123)
+    assert_compiles(':foo', insns: %i[putobject], result: :foo)
+  end
 
-  # def test_compile_opt_not
-  #   assert_compiles('!false', insns: %i[opt_not], result: true)
-  #   assert_compiles('!nil', insns: %i[opt_not], result: true)
-  #   assert_compiles('!true', insns: %i[opt_not], result: false)
-  #   assert_compiles('![]', insns: %i[opt_not], result: false)
-  # end
+  def test_compile_opt_not
+    assert_compiles('!false', insns: %i[opt_not], result: true)
+    assert_compiles('!nil', insns: %i[opt_not], result: true)
+    assert_compiles('!true', insns: %i[opt_not], result: false)
+    assert_compiles('![]', insns: %i[opt_not], result: false)
+  end
 
-  # def test_compile_opt_newarray
-  #   assert_compiles('[]', insns: %i[newarray], result: [])
-  #   assert_compiles('[1+1]', insns: %i[newarray opt_plus], result: [2])
-  #   assert_compiles('[1,1+1,3,4,5,6]', insns: %i[newarray opt_plus], result: [1, 2, 3, 4, 5, 6])
-  # end
+  def test_compile_opt_newarray
+    assert_compiles('[]', insns: %i[newarray], result: [])
+    assert_compiles('[1+1]', insns: %i[newarray opt_plus], result: [2])
+    assert_compiles('[1,1+1,3,4,5,6]', insns: %i[newarray opt_plus], result: [1, 2, 3, 4, 5, 6])
+  end
 
-  # def test_compile_opt_duparray
-  #   assert_compiles('[1]', insns: %i[duparray], result: [1])
-  #   assert_compiles('[1, 2, 3]', insns: %i[duparray], result: [1, 2, 3])
-  # end
+  def test_compile_opt_duparray
+    assert_compiles('[1]', insns: %i[duparray], result: [1])
+    assert_compiles('[1, 2, 3]', insns: %i[duparray], result: [1, 2, 3])
+  end
 
-  # def test_compile_newrange
-  #   assert_compiles('s = 1; (s..5)', insns: %i[newrange], result: 1..5)
-  #   assert_compiles('s = 1; e = 5; (s..e)', insns: %i[newrange], result: 1..5)
-  #   assert_compiles('s = 1; (s...5)', insns: %i[newrange], result: 1...5)
-  #   assert_compiles('s = 1; (s..)', insns: %i[newrange], result: 1..)
-  #   assert_compiles('e = 5; (..e)', insns: %i[newrange], result: ..5)
-  # end
+  def test_compile_newrange
+    assert_compiles('s = 1; (s..5)', insns: %i[newrange], result: 1..5)
+    assert_compiles('s = 1; e = 5; (s..e)', insns: %i[newrange], result: 1..5)
+    assert_compiles('s = 1; (s...5)', insns: %i[newrange], result: 1...5)
+    assert_compiles('s = 1; (s..)', insns: %i[newrange], result: 1..)
+    assert_compiles('e = 5; (..e)', insns: %i[newrange], result: ..5)
+  end
 
-  # def test_compile_duphash
-  #   assert_compiles('{ two: 2 }', insns: %i[duphash], result: { two: 2 })
-  # end
+  def test_compile_duphash
+    assert_compiles('{ two: 2 }', insns: %i[duphash], result: { two: 2 })
+  end
 
-  # def test_compile_newhash
-  #   assert_compiles('{}', insns: %i[newhash], result: {})
-  #   assert_compiles('{ two: 1 + 1 }', insns: %i[newhash], result: { two: 2 })
-  #   assert_compiles('{ 1 + 1 => :two }', insns: %i[newhash], result: { 2 => :two })
-  # end
+  def test_compile_newhash
+    assert_compiles('{}', insns: %i[newhash], result: {})
+    assert_compiles('{ two: 1 + 1 }', insns: %i[newhash], result: { two: 2 })
+    assert_compiles('{ 1 + 1 => :two }', insns: %i[newhash], result: { 2 => :two })
+  end
 
-  # def test_compile_opt_nil_p
-  #   assert_compiles('nil.nil?', insns: %i[opt_nil_p], result: true)
-  #   assert_compiles('false.nil?', insns: %i[opt_nil_p], result: false)
-  #   assert_compiles('true.nil?', insns: %i[opt_nil_p], result: false)
-  #   assert_compiles('(-"").nil?', insns: %i[opt_nil_p], result: false)
-  #   assert_compiles('123.nil?', insns: %i[opt_nil_p], result: false)
-  # end
+  def test_compile_opt_nil_p
+    assert_compiles('nil.nil?', insns: %i[opt_nil_p], result: true)
+    assert_compiles('false.nil?', insns: %i[opt_nil_p], result: false)
+    assert_compiles('true.nil?', insns: %i[opt_nil_p], result: false)
+    assert_compiles('(-"").nil?', insns: %i[opt_nil_p], result: false)
+    assert_compiles('123.nil?', insns: %i[opt_nil_p], result: false)
+  end
 
-  # def test_compile_eq_fixnum
-  #   assert_compiles('123 == 123', insns: %i[opt_eq], result: true)
-  #   assert_compiles('123 == 456', insns: %i[opt_eq], result: false)
-  # end
+  def test_compile_eq_fixnum
+    assert_compiles('123 == 123', insns: %i[opt_eq], result: true)
+    assert_compiles('123 == 456', insns: %i[opt_eq], result: false)
+  end
 
-  # def test_compile_eq_string
-  #   assert_compiles('-"" == -""', insns: %i[opt_eq], result: true)
-  #   assert_compiles('-"foo" == -"foo"', insns: %i[opt_eq], result: true)
-  #   assert_compiles('-"foo" == -"bar"', insns: %i[opt_eq], result: false)
-  # end
+  def test_compile_eq_string
+    assert_compiles('-"" == -""', insns: %i[opt_eq], result: true)
+    assert_compiles('-"foo" == -"foo"', insns: %i[opt_eq], result: true)
+    assert_compiles('-"foo" == -"bar"', insns: %i[opt_eq], result: false)
+  end
 
-  # def test_compile_eq_symbol
-  #   assert_compiles(':foo == :foo', insns: %i[opt_eq], result: true)
-  #   assert_compiles(':foo == :bar', insns: %i[opt_eq], result: false)
-  #   assert_compiles(':foo == "foo".to_sym', insns: %i[opt_eq], result: true)
-  # end
+  def test_compile_eq_symbol
+    assert_compiles(':foo == :foo', insns: %i[opt_eq], result: true)
+    assert_compiles(':foo == :bar', insns: %i[opt_eq], result: false)
+    assert_compiles(':foo == "foo".to_sym', insns: %i[opt_eq], result: true)
+  end
 
-  # def test_compile_eq_object
-  #   assert_compiles(<<~RUBY, insns: %i[opt_eq], result: false)
-  #     def eq(a, b)
-  #       a == b
-  #     end
+  def test_compile_eq_object
+    assert_compiles(<<~RUBY, insns: %i[opt_eq], result: false)
+      def eq(a, b)
+        a == b
+      end
 
-  #     eq(Object.new, Object.new)
-  #   RUBY
+      eq(Object.new, Object.new)
+    RUBY
 
-  #   assert_compiles(<<~RUBY, insns: %i[opt_eq], result: true)
-  #     def eq(a, b)
-  #       a == b
-  #     end
+    assert_compiles(<<~RUBY, insns: %i[opt_eq], result: true)
+      def eq(a, b)
+        a == b
+      end
 
-  #     obj = Object.new
-  #     eq(obj, obj)
-  #   RUBY
-  # end
+      obj = Object.new
+      eq(obj, obj)
+    RUBY
+  end
 
-  # def test_compile_eq_arbitrary_class
-  #   assert_compiles(<<~RUBY, insns: %i[opt_eq], result: "yes")
-  #     def eq(a, b)
-  #       a == b
-  #     end
+  def test_compile_eq_arbitrary_class
+    assert_compiles(<<~RUBY, insns: %i[opt_eq], result: "yes")
+      def eq(a, b)
+        a == b
+      end
 
-  #     class Foo
-  #       def ==(other)
-  #         "yes"
-  #       end
-  #     end
+      class Foo
+        def ==(other)
+          "yes"
+        end
+      end
 
-  #     eq(Foo.new, Foo.new)
-  #     eq(Foo.new, Foo.new)
-  #   RUBY
-  # end
+      eq(Foo.new, Foo.new)
+      eq(Foo.new, Foo.new)
+    RUBY
+  end
 
-  # def test_compile_opt_lt
-  #   assert_compiles('1 < 2', insns: %i[opt_lt])
-  #   assert_compiles('"a" < "b"', insns: %i[opt_lt])
-  # end
+  def test_compile_opt_lt
+    assert_compiles('1 < 2', insns: %i[opt_lt])
+    assert_compiles('"a" < "b"', insns: %i[opt_lt])
+  end
 
-  # def test_compile_opt_le
-  #   assert_compiles('1 <= 2', insns: %i[opt_le])
-  #   assert_compiles('"a" <= "b"', insns: %i[opt_le])
-  # end
+  def test_compile_opt_le
+    assert_compiles('1 <= 2', insns: %i[opt_le])
+    assert_compiles('"a" <= "b"', insns: %i[opt_le])
+  end
 
-  # def test_compile_opt_gt
-  #   assert_compiles('1 > 2', insns: %i[opt_gt])
-  #   assert_compiles('"a" > "b"', insns: %i[opt_gt])
-  # end
+  def test_compile_opt_gt
+    assert_compiles('1 > 2', insns: %i[opt_gt])
+    assert_compiles('"a" > "b"', insns: %i[opt_gt])
+  end
 
-  # def test_compile_opt_ge
-  #   assert_compiles('1 >= 2', insns: %i[opt_ge])
-  #   assert_compiles('"a" >= "b"', insns: %i[opt_ge])
-  # end
+  def test_compile_opt_ge
+    assert_compiles('1 >= 2', insns: %i[opt_ge])
+    assert_compiles('"a" >= "b"', insns: %i[opt_ge])
+  end
 
-  # def test_compile_opt_plus
-  #   assert_compiles('1 + 2', insns: %i[opt_plus])
-  #   assert_compiles('"a" + "b"', insns: %i[opt_plus])
-  #   assert_compiles('[:foo] + [:bar]', insns: %i[opt_plus])
-  # end
+  def test_compile_opt_plus
+    assert_compiles('1 + 2', insns: %i[opt_plus])
+    assert_compiles('"a" + "b"', insns: %i[opt_plus])
+    assert_compiles('[:foo] + [:bar]', insns: %i[opt_plus])
+  end
 
-  # def test_compile_opt_minus
-  #   assert_compiles('1 - 2', insns: %i[opt_minus])
-  #   assert_compiles('[:foo, :bar] - [:bar]', insns: %i[opt_minus])
-  # end
+  def test_compile_opt_minus
+    assert_compiles('1 - 2', insns: %i[opt_minus])
+    assert_compiles('[:foo, :bar] - [:bar]', insns: %i[opt_minus])
+  end
 
-  # def test_compile_opt_or
-  #   assert_compiles('1 | 2', insns: %i[opt_or])
-  #   assert_compiles('[:foo] | [:bar]', insns: %i[opt_or])
-  # end
+  def test_compile_opt_or
+    assert_compiles('1 | 2', insns: %i[opt_or])
+    assert_compiles('[:foo] | [:bar]', insns: %i[opt_or])
+  end
 
-  # def test_compile_opt_and
-  #   assert_compiles('1 & 2', insns: %i[opt_and])
-  #   assert_compiles('[:foo, :bar] & [:bar]', insns: %i[opt_and])
-  # end
+  def test_compile_opt_and
+    assert_compiles('1 & 2', insns: %i[opt_and])
+    assert_compiles('[:foo, :bar] & [:bar]', insns: %i[opt_and])
+  end
 
-  # def test_compile_set_and_get_global
-  #   assert_compiles('$foo = 123; $foo', insns: %i[setglobal], result: 123)
-  # end
+  def test_compile_set_and_get_global
+    assert_compiles('$foo = 123; $foo', insns: %i[setglobal], result: 123)
+  end
 
-  # def test_compile_putspecialobject
-  #   assert_compiles('-> {}', insns: %i[putspecialobject])
-  # end
+  def test_compile_putspecialobject
+    assert_compiles('-> {}', insns: %i[putspecialobject])
+  end
 
   def test_compile_tostring
     assert_no_exits('"i am a string #{true}"')
   end
 
-  # def test_compile_opt_aset
-  #   assert_compiles('[1,2,3][2] = 4', insns: %i[opt_aset])
-  #   assert_compiles('{}[:foo] = :bar', insns: %i[opt_aset])
-  #   assert_compiles('[1,2,3][0..-1] = []', insns: %i[opt_aset])
-  #   assert_compiles('"foo"[3] = "d"', insns: %i[opt_aset])
-  # end
+  def test_compile_opt_aset
+    assert_compiles('[1,2,3][2] = 4', insns: %i[opt_aset])
+    assert_compiles('{}[:foo] = :bar', insns: %i[opt_aset])
+    assert_compiles('[1,2,3][0..-1] = []', insns: %i[opt_aset])
+    assert_compiles('"foo"[3] = "d"', insns: %i[opt_aset])
+  end
 
   def test_compile_attr_set
     assert_no_exits(<<~EORB)
@@ -257,24 +257,25 @@ class TestYJIT < Test::Unit::TestCase
     assert_no_exits('/#{true}/')
   end
 
+  # FIXME: exit on intern insn
   # def test_compile_dynamic_symbol
   #   assert_compiles(':"#{"foo"}"', insns: %i[intern])
   #   assert_compiles('s = "bar"; :"foo#{s}"', insns: %i[intern])
   # end
 
-  # def test_getlocal_with_level
-  #   assert_compiles(<<~RUBY, insns: %i[getlocal opt_plus], result: [[7]])
-  #     def foo(foo, bar)
-  #       [1].map do |x|
-  #         [1].map do |y|
-  #           foo + bar
-  #         end
-  #       end
-  #     end
+  def test_getlocal_with_level
+    assert_compiles(<<~RUBY, insns: %i[getlocal opt_plus], result: [[7]])
+      def foo(foo, bar)
+        [1].map do |x|
+          [1].map do |y|
+            foo + bar
+          end
+        end
+      end
 
-  #     foo(5, 2)
-  #   RUBY
-  # end
+      foo(5, 2)
+    RUBY
+  end
 
   def test_setlocal_with_level
     assert_no_exits(<<~RUBY)
@@ -290,83 +291,83 @@ class TestYJIT < Test::Unit::TestCase
     RUBY
   end
 
-  # def test_string_then_nil
-  #   assert_compiles(<<~RUBY, insns: %i[opt_nil_p], result: true)
-  #     def foo(val)
-  #       val.nil?
-  #     end
+  def test_string_then_nil
+    assert_compiles(<<~RUBY, insns: %i[opt_nil_p], result: true)
+      def foo(val)
+        val.nil?
+      end
 
-  #     foo("foo")
-  #     foo(nil)
-  #   RUBY
-  # end
+      foo("foo")
+      foo(nil)
+    RUBY
+  end
 
-  # def test_nil_then_string
-  #   assert_compiles(<<~RUBY, insns: %i[opt_nil_p], result: false)
-  #     def foo(val)
-  #       val.nil?
-  #     end
+  def test_nil_then_string
+    assert_compiles(<<~RUBY, insns: %i[opt_nil_p], result: false)
+      def foo(val)
+        val.nil?
+      end
 
-  #     foo(nil)
-  #     foo("foo")
-  #   RUBY
-  # end
+      foo(nil)
+      foo("foo")
+    RUBY
+  end
 
-  # def test_opt_length_in_method
-  #   assert_compiles(<<~RUBY, insns: %i[opt_length], result: 5)
-  #     def foo(str)
-  #       str.length
-  #     end
+  def test_opt_length_in_method
+    assert_compiles(<<~RUBY, insns: %i[opt_length], result: 5)
+      def foo(str)
+        str.length
+      end
 
-  #     foo("hello, ")
-  #     foo("world")
-  #   RUBY
-  # end
+      foo("hello, ")
+      foo("world")
+    RUBY
+  end
 
-  # def test_opt_regexpmatch2
-  #   assert_compiles(<<~RUBY, insns: %i[opt_regexpmatch2], result: 0)
-  #     def foo(str)
-  #       str =~ /foo/
-  #     end
+  def test_opt_regexpmatch2
+    assert_compiles(<<~RUBY, insns: %i[opt_regexpmatch2], result: 0)
+      def foo(str)
+        str =~ /foo/
+      end
 
-  #     foo("foobar")
-  #   RUBY
-  # end
+      foo("foobar")
+    RUBY
+  end
 
-  # def test_expandarray
-  #   assert_compiles(<<~'RUBY', insns: %i[expandarray], result: [1, 2])
-  #     a, b = [1, 2]
-  #   RUBY
-  # end
+  def test_expandarray
+    assert_compiles(<<~'RUBY', insns: %i[expandarray], result: [1, 2])
+      a, b = [1, 2]
+    RUBY
+  end
 
-  # def test_expandarray_nil
-  #   assert_compiles(<<~'RUBY', insns: %i[expandarray], result: [nil, nil])
-  #     a, b = nil
-  #     [a, b]
-  #   RUBY
-  # end
+  def test_expandarray_nil
+    assert_compiles(<<~'RUBY', insns: %i[expandarray], result: [nil, nil])
+      a, b = nil
+      [a, b]
+    RUBY
+  end
 
-  # def test_getspecial_backref
-  #   assert_compiles("'foo' =~ /(o)./; $&", insns: %i[getspecial], result: "oo")
-  #   assert_compiles("'foo' =~ /(o)./; $`", insns: %i[getspecial], result: "f")
-  #   assert_compiles("'foo' =~ /(o)./; $'", insns: %i[getspecial], result: "")
-  #   assert_compiles("'foo' =~ /(o)./; $+", insns: %i[getspecial], result: "o")
-  #   assert_compiles("'foo' =~ /(o)./; $1", insns: %i[getspecial], result: "o")
-  #   assert_compiles("'foo' =~ /(o)./; $2", insns: %i[getspecial], result: nil)
-  # end
+  def test_getspecial_backref
+    assert_compiles("'foo' =~ /(o)./; $&", insns: %i[getspecial], result: "oo")
+    assert_compiles("'foo' =~ /(o)./; $`", insns: %i[getspecial], result: "f")
+    assert_compiles("'foo' =~ /(o)./; $'", insns: %i[getspecial], result: "")
+    assert_compiles("'foo' =~ /(o)./; $+", insns: %i[getspecial], result: "o")
+    assert_compiles("'foo' =~ /(o)./; $1", insns: %i[getspecial], result: "o")
+    assert_compiles("'foo' =~ /(o)./; $2", insns: %i[getspecial], result: nil)
+  end
 
-  # def test_compile_opt_getinlinecache
-  #   assert_compiles(<<~RUBY, insns: %i[opt_getinlinecache], result: 123, call_threshold: 2)
-  #     def get_foo
-  #       FOO
-  #     end
+  def test_compile_opt_getinlinecache
+    assert_compiles(<<~RUBY, insns: %i[opt_getinlinecache], result: 123, call_threshold: 2)
+      def get_foo
+        FOO
+      end
 
-  #     FOO = 123
+      FOO = 123
 
-  #     get_foo # warm inline cache
-  #     get_foo
-  #   RUBY
-  # end
+      get_foo # warm inline cache
+      get_foo
+    RUBY
+  end
 
   def test_opt_getinlinecache_slowpath
     assert_compiles(<<~RUBY, exits: { opt_getinlinecache: 1 }, result: [42, 42, 1, 1], call_threshold: 2)
@@ -396,36 +397,36 @@ class TestYJIT < Test::Unit::TestCase
     RUBY
   end
 
-  # def test_string_interpolation
-  #   assert_compiles(<<~'RUBY', insns: %i[objtostring anytostring concatstrings], result: "foobar", call_threshold: 2)
-  #     def make_str(foo, bar)
-  #       "#{foo}#{bar}"
-  #     end
+  def test_string_interpolation
+    assert_compiles(<<~'RUBY', insns: %i[objtostring anytostring concatstrings], result: "foobar", call_threshold: 2)
+      def make_str(foo, bar)
+        "#{foo}#{bar}"
+      end
 
-  #     make_str("foo", "bar")
-  #     make_str("foo", "bar")
-  #   RUBY
-  # end
+      make_str("foo", "bar")
+      make_str("foo", "bar")
+    RUBY
+  end
 
-  # def test_string_interpolation_cast
-  #   assert_compiles(<<~'RUBY', insns: %i[objtostring anytostring concatstrings], result: "123")
-  #     def make_str(foo, bar)
-  #       "#{foo}#{bar}"
-  #     end
+  def test_string_interpolation_cast
+    assert_compiles(<<~'RUBY', insns: %i[objtostring anytostring concatstrings], result: "123")
+      def make_str(foo, bar)
+        "#{foo}#{bar}"
+      end
 
-  #     make_str(1, 23)
-  #   RUBY
-  # end
+      make_str(1, 23)
+    RUBY
+  end
 
-  # def test_checkkeyword
-  #   assert_compiles(<<~'RUBY', insns: %i[checkkeyword], result: [2, 5])
-  #     def foo(foo: 1+1)
-  #       foo
-  #     end
+  def test_checkkeyword
+    assert_compiles(<<~'RUBY', insns: %i[checkkeyword], result: [2, 5])
+      def foo(foo: 1+1)
+        foo
+      end
 
-  #     [foo, foo(foo: 5)]
-  #   RUBY
-  # end
+      [foo, foo(foo: 5)]
+    RUBY
+  end
 
   def test_struct_aref
     assert_compiles(<<~RUBY)
@@ -453,64 +454,64 @@ class TestYJIT < Test::Unit::TestCase
     RUBY
   end
 
-  # def test_super_iseq
-  #   assert_compiles(<<~'RUBY', insns: %i[invokesuper opt_plus opt_mult], result: 15)
-  #     class A
-  #       def foo
-  #         1 + 2
-  #       end
-  #     end
+  def test_super_iseq
+    assert_compiles(<<~'RUBY', insns: %i[invokesuper opt_plus opt_mult], result: 15)
+      class A
+        def foo
+          1 + 2
+        end
+      end
 
-  #     class B < A
-  #       def foo
-  #         super * 5
-  #       end
-  #     end
+      class B < A
+        def foo
+          super * 5
+        end
+      end
 
-  #     B.new.foo
-  #   RUBY
-  # end
+      B.new.foo
+    RUBY
+  end
 
-  # def test_super_cfunc
-  #   assert_compiles(<<~'RUBY', insns: %i[invokesuper], result: "Hello")
-  #     class Gnirts < String
-  #       def initialize
-  #         super(-"olleH")
-  #       end
+  def test_super_cfunc
+    assert_compiles(<<~'RUBY', insns: %i[invokesuper], result: "Hello")
+      class Gnirts < String
+        def initialize
+          super(-"olleH")
+        end
 
-  #       def to_s
-  #         super().reverse
-  #       end
-  #     end
+        def to_s
+          super().reverse
+        end
+      end
 
-  #     Gnirts.new.to_s
-  #   RUBY
-  # end
+      Gnirts.new.to_s
+    RUBY
+  end
 
-  # # Tests calling a variadic cfunc with many args
-  # def test_build_large_struct
-  #   assert_compiles(<<~RUBY, insns: %i[opt_send_without_block], call_threshold: 2)
-  #     ::Foo = Struct.new(:a, :b, :c, :d, :e, :f, :g, :h)
+  # Tests calling a variadic cfunc with many args
+  def test_build_large_struct
+    assert_compiles(<<~RUBY, insns: %i[opt_send_without_block], call_threshold: 2)
+      ::Foo = Struct.new(:a, :b, :c, :d, :e, :f, :g, :h)
 
-  #     def build_foo
-  #       ::Foo.new(:a, :b, :c, :d, :e, :f, :g, :h)
-  #     end
+      def build_foo
+        ::Foo.new(:a, :b, :c, :d, :e, :f, :g, :h)
+      end
 
-  #     build_foo
-  #     build_foo
-  #   RUBY
-  # end
+      build_foo
+      build_foo
+    RUBY
+  end
 
-  # def test_fib_recursion
-  #   assert_compiles(<<~'RUBY', insns: %i[opt_le opt_minus opt_plus opt_send_without_block], result: 34)
-  #     def fib(n)
-  #       return n if n <= 1
-  #       fib(n-1) + fib(n-2)
-  #     end
+  def test_fib_recursion
+    assert_compiles(<<~'RUBY', insns: %i[opt_le opt_minus opt_plus opt_send_without_block], result: 34)
+      def fib(n)
+        return n if n <= 1
+        fib(n-1) + fib(n-2)
+      end
 
-  #     fib(9)
-  #   RUBY
-  # end
+      fib(9)
+    RUBY
+  end
 
   def test_optarg_and_kwarg
     assert_no_exits(<<~'RUBY')
@@ -582,28 +583,17 @@ class TestYJIT < Test::Unit::TestCase
     write_results = <<~RUBY
       stats = RubyVM::YJIT.runtime_stats
 
-      def collect_iseqs(iseq)
-        iseq_array = iseq.to_a
-        insns = iseq_array.last.grep(Array)
-
-        # FIXME
-        # blocks = RubyVM::YJIT.blocks_for(iseq)
-        # h = {
-        #   name: iseq_array[5],
-        #   insns: insns,
-        #   blocks: collect_blocks(blocks),
-        # }
-        # arr = [h]
-        # iseq.each_child { |c| arr.concat collect_iseqs(c) }
-        # arr
-
+      def collect_insns(iseq)
+        insns = RubyVM::YJIT.insns_compiled(iseq)
+        iseq.each_child { |c| insns.concat collect_insns(c) }
+        insns
       end
 
       iseq = RubyVM::InstructionSequence.of(_test_proc)
       IO.open(3).write Marshal.dump({
         result: #{result == ANY ? "nil" : "result"},
         stats: stats,
-        iseqs: collect_iseqs(iseq),
+        insns: collect_insns(iseq),
         disasm: iseq.disasm
       })
     RUBY
@@ -629,7 +619,7 @@ class TestYJIT < Test::Unit::TestCase
     end
 
     runtime_stats = stats[:stats]
-    #iseqs = stats[:iseqs]
+    insns_compiled = stats[:insns]
     disasm = stats[:disasm]
 
     # Check that exit counts are as expected
@@ -645,35 +635,21 @@ class TestYJIT < Test::Unit::TestCase
       end
     end
 
-    # # Only available when RUBY_DEBUG enabled
-    # if runtime_stats[:all_stats]
-    #   missed_insns = insns.dup
-    #   all_compiled_blocks = {}
-    #   iseqs.each do |iseq|
-    #     compiled_blocks = iseq[:blocks].map { |from, to| (from...to) }
-    #     all_compiled_blocks[iseq[:name]] = compiled_blocks
-    #     compiled_insns = iseq[:insns]
-    #     next_idx = 0
-    #     compiled_insns.map! do |insn|
-    #       # TODO: not sure this is accurate for determining insn size
-    #       idx = next_idx
-    #       next_idx += insn.length
-    #       [idx, *insn]
-    #     end
+    # Only available when RUBY_DEBUG enabled
+    if runtime_stats[:all_stats]
+      missed_insns = insns.dup
 
-    #     compiled_insns.each do |idx, op, *arguments|
-    #       next unless missed_insns.include?(op)
-    #       next unless compiled_blocks.any? { |block| block === idx }
+      insns_compiled.each do |op|
+        if missed_insns.include?(op)
+          # This instruction was compiled
+          missed_insns.delete(op)
+        end
+      end
 
-    #       # This instruction was compiled
-    #       missed_insns.delete(op)
-    #     end
-    #   end
-
-    #   unless missed_insns.empty?
-    #     flunk "Expected to compile instructions #{missed_insns.join(", ")} but didn't.\nCompiled ranges: #{all_compiled_blocks.inspect}\niseq:\n#{disasm}"
-    #   end
-    # end
+      unless missed_insns.empty?
+        flunk "Expected to compile instructions #{missed_insns.join(", ")} but didn't.\niseq:\n#{disasm}"
+      end
+    end
   end
 
   def eval_with_jit(script, call_threshold: 1, timeout: 1000)
