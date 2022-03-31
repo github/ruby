@@ -173,9 +173,10 @@ fn jit_at_current_insn(jit: &JITState) -> bool
 
 // Peek at the nth topmost value on the Ruby stack.
 // Returns the topmost value when n == 0.
-fn jit_peek_at_stack(jit: &JITState, _ctx: &Context, n:isize) -> VALUE
+fn jit_peek_at_stack(jit: &JITState, ctx: &Context, n: isize) -> VALUE
 {
     assert!(jit_at_current_insn(jit));
+    assert!(n < ctx.get_stack_size() as isize);
 
     // Note: this does not account for ctx->sp_offset because
     // this is only available when hitting a stub, and while
@@ -188,12 +189,12 @@ fn jit_peek_at_stack(jit: &JITState, _ctx: &Context, n:isize) -> VALUE
     }
 }
 
-fn jit_peek_at_self(jit: &JITState, _ctx: &Context) -> VALUE
+fn jit_peek_at_self(jit: &JITState) -> VALUE
 {
     unsafe { get_cfp_self(get_ec_cfp(jit.ec.unwrap())) }
 }
 
-fn jit_peek_at_local(jit: &JITState, _ctx: &Context, n: i32) -> VALUE
+fn jit_peek_at_local(jit: &JITState, n: i32) -> VALUE
 {
     assert!(jit_at_current_insn(jit));
 
@@ -332,7 +333,7 @@ fn verify_ctx(jit: &JITState, ctx: &Context)
     // Only able to check types when at current insn
     assert!(jit_at_current_insn(jit));
 
-    let self_val = jit_peek_at_self(jit, ctx);
+    let self_val = jit_peek_at_self(jit);
     let self_val_type = Type::from(self_val);
 
     // Verify self operand type
@@ -362,7 +363,7 @@ fn verify_ctx(jit: &JITState, ctx: &Context)
                 }
             },
             TempMapping::MapToLocal(local_idx) => {
-                let local_val = jit_peek_at_local(jit, ctx, local_idx as i32);
+                let local_val = jit_peek_at_local(jit, local_idx.into());
                 if local_val != stack_val {
                     panic!(
                         "verify_ctx: stack value was mapped to local, but values did not match\n  stack: {}\n  local {}: {}",
@@ -391,7 +392,7 @@ fn verify_ctx(jit: &JITState, ctx: &Context)
     let top_idx: usize = cmp::min(local_table_size as usize, MAX_TEMP_TYPES);
     for i in 0..top_idx {
         let learned_type = ctx.get_local_type(i);
-        let local_val = jit_peek_at_local(jit, ctx, i as i32);
+        let local_val = jit_peek_at_local(jit, i as i32);
         let local_type = Type::from(local_val);
 
         if local_type.diff(learned_type) == usize::MAX {
@@ -2078,7 +2079,7 @@ fn gen_getinstancevariable(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeB
 
     let ivar_name = jit_get_arg(jit, 0).as_u64();
 
-    let comptime_val = jit_peek_at_self(jit, ctx);
+    let comptime_val = jit_peek_at_self(jit);
     let comptime_val_klass = comptime_val.class_of();
 
     // Generate a side exit
