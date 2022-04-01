@@ -2985,37 +2985,6 @@ fn jit_protected_callee_ancestry_guard(jit: &mut JITState, cb: &mut CodeBlock, o
     jz_ptr(cb, counted_exit!(ocb, side_exit, send_se_protected_check_failed));
 }
 
-// Return true when the codegen function generates code.
-// known_recv_klass is non-NULL when the caller has used jit_guard_known_klass().
-// See yjit_reg_method().
-type MethodGenFn = fn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool;
-
-// Register a specialized codegen function for a particular method. Note that
-// the if the function returns true, the code it generates runs without a
-// control frame and without interrupt checks. To avoid creating observable
-// behavior changes, the codegen function should only target simple code paths
-// that do not allocate and do not make method calls.
-fn yjit_reg_method(klass: VALUE, mid_str: &str, gen_fn: MethodGenFn)
-{
-    let id_string = std::ffi::CString::new(mid_str).expect("couldn't convert to CString!");
-    let mid = unsafe { rb_intern(id_string.as_ptr()) };
-    let me = unsafe { rb_method_entry_at(klass, mid )};
-
-    if me.is_null() {
-        panic!("undefined optimized method!");
-    }
-
-    // For now, only cfuncs are supported
-    //RUBY_ASSERT(me && me->def);
-    //RUBY_ASSERT(me->def->type == VM_METHOD_TYPE_CFUNC);
-
-    let method_serial = unsafe {
-        let def = (*me).def;
-        get_def_method_serial(def)
-    };
-    CodegenGlobals::register_codegen_method(method_serial, gen_fn);
-}
-
 // Codegen for rb_obj_not().
 // Note, caller is responsible for generating all the right guards, including
 // arity guards.
@@ -4851,12 +4820,41 @@ fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn>
     }
 }
 
-/// Register codegen functions for some Ruby core methods
-fn get_method_gen_fn()
-{
-    // TODO: implement pattern matching for this
+// Return true when the codegen function generates code.
+// known_recv_klass is non-NULL when the caller has used jit_guard_known_klass().
+// See yjit_reg_method().
+type MethodGenFn = fn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool;
 
-    // All these class constants are mutable statics.
+// Register a specialized codegen function for a particular method. Note that
+// the if the function returns true, the code it generates runs without a
+// control frame and without interrupt checks. To avoid creating observable
+// behavior changes, the codegen function should only target simple code paths
+// that do not allocate and do not make method calls.
+fn yjit_reg_method(klass: VALUE, mid_str: &str, gen_fn: MethodGenFn)
+{
+    let id_string = std::ffi::CString::new(mid_str).expect("couldn't convert to CString!");
+    let mid = unsafe { rb_intern(id_string.as_ptr()) };
+    let me = unsafe { rb_method_entry_at(klass, mid )};
+
+    if me.is_null() {
+        panic!("undefined optimized method!");
+    }
+
+    // For now, only cfuncs are supported
+    //RUBY_ASSERT(me && me->def);
+    //RUBY_ASSERT(me->def->type == VM_METHOD_TYPE_CFUNC);
+
+    let method_serial = unsafe {
+        let def = (*me).def;
+        get_def_method_serial(def)
+    };
+
+    CodegenGlobals::register_codegen_method(method_serial, gen_fn);
+}
+
+/// Register codegen functions for some Ruby core methods
+fn reg_method_codegen_fns()
+{
     unsafe {
         // Specialization for C methods. See yjit_reg_method() for details.
         yjit_reg_method(rb_cBasicObject, "!", jit_rb_obj_not);
