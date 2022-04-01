@@ -1079,265 +1079,6 @@ fn gen_opt_plus(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: 
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn setup_codegen() -> (JITState, Context, CodeBlock, OutlinedCb) {
-        let block = Block::new(BLOCKID_NULL, &Context::default());
-
-        return (
-            JITState::new(&block),
-            Context::new(),
-            CodeBlock::new_dummy(256 * 1024),
-            OutlinedCb::wrap(CodeBlock::new_dummy(256 * 1024))
-        );
-    }
-
-    #[test]
-    fn test_gen_leave_exit() {
-        let mut ocb = OutlinedCb::wrap( CodeBlock::new_dummy(256 * 1024));
-        gen_leave_exit(&mut ocb);
-        assert!(ocb.unwrap().get_write_pos() > 0);
-    }
-
-    #[test]
-    fn test_gen_exit() {
-        let (_, ctx, mut cb, _) = setup_codegen();
-        gen_exit(0 as *mut VALUE, &ctx, &mut cb);
-        assert!(cb.get_write_pos() > 0);
-    }
-
-    #[test]
-    fn test_get_side_exit() {
-        let (mut jit, ctx, _, mut ocb) = setup_codegen();
-        get_side_exit(&mut jit, &mut ocb, &ctx);
-        assert!(ocb.unwrap().get_write_pos() > 0);
-    }
-
-    #[test]
-    fn test_gen_check_ints() {
-        let (_, _ctx, mut cb, mut ocb) = setup_codegen();
-        let side_exit = ocb.unwrap().get_write_ptr();
-        gen_check_ints(&mut cb, side_exit);
-    }
-
-    #[test]
-    fn test_gen_nop() {
-        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
-        let status = gen_nop(&mut jit, &mut context, &mut cb, &mut ocb);
-
-        assert_eq!(status, KeepCompiling);
-        assert_eq!(context.diff(&Context::new()), 0);
-        assert_eq!(cb.get_write_pos(), 0);
-    }
-
-    #[test]
-    fn test_gen_pop() {
-        let (mut jit, _, mut cb, mut ocb) = setup_codegen();
-        let mut context = Context::new_with_stack_size(1);
-        let status = gen_pop(&mut jit, &mut context, &mut cb, &mut ocb);
-
-        assert_eq!(status, KeepCompiling);
-        assert_eq!(context.diff(&Context::new()), 0);
-    }
-
-    #[test]
-    fn test_gen_dup() {
-        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
-        context.stack_push(Type::Fixnum);
-        let status = gen_dup(&mut jit, &mut context, &mut cb, &mut ocb);
-
-        assert_eq!(status, KeepCompiling);
-
-        // Did we duplicate the type information for the Fixnum type?
-        assert_eq!(Type::Fixnum, context.get_opnd_type(StackOpnd(0)));
-        assert_eq!(Type::Fixnum, context.get_opnd_type(StackOpnd(1)));
-
-        assert!(cb.get_write_pos() > 0); // Write some movs
-    }
-
-    #[test]
-    fn test_gen_dupn() {
-        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
-        context.stack_push(Type::Fixnum);
-        context.stack_push(Type::Flonum);
-
-        let mut value_array: [u64; 2] = [ 0, 2 ]; // We only compile for n == 2
-        let pc: *mut VALUE = &mut value_array as *mut u64 as *mut VALUE;
-        jit.set_pc(pc);
-
-        let status = gen_dupn(&mut jit, &mut context, &mut cb, &mut ocb);
-
-        assert_eq!(status, KeepCompiling);
-
-        assert_eq!(Type::Fixnum, context.get_opnd_type(StackOpnd(3)));
-        assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(2)));
-        assert_eq!(Type::Fixnum, context.get_opnd_type(StackOpnd(1)));
-        assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(0)));
-
-        assert!(cb.get_write_pos() > 0); // Write some movs
-    }
-
-    #[test]
-    fn test_gen_swap() {
-        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
-        context.stack_push(Type::Fixnum);
-        context.stack_push(Type::Flonum);
-
-        let status = gen_swap(&mut jit, &mut context, &mut cb, &mut ocb);
-
-        let (_, tmp_type_top) = context.get_opnd_mapping(StackOpnd(0));
-        let (_, tmp_type_next) = context.get_opnd_mapping(StackOpnd(1));
-
-        assert_eq!(status, KeepCompiling);
-        assert_eq!(tmp_type_top, Type::Fixnum);
-        assert_eq!(tmp_type_next, Type::Flonum);
-    }
-
-    #[test]
-    fn test_putnil() {
-        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
-        let status = gen_putnil(&mut jit, &mut context, &mut cb, &mut ocb);
-
-        let (_, tmp_type_top) = context.get_opnd_mapping(StackOpnd(0));
-
-        assert_eq!(status, KeepCompiling);
-        assert_eq!(tmp_type_top, Type::Nil);
-        assert!(cb.get_write_pos() > 0);
-    }
-
-    #[test]
-    fn test_putobject_qtrue() {
-        // Test gen_putobject with Qtrue
-        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
-
-        let mut value_array: [u64; 2] = [ 0, Qtrue.into() ];
-        let pc: *mut VALUE = &mut value_array as *mut u64 as *mut VALUE;
-        jit.set_pc(pc);
-
-        let status = gen_putobject(&mut jit, &mut context, &mut cb, &mut ocb);
-
-        let (_, tmp_type_top) = context.get_opnd_mapping(StackOpnd(0));
-
-        assert_eq!(status, KeepCompiling);
-        assert_eq!(tmp_type_top, Type::True);
-        assert!(cb.get_write_pos() > 0);
-    }
-
-    #[test]
-    fn test_putobject_fixnum() {
-        // Test gen_putobject with a Fixnum to test another conditional branch
-        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
-
-        // The Fixnum 7 is encoded as 7 * 2 + 1, or 15
-        let mut value_array: [u64; 2] = [ 0, 15 ];
-        let pc: *mut VALUE = &mut value_array as *mut u64 as *mut VALUE;
-        jit.set_pc(pc);
-
-        let status = gen_putobject(&mut jit, &mut context, &mut cb, &mut ocb);
-
-        let (_, tmp_type_top) = context.get_opnd_mapping(StackOpnd(0));
-
-        assert_eq!(status, KeepCompiling);
-        assert_eq!(tmp_type_top, Type::Fixnum);
-        assert!(cb.get_write_pos() > 0);
-    }
-
-    #[test]
-    fn test_int2fix() {
-        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
-        jit.opcode = OP_PUTOBJECT_INT2FIX_0_;
-        let status = gen_putobject_int2fix(&mut jit, &mut context, &mut cb, &mut ocb);
-
-        let (_, tmp_type_top) = context.get_opnd_mapping(StackOpnd(0));
-
-        // Right now we're not testing the generated machine code to make sure a literal 1 or 0 was pushed. I've checked locally.
-        assert_eq!(status, KeepCompiling);
-        assert_eq!(tmp_type_top, Type::Fixnum);
-    }
-
-    #[test]
-    fn test_putself() {
-        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
-        let status = gen_putself(&mut jit, &mut context, &mut cb, &mut ocb);
-
-        assert_eq!(status, KeepCompiling);
-        assert!(cb.get_write_pos() > 0);
-    }
-
-    #[test]
-    fn test_gen_setn() {
-        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
-        context.stack_push(Type::Fixnum);
-        context.stack_push(Type::Flonum);
-        context.stack_push(Type::String);
-
-        let mut value_array: [u64; 2] = [ 0, 2 ];
-        let pc: *mut VALUE = &mut value_array as *mut u64 as *mut VALUE;
-        jit.set_pc(pc);
-
-        let status = gen_setn(&mut jit, &mut context, &mut cb, &mut ocb);
-
-        assert_eq!(status, KeepCompiling);
-
-        assert_eq!(Type::String, context.get_opnd_type(StackOpnd(2)));
-        assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(1)));
-        assert_eq!(Type::String, context.get_opnd_type(StackOpnd(0)));
-
-        assert!(cb.get_write_pos() > 0);
-    }
-
-    #[test]
-    fn test_gen_topn() {
-        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
-        context.stack_push(Type::Flonum);
-        context.stack_push(Type::String);
-
-        let mut value_array: [u64; 2] = [ 0, 1 ];
-        let pc: *mut VALUE = &mut value_array as *mut u64 as *mut VALUE;
-        jit.set_pc(pc);
-
-        let status = gen_topn(&mut jit, &mut context, &mut cb, &mut ocb);
-
-        assert_eq!(status, KeepCompiling);
-
-        assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(2)));
-        assert_eq!(Type::String, context.get_opnd_type(StackOpnd(1)));
-        assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(0)));
-
-        assert!(cb.get_write_pos() > 0); // Write some movs
-    }
-
-    #[test]
-    fn test_gen_adjuststack() {
-        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
-        context.stack_push(Type::Flonum);
-        context.stack_push(Type::String);
-        context.stack_push(Type::Fixnum);
-
-        let mut value_array: [u64; 3] = [ 0, 2, 0 ];
-        let pc: *mut VALUE = &mut value_array as *mut u64 as *mut VALUE;
-        jit.set_pc(pc);
-
-        let status = gen_adjuststack(&mut jit, &mut context, &mut cb, &mut ocb);
-
-        assert_eq!(status, KeepCompiling);
-
-        assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(0)));
-
-        assert!(cb.get_write_pos() == 0); // No instructions written
-    }
-
-    #[test]
-    fn test_gen_leave() {
-        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
-        // Push return value
-        context.stack_push(Type::Fixnum);
-        gen_leave(&mut jit, &mut context, &mut cb, &mut ocb);
-    }
-}
-
 // new array initialized from top N values
 fn gen_newarray(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
@@ -5295,5 +5036,264 @@ impl CodegenGlobals {
         let table = &mut CodegenGlobals::get_instance().method_codegen_table;
 
         table.insert(method_serial, method);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_codegen() -> (JITState, Context, CodeBlock, OutlinedCb) {
+        let block = Block::new(BLOCKID_NULL, &Context::default());
+
+        return (
+            JITState::new(&block),
+            Context::new(),
+            CodeBlock::new_dummy(256 * 1024),
+            OutlinedCb::wrap(CodeBlock::new_dummy(256 * 1024))
+        );
+    }
+
+    #[test]
+    fn test_gen_leave_exit() {
+        let mut ocb = OutlinedCb::wrap( CodeBlock::new_dummy(256 * 1024));
+        gen_leave_exit(&mut ocb);
+        assert!(ocb.unwrap().get_write_pos() > 0);
+    }
+
+    #[test]
+    fn test_gen_exit() {
+        let (_, ctx, mut cb, _) = setup_codegen();
+        gen_exit(0 as *mut VALUE, &ctx, &mut cb);
+        assert!(cb.get_write_pos() > 0);
+    }
+
+    #[test]
+    fn test_get_side_exit() {
+        let (mut jit, ctx, _, mut ocb) = setup_codegen();
+        get_side_exit(&mut jit, &mut ocb, &ctx);
+        assert!(ocb.unwrap().get_write_pos() > 0);
+    }
+
+    #[test]
+    fn test_gen_check_ints() {
+        let (_, _ctx, mut cb, mut ocb) = setup_codegen();
+        let side_exit = ocb.unwrap().get_write_ptr();
+        gen_check_ints(&mut cb, side_exit);
+    }
+
+    #[test]
+    fn test_gen_nop() {
+        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
+        let status = gen_nop(&mut jit, &mut context, &mut cb, &mut ocb);
+
+        assert_eq!(status, KeepCompiling);
+        assert_eq!(context.diff(&Context::new()), 0);
+        assert_eq!(cb.get_write_pos(), 0);
+    }
+
+    #[test]
+    fn test_gen_pop() {
+        let (mut jit, _, mut cb, mut ocb) = setup_codegen();
+        let mut context = Context::new_with_stack_size(1);
+        let status = gen_pop(&mut jit, &mut context, &mut cb, &mut ocb);
+
+        assert_eq!(status, KeepCompiling);
+        assert_eq!(context.diff(&Context::new()), 0);
+    }
+
+    #[test]
+    fn test_gen_dup() {
+        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
+        context.stack_push(Type::Fixnum);
+        let status = gen_dup(&mut jit, &mut context, &mut cb, &mut ocb);
+
+        assert_eq!(status, KeepCompiling);
+
+        // Did we duplicate the type information for the Fixnum type?
+        assert_eq!(Type::Fixnum, context.get_opnd_type(StackOpnd(0)));
+        assert_eq!(Type::Fixnum, context.get_opnd_type(StackOpnd(1)));
+
+        assert!(cb.get_write_pos() > 0); // Write some movs
+    }
+
+    #[test]
+    fn test_gen_dupn() {
+        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
+        context.stack_push(Type::Fixnum);
+        context.stack_push(Type::Flonum);
+
+        let mut value_array: [u64; 2] = [ 0, 2 ]; // We only compile for n == 2
+        let pc: *mut VALUE = &mut value_array as *mut u64 as *mut VALUE;
+        jit.set_pc(pc);
+
+        let status = gen_dupn(&mut jit, &mut context, &mut cb, &mut ocb);
+
+        assert_eq!(status, KeepCompiling);
+
+        assert_eq!(Type::Fixnum, context.get_opnd_type(StackOpnd(3)));
+        assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(2)));
+        assert_eq!(Type::Fixnum, context.get_opnd_type(StackOpnd(1)));
+        assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(0)));
+
+        assert!(cb.get_write_pos() > 0); // Write some movs
+    }
+
+    #[test]
+    fn test_gen_swap() {
+        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
+        context.stack_push(Type::Fixnum);
+        context.stack_push(Type::Flonum);
+
+        let status = gen_swap(&mut jit, &mut context, &mut cb, &mut ocb);
+
+        let (_, tmp_type_top) = context.get_opnd_mapping(StackOpnd(0));
+        let (_, tmp_type_next) = context.get_opnd_mapping(StackOpnd(1));
+
+        assert_eq!(status, KeepCompiling);
+        assert_eq!(tmp_type_top, Type::Fixnum);
+        assert_eq!(tmp_type_next, Type::Flonum);
+    }
+
+    #[test]
+    fn test_putnil() {
+        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
+        let status = gen_putnil(&mut jit, &mut context, &mut cb, &mut ocb);
+
+        let (_, tmp_type_top) = context.get_opnd_mapping(StackOpnd(0));
+
+        assert_eq!(status, KeepCompiling);
+        assert_eq!(tmp_type_top, Type::Nil);
+        assert!(cb.get_write_pos() > 0);
+    }
+
+    #[test]
+    fn test_putobject_qtrue() {
+        // Test gen_putobject with Qtrue
+        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
+
+        let mut value_array: [u64; 2] = [ 0, Qtrue.into() ];
+        let pc: *mut VALUE = &mut value_array as *mut u64 as *mut VALUE;
+        jit.set_pc(pc);
+
+        let status = gen_putobject(&mut jit, &mut context, &mut cb, &mut ocb);
+
+        let (_, tmp_type_top) = context.get_opnd_mapping(StackOpnd(0));
+
+        assert_eq!(status, KeepCompiling);
+        assert_eq!(tmp_type_top, Type::True);
+        assert!(cb.get_write_pos() > 0);
+    }
+
+    #[test]
+    fn test_putobject_fixnum() {
+        // Test gen_putobject with a Fixnum to test another conditional branch
+        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
+
+        // The Fixnum 7 is encoded as 7 * 2 + 1, or 15
+        let mut value_array: [u64; 2] = [ 0, 15 ];
+        let pc: *mut VALUE = &mut value_array as *mut u64 as *mut VALUE;
+        jit.set_pc(pc);
+
+        let status = gen_putobject(&mut jit, &mut context, &mut cb, &mut ocb);
+
+        let (_, tmp_type_top) = context.get_opnd_mapping(StackOpnd(0));
+
+        assert_eq!(status, KeepCompiling);
+        assert_eq!(tmp_type_top, Type::Fixnum);
+        assert!(cb.get_write_pos() > 0);
+    }
+
+    #[test]
+    fn test_int2fix() {
+        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
+        jit.opcode = OP_PUTOBJECT_INT2FIX_0_;
+        let status = gen_putobject_int2fix(&mut jit, &mut context, &mut cb, &mut ocb);
+
+        let (_, tmp_type_top) = context.get_opnd_mapping(StackOpnd(0));
+
+        // Right now we're not testing the generated machine code to make sure a literal 1 or 0 was pushed. I've checked locally.
+        assert_eq!(status, KeepCompiling);
+        assert_eq!(tmp_type_top, Type::Fixnum);
+    }
+
+    #[test]
+    fn test_putself() {
+        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
+        let status = gen_putself(&mut jit, &mut context, &mut cb, &mut ocb);
+
+        assert_eq!(status, KeepCompiling);
+        assert!(cb.get_write_pos() > 0);
+    }
+
+    #[test]
+    fn test_gen_setn() {
+        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
+        context.stack_push(Type::Fixnum);
+        context.stack_push(Type::Flonum);
+        context.stack_push(Type::String);
+
+        let mut value_array: [u64; 2] = [ 0, 2 ];
+        let pc: *mut VALUE = &mut value_array as *mut u64 as *mut VALUE;
+        jit.set_pc(pc);
+
+        let status = gen_setn(&mut jit, &mut context, &mut cb, &mut ocb);
+
+        assert_eq!(status, KeepCompiling);
+
+        assert_eq!(Type::String, context.get_opnd_type(StackOpnd(2)));
+        assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(1)));
+        assert_eq!(Type::String, context.get_opnd_type(StackOpnd(0)));
+
+        assert!(cb.get_write_pos() > 0);
+    }
+
+    #[test]
+    fn test_gen_topn() {
+        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
+        context.stack_push(Type::Flonum);
+        context.stack_push(Type::String);
+
+        let mut value_array: [u64; 2] = [ 0, 1 ];
+        let pc: *mut VALUE = &mut value_array as *mut u64 as *mut VALUE;
+        jit.set_pc(pc);
+
+        let status = gen_topn(&mut jit, &mut context, &mut cb, &mut ocb);
+
+        assert_eq!(status, KeepCompiling);
+
+        assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(2)));
+        assert_eq!(Type::String, context.get_opnd_type(StackOpnd(1)));
+        assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(0)));
+
+        assert!(cb.get_write_pos() > 0); // Write some movs
+    }
+
+    #[test]
+    fn test_gen_adjuststack() {
+        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
+        context.stack_push(Type::Flonum);
+        context.stack_push(Type::String);
+        context.stack_push(Type::Fixnum);
+
+        let mut value_array: [u64; 3] = [ 0, 2, 0 ];
+        let pc: *mut VALUE = &mut value_array as *mut u64 as *mut VALUE;
+        jit.set_pc(pc);
+
+        let status = gen_adjuststack(&mut jit, &mut context, &mut cb, &mut ocb);
+
+        assert_eq!(status, KeepCompiling);
+
+        assert_eq!(Type::Flonum, context.get_opnd_type(StackOpnd(0)));
+
+        assert!(cb.get_write_pos() == 0); // No instructions written
+    }
+
+    #[test]
+    fn test_gen_leave() {
+        let (mut jit, mut context, mut cb, mut ocb) = setup_codegen();
+        // Push return value
+        context.stack_push(Type::Fixnum);
+        gen_leave(&mut jit, &mut context, &mut cb, &mut ocb);
     }
 }
