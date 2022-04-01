@@ -4395,6 +4395,24 @@ fn gen_objtostring(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, oc
     }
 }
 
+fn gen_intern(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
+{
+    // Save the PC and SP because we might allocate
+    jit_prepare_routine_call(jit, ctx, cb, REG0);
+
+    let str = ctx.stack_pop(1);
+
+    mov(cb, C_ARG_REGS[0], str);
+
+    call_ptr(cb, REG0, rb_str_intern as *const u8);
+
+    // Push the return value
+    let stack_ret = ctx.stack_push(Type::Unknown);
+    mov(cb, stack_ret, RAX);
+
+    KeepCompiling
+}
+
 fn gen_toregexp(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, _ocb: &mut OutlinedCb) -> CodegenStatus
 {
     let opt = jit_get_arg(jit, 0).as_i64();
@@ -4810,6 +4828,7 @@ fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn>
         OP_SETGLOBAL => Some(gen_setglobal),
         OP_ANYTOSTRING => Some(gen_anytostring),
         OP_OBJTOSTRING => Some(gen_objtostring),
+        OP_INTERN => Some(gen_intern),
         OP_TOREGEXP => Some(gen_toregexp),
         OP_GETSPECIAL => Some(gen_getspecial),
         OP_GETCLASSVARIABLE => Some(gen_getclassvariable),

@@ -216,6 +216,9 @@ extern "C" {
     ) -> VALUE;
 }
 extern "C" {
+    pub fn rb_str_intern(str_: VALUE) -> VALUE;
+}
+extern "C" {
     pub fn rb_ivar_get(obj: VALUE, name: ID) -> VALUE;
 }
 extern "C" {

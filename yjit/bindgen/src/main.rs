@@ -127,6 +127,7 @@ fn main() {
         .allowlist_function("rb_intern")
         .allowlist_function("rb_id2sym")
         .allowlist_function("rb_sym2id")
+        .allowlist_function("rb_str_intern")
 
         // From internal/string.h
         .allowlist_function("rb_ec_str_resurrect")
