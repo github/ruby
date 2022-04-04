@@ -35,6 +35,8 @@ debug-assertions = true
 overflow-checks = true
 
 [profile.release]
+# NOTE: --enable-yjit builds use `rustc` without going through Cargo. You
+# might want to update the `rustc` invocation if you change this profile.
 opt-level = 3
 # The extra robustness that comes from checking for arithmetic overflow is
 # worth the performance cost for the compiler.

@@ -27,6 +27,7 @@ CC_WRAPPER = @XCC_WRAPPER@
 CC = @CC@
 CPP = @CPP@
 LD = @LD@
+RUSTC = @RUSTC@
 CARGO = @CARGO@
 YACC = bison
 PURIFY =
