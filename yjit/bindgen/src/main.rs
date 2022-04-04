@@ -116,7 +116,6 @@ fn main() {
         .allowlist_type("rb_callinfo")
 
         // From vm_insnhelper.h
-        .allowlist_var("ruby_vm_global_constant_state")
         .allowlist_var("VM_ENV_DATA_INDEX_ME_CREF")
         .allowlist_var("rb_block_param_proxy")
 

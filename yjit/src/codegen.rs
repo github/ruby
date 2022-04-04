@@ -4568,9 +4568,8 @@ fn gen_opt_getinlinecache(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBl
 
     // See vm_ic_hit_p(). The same conditions are checked in yjit_constant_ic_update().
     let ice = unsafe { (*ic).entry };
-    if ice.is_null() || // cache not filled
-        unsafe { GET_IC_SERIAL(ice) != ruby_vm_global_constant_state } /* cache out of date */ {
-        // In these cases, leave a block that unconditionally side exits
+    if ice.is_null() {
+        // In this case, leave a block that unconditionally side exits
         // for the interpreter to invalidate.
         return CantCompile;
     }

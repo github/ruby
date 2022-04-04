@@ -247,9 +247,6 @@ extern "C" {
     #[link_name = "rb_BASIC_OP_UNREDEFINED_P"]
     pub fn BASIC_OP_UNREDEFINED_P(bop: ruby_basic_operators, klass: RedefinitionFlag) -> bool;
 
-    #[link_name = "rb_GET_IC_SERIAL"]
-    pub fn GET_IC_SERIAL(ice: *const iseq_inline_constant_cache_entry) -> rb_serial_t;
-
     #[link_name = "rb_RSTRUCT_LEN"]
     pub fn RSTRUCT_LEN(st: VALUE) -> c_long;
 
