@@ -51,7 +51,7 @@ Because there is no GC for generated code yet, your software could run out of ex
 
 ## Installation
 
-Current YJIT versions are installed by default with CRuby. Make sure to specify the "--yjit" command line option to enable it at runtime.
+Current YJIT versions are installed by default with CRuby. Make sure to specify the `--yjit` command line option to enable it at runtime.
 
 Experimental YJIT patches that have not yet been merged with CRuby can be found in ruby-build:
 
@@ -75,7 +75,7 @@ To support disassembly of the generated code, `libcapstone` is also required (`b
 # Configure with debugging/stats options for development, build and install
 ./autogen.sh
 ./configure --enable-yjit=dev --prefix=$HOME/.rubies/ruby-yjit --disable-install-doc --disable--install-rdoc
-make -j16 install
+make -j install
 ```
 
 On macOS, you may need to specify where to find openssl, libyaml and gdbm:
@@ -83,7 +83,7 @@ On macOS, you may need to specify where to find openssl, libyaml and gdbm:
 ```
 # Configure with debugging/stats options for development, build and install
 ./configure --enable-yjit=dev --prefix=$HOME/.rubies/ruby-yjit --disable-install-doc --disable--install-rdoc --with-opt-dir=$(brew --prefix openssl):$(brew --prefix readline):$(brew --prefix libyaml):$(brew --prefix gdbm)
-make -j16 install
+make -j install
 ```
 
 Typically configure will choose default C compiler. To specify the C compiler, use
@@ -100,7 +100,7 @@ You can test that YJIT works correctly by running:
 make btest
 
 # Complete set of tests
-make -j16 test-all
+make -j test-all
 ```
 
 ## Usage
@@ -128,10 +128,10 @@ The machine code generated for a given method can be printed by adding `puts Rub
 
 YJIT supports all command-line options supported by upstream CRuby, but also adds a few YJIT-specific options:
 
-- `--disable-yjit`: turn off YJIT (enabled by default)
-- `--yjit-stats`: produce statistics after the execution of a program (must compile with `cppflags=-DRUBY_DEBUG` to use this)
-- `--yjit-exec-mem-size=N`: size of the executable memory block to allocate, in MiB (default 256 MiB)
+- `--yjit`: enable YJIT (disabled by default)
 - `--yjit-call-threshold=N`: number of calls after which YJIT begins to compile a function (default 2)
+- `--yjit-exec-mem-size=N`: size of the executable memory block to allocate, in MiB (default 256 MiB)
+- `--yjit-stats`: produce statistics after the execution of a program (must compile with `cppflags=-DRUBY_DEBUG` to use this)
 - `--yjit-max-versions=N`: maximum number of versions to generate per basic block (default 4)
 - `--yjit-greedy-versioning`: greedy versioning mode (disabled by default, may increase code size)
 
@@ -215,12 +215,14 @@ you can contribute things we will want to merge into YJIT.
 ### Source Code Organization
 
 The YJIT source code is divided between:
-- `yjit_asm.c`: x86 in-memory assembler we use to generate machine code
-- `yjit_codegen.c`: logic for translating Ruby bytecode to machine code
-- `yjit_core.c`: basic block versioning logic, core structure of YJIT
-- `yjit_iface.c`: code YJIT uses to interface with the rest of CRuby
+- `yjit.c`: code YJIT uses to interface with the rest of CRuby
 - `yjit.h`: C definitions YJIT exposes to the rest of the CRuby
 - `yjit.rb`: `YJIT` Ruby module that is exposed to Ruby
+- `yjit/src/asm/*`: in-memory assembler we use to generate machine code
+- `yjit/src/codegen.rs`: logic for translating Ruby bytecode to machine code
+- `yjit/src/core.rb`: basic block versioning logic, core structure of YJIT
+- `yjit/src/stats.rs`: gathering of run-time statistics
+- `yjit/src/options.rs`: handling of command-line options
 - `misc/test_yjit_asm.sh`: script to compile and run the in-memory assembler tests
 - `misc/yjit_asm_tests.c`: tests for the in-memory assembler
 
@@ -240,7 +242,7 @@ There are 3 test suites:
 The tests can be run in parallel like this:
 
 ```
-make -j16 test-all RUN_OPTS="--yjit-call-threshold=1"
+make -j test-all RUN_OPTS="--yjit-call-threshold=1"
 ```
 
 Or single-threaded like this, to more easily identify which specific test is failing:
