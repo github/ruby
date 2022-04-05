@@ -175,46 +175,38 @@ fn rb_yjit_gen_stats_dict() -> VALUE {
         return Qnil;
     }
 
-    // If we're not generating stats, return Qnil
-    if !get_option!(gen_stats) {
-        return Qnil;
+    let hash = unsafe { rb_hash_new() };
+
+    // Inline and outlined code size
+    unsafe {
+        // Get the inline and outlined code blocks
+        let cb = CodegenGlobals::get_inline_cb();
+        let ocb = CodegenGlobals::get_outlined_cb();
+
+        // Inline code size
+        let key = rust_str_to_sym("inline_code_size");
+        let value = VALUE::fixnum_from_usize(cb.get_write_pos());
+        rb_hash_aset(hash, key, value);
+
+        // Outlined code size
+        let key = rust_str_to_sym("outlined_code_size");
+        let value = VALUE::fixnum_from_usize(ocb.unwrap().get_write_pos());
+        rb_hash_aset(hash, key, value);
     }
 
-    // If the stats feature is disabled, return Qnil
-    #[cfg(not(feature = "stats"))]
-    {
-        return Qnil;
+    // If we're not generating stats, the hash is done
+    if !get_option!(gen_stats) {
+        return hash;
     }
 
     // If the stats feature is enabled
     #[cfg(feature = "stats")]
     unsafe {
-        let hash = rb_hash_new();
-
-        // Inline and outlined code size
-        {
-            // Get the inline and outlined code blocks
-            let cb = CodegenGlobals::get_inline_cb();
-            let ocb = CodegenGlobals::get_outlined_cb();
-
-            // Inline code size
-            let key = rust_str_to_sym("inline_code_size");
-            let value = VALUE::fixnum_from_usize(cb.get_write_pos());
-            rb_hash_aset(hash, key, value);
-
-            // Outlined code size
-            let key = rust_str_to_sym("outlined_code_size");
-            let value = VALUE::fixnum_from_usize(ocb.unwrap().get_write_pos());
-            rb_hash_aset(hash, key, value);
-        }
-
         // Indicate that the complete set of stats is available
         rb_hash_aset(hash, rust_str_to_sym("all_stats"), Qtrue);
 
         // For each counter we track
-        for counter_idx in 0..COUNTER_NAMES.len() {
-            let counter_name = COUNTER_NAMES[counter_idx];
-
+        for counter_name in COUNTER_NAMES {
             // Get the counter value
             let counter_ptr = get_counter_ptr(counter_name);
             let counter_val = *counter_ptr;
@@ -234,9 +226,9 @@ fn rb_yjit_gen_stats_dict() -> VALUE {
             let value = VALUE::fixnum_from_usize(EXIT_OP_COUNT[op_idx] as usize);
             rb_hash_aset(hash, key, value);
         }
-
-        return hash;
     }
+
+    hash
 }
 
 /// Primitive called in yjit.rb. Zero out all the counters.
