@@ -221,6 +221,8 @@ The YJIT source code is divided between:
 - `yjit/src/core.rb`: basic block versioning logic, core structure of YJIT
 - `yjit/src/stats.rs`: gathering of run-time statistics
 - `yjit/src/options.rs`: handling of command-line options
+- `yjit/bindgen/src/main.rs`: C bindings exposed to the Rust codebase through bindgen
+- `yjit/src/cruby.rs`: C bindings manually exposed to the Rust codebase
 - `misc/test_yjit_asm.sh`: script to compile and run the in-memory assembler tests
 - `misc/yjit_asm_tests.c`: tests for the in-memory assembler
 
@@ -228,6 +230,20 @@ The core of CRuby's interpreter logic is found in:
 - `insns.def`: defines Ruby's bytecode instructions (gets compiled into `vm.inc`)
 - `vm_insnshelper.c`: logic used by Ruby's bytecode instructions
 - `vm_exec.c`: Ruby interpreter loop
+
+### Generating C bindings with bindgen
+
+In order to expose C functions to the Rust codebase, you will need to generate C bindings:
+
+```sh
+CC=clang ./configure --enable-yjit=dev
+make -j yjit-bindgen
+```
+
+This uses the bindgen tools to generate/update `yjit/src/cruby_bindings.inc.rs` based on the
+bindings listed in `yjit/bindgen/src/main.rs`. Avoid manually editing this file
+as it could be automatically regenerated at a later time. If you need to manually add C bindings,
+add them to `yjit/cruby.rs` instead.
 
 ### Coding & Debugging Protips
 
@@ -273,3 +289,46 @@ You can use the Intel syntax for disassembly in LLDB, keeping it consistent with
 ```
 echo "settings set target.x86-disassembly-flavor intel" >> ~/.lldbinit
 ```
+
+## Running YJIT on M1
+
+It is possible to run YJIT on an Apple M1 via Rosetta.  You can find basic
+instructions below, but there are a few caveats listed further down.
+
+First, install Rosetta:
+
+```
+$ softwareupdate --install-rosetta
+```
+
+Now any command can be run with Rosetta via the `arch` command line tool.
+
+Then you can start your shell in an x86 environment:
+
+```
+$ arch -x86_64 zsh
+```
+
+You can double check your current architecture via the `arch` command:
+
+```
+$ arch -x86_64 zsh
+$ arch
+i386
+```
+
+You may need to set the default target for `rustc` to x86-64, e.g.
+
+```
+$ rustup default stable-x86_64-apple-darwin
+```
+
+While in your i386 shell, install Cargo and Homebrew, then hack away!
+
+### M1 Caveats
+
+1. You must install a version of Homebrew for each architecture
+2. Cargo will install in $HOME/.cargo by default, and I don't know a good way to change architectures after install
+3. `dev` won't work if you have i386 Homebrew installed on an M1
+
+If you use Fish shell you can [read this link](https://tenderlovemaking.com/2022/01/07/homebrew-rosetta-and-ruby.html) for information on making the dev environment easier.
