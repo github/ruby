@@ -50,7 +50,7 @@ void rb_yjit_collect_binding_set(void);
 bool rb_yjit_compile_iseq(const rb_iseq_t *iseq, rb_execution_context_t *ec);
 void rb_yjit_init(void);
 void rb_yjit_bop_redefined(int redefined_flag, enum ruby_basic_operators bop);
-void rb_yjit_constant_state_changed(void);
+void rb_yjit_constant_state_changed(ID id);
 void rb_yjit_iseq_mark(void *payload);
 void rb_yjit_iseq_update_references(void *payload);
 void rb_yjit_iseq_free(void *payload);
@@ -73,7 +73,7 @@ static inline void rb_yjit_collect_binding_set(void) {}
 static inline bool rb_yjit_compile_iseq(const rb_iseq_t *iseq, rb_execution_context_t *ec) { return false; }
 static inline void rb_yjit_init(void) {}
 static inline void rb_yjit_bop_redefined(int redefined_flag, enum ruby_basic_operators bop) {}
-static inline void rb_yjit_constant_state_changed(void) {}
+static inline void rb_yjit_constant_state_changed(ID id) {}
 static inline void rb_yjit_iseq_mark(void *payload) {}
 static inline void rb_yjit_iseq_update_references(void *payload) {}
 static inline void rb_yjit_iseq_free(void *payload) {}
