@@ -51,6 +51,20 @@ Because there is no GC for generated code yet, your software could run out of ex
 
 ## Installation
 
+### Requirements
+
+You will need to install:
+- A C compiler such as GCC or Clang
+- GNU Make and Autoconf
+- The Rust compiler `rustc` and Cargo (if you want to build in dev/debug mode)
+
+To install the Rust build toolchain, we suggest following the [recommended installation method][rust-install]. Rust also provides first class [support][editor-tools] for many source code editors.
+
+[rust-install]: https://www.rust-lang.org/tools/install
+[editor-tools]: https://www.rust-lang.org/tools
+
+### Building YJIT
+
 Start by cloning the `ruby/ruby` repository:
 
 ```
