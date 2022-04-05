@@ -47,6 +47,7 @@ jobs:
         ]
         configure: [
           "--enable-yjit=dev",
+          "--enable-yjit",
         ]
         yjit_opts: [
           "--yjit",
