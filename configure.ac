@@ -3762,10 +3762,6 @@ AS_CASE(["${YJIT_SUPPORT}"],
     AS_IF([test x"$enable_jit_support" = "xno"],
         AC_MSG_ERROR([--disable-jit-support but --enable-yjit. YJIT requires JIT support])
     )
-    AC_CHECK_TOOL(CARGO, [cargo], [no])
-    AS_IF([test x"$CARGO" = "xno"],
-        AC_MSG_ERROR([cargo is required. Installation instructions available at https://www.rust-lang.org/tools/install])
-    )
     AC_CHECK_TOOL(RUSTC, [rustc], [no])
     AS_IF([test x"$RUSTC" = "xno"],
         AC_MSG_ERROR([rustc is required. Installation instructions available at https://www.rust-lang.org/tools/install])
@@ -3775,6 +3771,10 @@ AS_CASE(["${YJIT_SUPPORT}"],
              CARGO_BUILD_ARGS='--release'],
             [rb_rust_target_subdir=debug
              CARGO_BUILD_ARGS='--features stats,disasm,asm_comments'
+             AC_CHECK_TOOL(CARGO, [cargo], [no])
+             AS_IF([test x"$CARGO" = "xno"],
+                AC_MSG_ERROR([cargo is required. Installation instructions available at https://www.rust-lang.org/tools/install])
+             )
              AC_DEFINE(RUBY_DEBUG, 1)])
     YJIT_LIBS="yjit/target/${rb_rust_target_subdir}/libyjit.a"
     YJIT_OBJ='yjit.$(OBJEXT)'
@@ -3783,11 +3783,12 @@ AS_CASE(["${YJIT_SUPPORT}"],
 
 
 dnl These variables end up in ::RbConfig::CONFIG
-AC_SUBST(YJIT_SUPPORT) dnl what flavor of YJIT the Ruby build includes
-AC_SUBST(CARGO) dnl Cargo executable Rust builds
-AC_SUBST(CARGO_BUILD_ARGS) dnl for selecting Rust build profiles
-AC_SUBST(YJIT_LIBS) dnl for optionally building the Rust parts
-AC_SUBST(YJIT_OBJ) dnl for optionally building the C parts
+AC_SUBST(YJIT_SUPPORT)dnl what flavor of YJIT the Ruby build includes
+AC_SUBST(RUSTC)dnl Rust compiler command
+AC_SUBST(CARGO)dnl Cargo command for Rust builds
+AC_SUBST(CARGO_BUILD_ARGS)dnl for selecting Rust build profiles
+AC_SUBST(YJIT_LIBS)dnl for optionally building the Rust parts of YJIT
+AC_SUBST(YJIT_OBJ)dnl for optionally building the C parts of YJIT
 
 AC_ARG_ENABLE(install-static-library,
 	AS_HELP_STRING([--disable-install-static-library], [do not install static ruby library]),

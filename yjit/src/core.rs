@@ -1897,7 +1897,6 @@ fn free_block(blockref: &BlockRef)
 // Some runtime checks for integrity of a program location
 pub fn verify_blockid(blockid: BlockId)
 {
-    #[cfg(debug_assertions)]
     unsafe {
         assert!(rb_IMEMO_TYPE_P(blockid.iseq.into(), imemo_iseq) != 0);
         assert!(blockid.idx < get_iseq_encoded_size(blockid.iseq));

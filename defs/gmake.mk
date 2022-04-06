@@ -364,11 +364,23 @@ CARGO_VERBOSE = $(CARGO_VERBOSE_$(V))
 
 .PHONY: yjit-static-lib
 yjit-static-lib:
-	$(ECHO) building Rust YJIT
-	$(Q) cd $(top_srcdir)/yjit && \
-		CARGO_TARGET_DIR='$(CARGO_TARGET_DIR)' \
-		CARGO_TERM_PROGRESS_WHEN='never' \
-		$(CARGO) $(CARGO_VERBOSE) build $(CARGO_BUILD_ARGS)
+	$(Q) set -eu; if [ '$(YJIT_SUPPORT)' != 'dev' ]; then \
+	    echo 'building Rust YJIT (release mode)'; \
+	    $(RUSTC) \
+	        --crate-name=yjit \
+	        --crate-type=staticlib \
+	        --edition=2021 \
+	        -C opt-level=3 \
+	        -C overflow-checks=on \
+	        '--out-dir=$(CARGO_TARGET_DIR)/release/' \
+	        $(top_srcdir)/yjit/src/lib.rs ; \
+	else \
+	    echo 'building Rust YJIT (dev mode)'; \
+	    cd $(top_srcdir)/yjit && \
+	        CARGO_TARGET_DIR='$(CARGO_TARGET_DIR)' \
+	        CARGO_TERM_PROGRESS_WHEN='never' \
+	        $(CARGO) $(CARGO_VERBOSE) build $(CARGO_BUILD_ARGS); \
+	fi
 
 # This PHONY prerequisite makes it so that we always run cargo. When there are no Rust
 # changes on rebuild, Cargo does not touch the mtime of the static library and GNU make
