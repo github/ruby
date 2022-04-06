@@ -140,13 +140,6 @@ fn disasm_iseq(iseq: IseqPtr) -> String {
 /// Produce a list of instructions compiled for an isew
 #[no_mangle]
 pub extern "C" fn rb_yjit_insns_compiled(_ec: EcPtr, _ruby_self: VALUE, iseqw: VALUE) -> VALUE {
-    #[cfg(not(feature = "disasm"))]
-    {
-        let _ = iseqw;
-        return Qnil;
-    }
-
-    #[cfg(feature = "disasm")]
     {
         // TODO:
         //if unsafe { CLASS_OF(iseqw) != rb_cISeq } {
@@ -183,7 +176,6 @@ pub extern "C" fn rb_yjit_insns_compiled(_ec: EcPtr, _ruby_self: VALUE, iseqw: V
     }
 }
 
-#[cfg(feature = "disasm")]
 fn insns_compiled(iseq: IseqPtr) -> Vec<(String, u32)> {
     let mut insn_vec = Vec::new();
 
