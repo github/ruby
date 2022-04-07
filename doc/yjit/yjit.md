@@ -84,7 +84,7 @@ make -j install
 or
 
 ```
-# Configure with dev (debug) options for development, build and install
+# Configure in dev (debug) mode for development, build and install
 ./autogen.sh
 ./configure --enable-yjit=dev --prefix=$HOME/.rubies/ruby-yjit --disable-install-doc --disable--install-rdoc
 make -j install
@@ -93,7 +93,7 @@ make -j install
 On macOS, you may need to specify where to find openssl, libyaml and gdbm:
 
 ```
-# Configure with debugging/stats options for development, build and install
+# Configure in dev (debug) mode for development, build and install
 ./configure --enable-yjit=dev --prefix=$HOME/.rubies/ruby-yjit --disable-install-doc --disable--install-rdoc --with-opt-dir=$(brew --prefix openssl):$(brew --prefix readline):$(brew --prefix libyaml):$(brew --prefix gdbm)
 make -j install
 ```
