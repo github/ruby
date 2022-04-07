@@ -93,8 +93,12 @@ make -j install
 On macOS, you may need to specify where to find openssl, libyaml and gdbm:
 
 ```
+# Install dependencies
+brew install openssl readline libyaml
+
 # Configure in dev (debug) mode for development, build and install
-./configure --enable-yjit=dev --prefix=$HOME/.rubies/ruby-yjit --disable-install-doc --disable--install-rdoc --with-opt-dir=$(brew --prefix openssl):$(brew --prefix readline):$(brew --prefix libyaml):$(brew --prefix gdbm)
+./autogen.sh
+./configure --enable-yjit=dev --prefix=$HOME/.rubies/ruby-yjit --disable-install-doc --disable--install-rdoc --with-opt-dir=$(brew --prefix openssl):$(brew --prefix readline):$(brew --prefix libyaml)
 make -j install
 ```
 
