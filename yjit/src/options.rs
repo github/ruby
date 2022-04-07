@@ -29,6 +29,12 @@ pub struct Options {
 
     /// Verify context objects (debug mode only)
     pub verify_ctx: bool,
+
+    /// Whether or not to assume a global constant state (and therefore
+    /// invalidating code whenever any constant changes) versus assuming
+    /// constant name components (and therefore invalidating code whenever a
+    /// matching name component changes)
+    pub global_constant_state: bool,
 }
 
 // Initialize the options to default values
@@ -41,6 +47,7 @@ pub static mut OPTIONS: Options = Options {
     gen_stats : false,
     dump_insns: false,
     verify_ctx: false,
+    global_constant_state: false,
 };
 
 /// Macro to get an option value by name
@@ -102,6 +109,7 @@ pub fn parse_option(str_ptr: *const std::os::raw::c_char) -> Option<()>
         ("stats", "") => { unsafe { OPTIONS.gen_stats = true }},
         ("dump-insns", "") => { unsafe { OPTIONS.dump_insns = true }},
         ("verify-ctx", "") => { unsafe { OPTIONS.verify_ctx = true }},
+        ("global-constant-state", "") => { unsafe { OPTIONS.global_constant_state = true }},
 
         // Option name not recognized
         _ => {

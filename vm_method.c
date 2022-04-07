@@ -149,7 +149,7 @@ rb_clear_constant_cache_for_id(ID id)
         ruby_vm_constant_cache_invalidations += ics->num_entries;
     }
 
-    rb_yjit_constant_state_changed();
+    rb_yjit_constant_state_changed(id);
 }
 
 static void
