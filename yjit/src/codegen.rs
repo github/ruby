@@ -546,9 +546,10 @@ fn gen_pc_guard(cb: &mut CodeBlock, iseq: IseqPtr, insn_idx: u32)
 }
 
 // Landing code for when c_return tracing is enabled. See full_cfunc_return().
-fn gen_full_cfunc_return(ocb: &mut OutlinedCb)
+fn gen_full_cfunc_return(ocb: &mut OutlinedCb) -> CodePtr
 {
     let cb = ocb.unwrap();
+    let code_ptr = cb.get_write_ptr();
 
     // This chunk of code expect REG_EC to be filled properly and
     // RAX to contain the return value of the C method.
@@ -568,6 +569,8 @@ fn gen_full_cfunc_return(ocb: &mut OutlinedCb)
 
     mov(cb, RAX, uimm_opnd(Qundef.into()));
     ret(cb);
+
+    return code_ptr;
 }
 
 /// Generate a continuation for leave that exits to the interpreter at REG_CFP->pc.
@@ -4843,60 +4846,6 @@ fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn>
 // See yjit_reg_method().
 type MethodGenFn = fn(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb, ci: *const rb_callinfo, cme: *const rb_callable_method_entry_t, block: Option<IseqPtr>, argc: i32, known_recv_class: *const VALUE) -> bool;
 
-// Register a specialized codegen function for a particular method. Note that
-// the if the function returns true, the code it generates runs without a
-// control frame and without interrupt checks. To avoid creating observable
-// behavior changes, the codegen function should only target simple code paths
-// that do not allocate and do not make method calls.
-fn yjit_reg_method(klass: VALUE, mid_str: &str, gen_fn: MethodGenFn)
-{
-    let id_string = std::ffi::CString::new(mid_str).expect("couldn't convert to CString!");
-    let mid = unsafe { rb_intern(id_string.as_ptr()) };
-    let me = unsafe { rb_method_entry_at(klass, mid )};
-
-    if me.is_null() {
-        panic!("undefined optimized method!");
-    }
-
-    // For now, only cfuncs are supported
-    //RUBY_ASSERT(me && me->def);
-    //RUBY_ASSERT(me->def->type == VM_METHOD_TYPE_CFUNC);
-
-    let method_serial = unsafe {
-        let def = (*me).def;
-        get_def_method_serial(def)
-    };
-
-    CodegenGlobals::register_codegen_method(method_serial, gen_fn);
-}
-
-/// Register codegen functions for some Ruby core methods
-fn reg_method_codegen_fns()
-{
-    unsafe {
-        // Specialization for C methods. See yjit_reg_method() for details.
-        yjit_reg_method(rb_cBasicObject, "!", jit_rb_obj_not);
-
-        yjit_reg_method(rb_cNilClass, "nil?", jit_rb_true);
-        yjit_reg_method(rb_mKernel, "nil?", jit_rb_false);
-
-        yjit_reg_method(rb_cBasicObject, "==", jit_rb_obj_equal);
-        yjit_reg_method(rb_cBasicObject, "equal?", jit_rb_obj_equal);
-        yjit_reg_method(rb_mKernel, "eql?", jit_rb_obj_equal);
-        yjit_reg_method(rb_cModule, "==", jit_rb_obj_equal);
-        yjit_reg_method(rb_cSymbol, "==", jit_rb_obj_equal);
-        yjit_reg_method(rb_cSymbol, "===", jit_rb_obj_equal);
-
-        // rb_str_to_s() methods in string.c
-        yjit_reg_method(rb_cString, "to_s", jit_rb_str_to_s);
-        yjit_reg_method(rb_cString, "to_str", jit_rb_str_to_s);
-        yjit_reg_method(rb_cString, "bytesize", jit_rb_str_bytesize);
-
-        // Thread.current
-        yjit_reg_method(rb_singleton_class(rb_cThread), "current", jit_thread_s_current);
-    }
-}
-
 /// Global state needed for code generation
 pub struct CodegenGlobals
 {
@@ -4967,27 +4916,83 @@ impl CodegenGlobals {
 
         let stub_exit_code = gen_code_for_exit_from_stub(&mut ocb);
 
+        // Generate full exit code for C func
+        let cfunc_exit_code = gen_full_cfunc_return(&mut ocb);
+
+        // Mark all code memory as executable
         cb.mark_all_executable();
         ocb.unwrap().mark_all_executable();
 
-        let return_pos = ocb.unwrap().get_write_ptr();
-        unsafe {
-            CODEGEN_GLOBALS = Some(
-                CodegenGlobals {
-                    inline_cb: cb,
-                    outlined_cb: ocb,
-                    leave_exit_code: leave_exit_code,
-                    stub_exit_code: stub_exit_code,
-                    global_inval_patches: Vec::new(),
-                    inline_frozen_bytes: 0,
-                    outline_full_cfunc_return_pos: return_pos,
-                    method_codegen_table: HashMap::new(),
-                }
-            )
+        let mut codegen_globals = CodegenGlobals {
+            inline_cb: cb,
+            outlined_cb: ocb,
+            leave_exit_code: leave_exit_code,
+            stub_exit_code: stub_exit_code,
+            outline_full_cfunc_return_pos: cfunc_exit_code,
+            global_inval_patches: Vec::new(),
+            inline_frozen_bytes: 0,
+            method_codegen_table: HashMap::new(),
+        };
+
+        // Register the method codegen functions
+        codegen_globals.reg_method_codegen_fns();
+
+        // Initialize the codegen globals instance
+        unsafe { CODEGEN_GLOBALS = Some(codegen_globals); }
+    }
+
+    // Register a specialized codegen function for a particular method. Note that
+    // the if the function returns true, the code it generates runs without a
+    // control frame and without interrupt checks. To avoid creating observable
+    // behavior changes, the codegen function should only target simple code paths
+    // that do not allocate and do not make method calls.
+    fn yjit_reg_method(&mut self, klass: VALUE, mid_str: &str, gen_fn: MethodGenFn)
+    {
+        let id_string = std::ffi::CString::new(mid_str).expect("couldn't convert to CString!");
+        let mid = unsafe { rb_intern(id_string.as_ptr()) };
+        let me = unsafe { rb_method_entry_at(klass, mid )};
+
+        if me.is_null() {
+            panic!("undefined optimized method!");
         }
 
-        // Generate full exit code for C func - this doesn't work until there is a CodegenGlobals instance
-        gen_full_cfunc_return(CodegenGlobals::get_outlined_cb());
+        // For now, only cfuncs are supported
+        //RUBY_ASSERT(me && me->def);
+        //RUBY_ASSERT(me->def->type == VM_METHOD_TYPE_CFUNC);
+
+        let method_serial = unsafe {
+            let def = (*me).def;
+            get_def_method_serial(def)
+        };
+
+        self.method_codegen_table.insert(method_serial, gen_fn);
+    }
+
+    /// Register codegen functions for some Ruby core methods
+    fn reg_method_codegen_fns(&mut self)
+    {
+        unsafe {
+            // Specialization for C methods. See yjit_reg_method() for details.
+            self.yjit_reg_method(rb_cBasicObject, "!", jit_rb_obj_not);
+
+            self.yjit_reg_method(rb_cNilClass, "nil?", jit_rb_true);
+            self.yjit_reg_method(rb_mKernel, "nil?", jit_rb_false);
+
+            self.yjit_reg_method(rb_cBasicObject, "==", jit_rb_obj_equal);
+            self.yjit_reg_method(rb_cBasicObject, "equal?", jit_rb_obj_equal);
+            self.yjit_reg_method(rb_mKernel, "eql?", jit_rb_obj_equal);
+            self.yjit_reg_method(rb_cModule, "==", jit_rb_obj_equal);
+            self.yjit_reg_method(rb_cSymbol, "==", jit_rb_obj_equal);
+            self.yjit_reg_method(rb_cSymbol, "===", jit_rb_obj_equal);
+
+            // rb_str_to_s() methods in string.c
+            self.yjit_reg_method(rb_cString, "to_s", jit_rb_str_to_s);
+            self.yjit_reg_method(rb_cString, "to_str", jit_rb_str_to_s);
+            self.yjit_reg_method(rb_cString, "bytesize", jit_rb_str_bytesize);
+
+            // Thread.current
+            self.yjit_reg_method(rb_singleton_class(rb_cThread), "current", jit_thread_s_current);
+        }
     }
 
     /// Get a mutable reference to the codegen globals instance
@@ -5046,12 +5051,6 @@ impl CodegenGlobals {
             None => None,
             Some(&mgf) => Some(mgf), // Deref
         }
-    }
-
-    pub fn register_codegen_method(method_serial: u64, method: MethodGenFn) {
-        let table = &mut CodegenGlobals::get_instance().method_codegen_table;
-
-        table.insert(method_serial, method);
     }
 }
 
