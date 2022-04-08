@@ -3799,7 +3799,7 @@ fn gen_send_iseq(
     for arg_idx in 0..argc {
         let stack_offs:u16 = (argc - arg_idx - 1).try_into().unwrap();
         let arg_type = ctx.get_opnd_type(StackOpnd(stack_offs));
-        callee_ctx.set_local_type( arg_idx.try_into().unwrap(), arg_type);
+        callee_ctx.set_local_type(arg_idx.try_into().unwrap(), arg_type);
     }
 
     let recv_type = ctx.get_opnd_type(StackOpnd(argc.try_into().unwrap()));
