@@ -35,30 +35,32 @@ jobs:
         working-directory: yjit
   make:
     strategy:
-      matrix:
-        os:
-          - ubuntu-20.04
-        test_task: [
-          "btest",
-          "test-all TESTS=--repeat-count=2",
-          "check",
-          "test-bundled-gems",
-          "test-bundler-parallel",
-        ]
-        configure: [
-          "--enable-yjit=dev",
-          "--enable-yjit",
-        ]
-        yjit_opts: [
-          "--yjit",
-          "--yjit --yjit-call-threshold=1",
-        ]
       fail-fast: false
+      matrix:
+        include:
+          - test_task: "check"
+            configure: "--enable-yjit" # release build
+
+          - test_task: "check"
+            configure: "--enable-yjit=dev"
+
+          - test_task: "check"
+            configure: "--enable-yjit=dev"
+            yjit_opts: "--yjit-call-threshold=1"
+
+          - test_task: "test-all TESTS=--repeat-count=2"
+            configure: "--enable-yjit=dev"
+
+          - test_task: "test-bundled-gems"
+            configure: "--enable-yjit=dev"
+
+          - test_task: "test-bundler-parallel"
+            configure: "--enable-yjit=dev"
     env:
       GITPULLOPTIONS: --no-tags origin ${{github.ref}}
       RUN_OPTS: ${{ matrix.yjit_opts }}
       RUBY_DEBUG: ci
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-20.04
     if: ${{ !startsWith(github.event.head_commit.message, '[DOC]') && !contains(github.event.pull_request.labels.*.name, 'Documentation') }}
     steps:
       - run: mkdir build
