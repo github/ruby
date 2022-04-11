@@ -579,7 +579,7 @@ pub const VM_ENV_FLAG_LOCAL: u32 = 2;
 pub const VM_ENV_FLAG_ESCAPED: u32 = 4;
 pub const VM_ENV_FLAG_WB_REQUIRED: u32 = 8;
 pub const VM_ENV_FLAG_ISOLATED: u32 = 16;
-pub type _bindgen_ty_12 = u32;
+pub type _bindgen_ty_10 = u32;
 extern "C" {
     pub fn rb_vm_frame_method_entry(
         cfp: *const rb_control_frame_t,
@@ -769,10 +769,15 @@ extern "C" {
 }
 extern "C" {
     pub fn rb_yjit_vm_lock_then_barrier(
+        recursive_lock_level: *mut ::std::os::raw::c_uint,
         file: *const ::std::os::raw::c_char,
         line: ::std::os::raw::c_int,
     );
 }
 extern "C" {
-    pub fn rb_yjit_vm_unlock(file: *const ::std::os::raw::c_char, line: ::std::os::raw::c_int);
+    pub fn rb_yjit_vm_unlock(
+        recursive_lock_level: *mut ::std::os::raw::c_uint,
+        file: *const ::std::os::raw::c_char,
+        line: ::std::os::raw::c_int,
+    );
 }

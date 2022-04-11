@@ -194,13 +194,15 @@ pub extern "C" fn rb_yjit_bop_redefined(klass: RedefinitionFlag, bop: ruby_basic
         return;
     }
 
-    // Loop through the blocks that are associated with this class and basic
-    // operator and invalidate them.
-    Invariants::get_instance().basic_operator_blocks.remove(&(klass, bop)).map(|blocks| {
-        for block in blocks.iter() {
-            invalidate_block_version(block);
-            incr_counter!(invalidate_bop_redefined);
-        }
+    with_vm_lock(src_loc!(), || {
+        // Loop through the blocks that are associated with this class and basic
+        // operator and invalidate them.
+        Invariants::get_instance().basic_operator_blocks.remove(&(klass, bop)).map(|blocks| {
+            for block in blocks.iter() {
+                invalidate_block_version(block);
+                incr_counter!(invalidate_bop_redefined);
+            }
+        });
     });
 }
 
@@ -213,12 +215,14 @@ pub extern "C" fn rb_yjit_cme_invalidate(callee_cme: *const rb_callable_method_e
         return;
     }
 
-    if let Some(blocks) = Invariants::get_instance().cme_validity.remove(&callee_cme) {
-        for block in blocks.iter() {
-            invalidate_block_version(block);
-            incr_counter!(invalidate_method_lookup);
+    with_vm_lock(src_loc!(), || {
+        if let Some(blocks) = Invariants::get_instance().cme_validity.remove(&callee_cme) {
+            for block in blocks.iter() {
+                invalidate_block_version(block);
+                incr_counter!(invalidate_method_lookup);
+            }
         }
-    }
+    });
 }
 
 /// Callback for when rb_callable_method_entry(klass, mid) is going to change.
@@ -231,13 +235,15 @@ pub extern "C" fn rb_yjit_method_lookup_change(klass: VALUE, mid: ID) {
         return;
     }
 
-    Invariants::get_instance().method_lookup.entry(klass).and_modify(|deps| {
-        if let Some(deps) = deps.remove(&mid) {
-            for block in &deps {
-                invalidate_block_version(block);
-                incr_counter!(invalidate_method_lookup);
+    with_vm_lock(src_loc!(), || {
+        Invariants::get_instance().method_lookup.entry(klass).and_modify(|deps| {
+            if let Some(deps) = deps.remove(&mid) {
+                for block in &deps {
+                    invalidate_block_version(block);
+                    incr_counter!(invalidate_method_lookup);
+                }
             }
-        }
+        });
     });
 }
 
@@ -250,14 +256,16 @@ pub extern "C" fn rb_yjit_before_ractor_spawn() {
         return;
     }
 
-    // Clear the set of blocks inside Invariants
-    let blocks = mem::take(&mut Invariants::get_instance().single_ractor);
+    with_vm_lock(src_loc!(), || {
+        // Clear the set of blocks inside Invariants
+        let blocks = mem::take(&mut Invariants::get_instance().single_ractor);
 
-    // Invalidate the blocks
-    for block in &blocks {
-        invalidate_block_version(block);
-        incr_counter!(invalidate_ractor_spawn);
-    }
+        // Invalidate the blocks
+        for block in &blocks {
+            invalidate_block_version(block);
+            incr_counter!(invalidate_ractor_spawn);
+        }
+    });
 }
 
 /// Callback for when the global constant state changes.
@@ -268,29 +276,31 @@ pub extern "C" fn rb_yjit_constant_state_changed(id: ID) {
         return;
     }
 
-    if get_option!(global_constant_state) {
-        // If the global-constant-state option is set, then we're going to
-        // invalidate every block that depends on any constant.
+    with_vm_lock(src_loc!(), || {
+        if get_option!(global_constant_state) {
+            // If the global-constant-state option is set, then we're going to
+            // invalidate every block that depends on any constant.
 
-        let constant_state = mem::take(&mut Invariants::get_instance().constant_state_blocks);
+            let constant_state = mem::take(&mut Invariants::get_instance().constant_state_blocks);
 
-        for (_, blocks) in constant_state.iter() {
-            for block in blocks.iter() {
-                invalidate_block_version(block);
-                incr_counter!(invalidate_constant_state_bump);
+            for (_, blocks) in constant_state.iter() {
+                for block in blocks.iter() {
+                    invalidate_block_version(block);
+                    incr_counter!(invalidate_constant_state_bump);
+                }
+            }
+        } else {
+            // If the global-constant-state option is not set, then we're only going
+            // to invalidate the blocks that are associated with the given ID.
+
+            if let Some(blocks) = Invariants::get_instance().constant_state_blocks.remove(&id) {
+                for block in &blocks {
+                    invalidate_block_version(block);
+                    incr_counter!(invalidate_constant_state_bump);
+                }
             }
         }
-    } else {
-        // If the global-constant-state option is not set, then we're only going
-        // to invalidate the blocks that are associated with the given ID.
-
-        if let Some(blocks) = Invariants::get_instance().constant_state_blocks.remove(&id) {
-            for block in &blocks {
-                invalidate_block_version(block);
-                incr_counter!(invalidate_constant_state_bump);
-            }
-        }
-    }
+    });
 }
 
 /// Callback for marking GC objects inside [Invariants].

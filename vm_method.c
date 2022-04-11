@@ -123,9 +123,7 @@ vm_cme_invalidate(rb_callable_method_entry_t *cme)
     METHOD_ENTRY_INVALIDATED_SET(cme);
     RB_DEBUG_COUNTER_INC(cc_cme_invalidate);
 
-    RB_VM_LOCK_ENTER();
     rb_yjit_cme_invalidate(cme);
-    RB_VM_LOCK_LEAVE();
 }
 
 static int
@@ -255,9 +253,9 @@ clear_method_cache_by_id_in_class(VALUE klass, ID mid)
             invalidate_negative_cache(mid);
         }
     }
+    RB_VM_LOCK_LEAVE();
 
     rb_yjit_method_lookup_change(klass, mid);
-    RB_VM_LOCK_LEAVE();
 }
 
 static void

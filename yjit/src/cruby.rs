@@ -663,8 +663,9 @@ pub fn with_vm_lock<F, R>(loc: SourceLocation, func: F) -> R
 {
     let file = loc.file.as_ptr();
     let line = loc.line;
+    let mut recursive_lock_level: c_uint = 0;
 
-    unsafe { rb_yjit_vm_lock_then_barrier(file, line) };
+    unsafe { rb_yjit_vm_lock_then_barrier(&mut recursive_lock_level, file, line) };
 
     let ret = match catch_unwind(func) {
         Ok(result) => result,
@@ -684,7 +685,7 @@ pub fn with_vm_lock<F, R>(loc: SourceLocation, func: F) -> R
         }
     };
 
-    unsafe { rb_yjit_vm_unlock(file, line) };
+    unsafe { rb_yjit_vm_unlock(&mut recursive_lock_level, file, line) };
 
     ret
 }
