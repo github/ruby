@@ -44,7 +44,7 @@ STATIC_ASSERT(size_t_no_padding_bits, sizeof(size_t) == sizeof(uint64_t));
 // NOTE: We can trust that uint8_t has no "padding bits" since the C spec
 // guarantees it. Wording about padding bits is more explicit in C11 compared
 // to C99. See C11 7.20.1.1p2. All this is to say we have _some_ standards backing to
-// use a Rust `* u8` to represent a C `* uint8_t`.
+// use a Rust `*mut u8` to represent a C `uint8_t *`.
 //
 // If we don't want to trust that we can interpreter the C standard correctly, we
 // could outsource that work to the Rust standard library by sticking to fundamental
@@ -99,7 +99,8 @@ rb_yjit_get_page_size(void)
 
 #if defined(MAP_FIXED_NOREPLACE) && defined(_SC_PAGESIZE)
 // Align the current write position to a multiple of bytes
-static uint8_t *align_ptr(uint8_t *ptr, uint32_t multiple)
+static uint8_t *
+align_ptr(uint8_t *ptr, uint32_t multiple)
 {
     // Compute the pointer modulo the given alignment boundary
     uint32_t rem = ((uint32_t)(uintptr_t)ptr) % multiple;
@@ -116,7 +117,9 @@ static uint8_t *align_ptr(uint8_t *ptr, uint32_t multiple)
 #endif
 
 // Allocate a block of executable memory
-uint8_t *rb_yjit_alloc_exec_mem(uint32_t mem_size) {
+uint8_t *
+rb_yjit_alloc_exec_mem(uint32_t mem_size)
+{
 #ifndef _WIN32
     uint8_t *mem_block;
 
@@ -310,7 +313,7 @@ rb_str_bytesize(VALUE str)
 // Bindgen's temp/anon name isn't guaranteed stable.
 typedef struct rb_iseq_param_keyword rb_seq_param_keyword_struct;
 
-const char*
+const char *
 rb_insn_name(VALUE insn)
 {
     return insn_name(insn);
@@ -324,17 +327,20 @@ rb_insn_len(VALUE insn)
 }
 
 unsigned int
-rb_vm_ci_argc(const struct rb_callinfo *ci) {
+rb_vm_ci_argc(const struct rb_callinfo *ci)
+{
     return vm_ci_argc(ci);
 }
 
 ID
-rb_vm_ci_mid(const struct rb_callinfo *ci) {
+rb_vm_ci_mid(const struct rb_callinfo *ci)
+{
     return vm_ci_mid(ci);
 }
 
 unsigned int
-rb_vm_ci_flag(const struct rb_callinfo *ci) {
+rb_vm_ci_flag(const struct rb_callinfo *ci)
+{
     return vm_ci_flag(ci);
 }
 
@@ -345,48 +351,49 @@ rb_vm_ci_kwarg(const struct rb_callinfo *ci)
 }
 
 int
-rb_get_cikw_keyword_len(const struct rb_callinfo_kwarg* cikw)
+rb_get_cikw_keyword_len(const struct rb_callinfo_kwarg *cikw)
 {
     return cikw->keyword_len;
 }
 
 VALUE
-rb_get_cikw_keywords_idx(const struct rb_callinfo_kwarg* cikw, int idx)
+rb_get_cikw_keywords_idx(const struct rb_callinfo_kwarg *cikw, int idx)
 {
     return cikw->keywords[idx];
 }
 
 rb_method_visibility_t
-rb_METHOD_ENTRY_VISI(rb_callable_method_entry_t *me) {
+rb_METHOD_ENTRY_VISI(rb_callable_method_entry_t *me)
+{
     return METHOD_ENTRY_VISI(me);
 }
 
 rb_method_type_t
-rb_get_cme_def_type(rb_callable_method_entry_t* cme)
+rb_get_cme_def_type(rb_callable_method_entry_t *cme)
 {
     return cme->def->type;
 }
 
 ID
-rb_get_cme_def_body_attr_id(rb_callable_method_entry_t* cme)
+rb_get_cme_def_body_attr_id(rb_callable_method_entry_t *cme)
 {
     return cme->def->body.attr.id;
 }
 
 enum method_optimized_type
-rb_get_cme_def_body_optimized_type(rb_callable_method_entry_t* cme)
+rb_get_cme_def_body_optimized_type(rb_callable_method_entry_t *cme)
 {
     return cme->def->body.optimized.type;
 }
 
 unsigned int
-rb_get_cme_def_body_optimized_index(rb_callable_method_entry_t* cme)
+rb_get_cme_def_body_optimized_index(rb_callable_method_entry_t *cme)
 {
     return cme->def->body.optimized.index;
 }
 
-rb_method_cfunc_t*
-rb_get_cme_def_body_cfunc(rb_callable_method_entry_t* cme)
+rb_method_cfunc_t *
+rb_get_cme_def_body_cfunc(rb_callable_method_entry_t *cme)
 {
     return UNALIGNED_MEMBER_PTR(cme->def, body.cfunc);
 }
@@ -409,100 +416,117 @@ rb_get_mct_argc(rb_method_cfunc_t *mct)
     return mct->argc;
 }
 
-void*
+void *
 rb_get_mct_func(rb_method_cfunc_t *mct)
 {
     return (void*)mct->func; // this field is defined as type VALUE (*func)(ANYARGS)
 }
 
-const rb_iseq_t*
+const rb_iseq_t *
 rb_get_def_iseq_ptr(rb_method_definition_t *def)
 {
     return def_iseq_ptr(def);
 }
 
 rb_iseq_t *
-rb_get_iseq_body_local_iseq(rb_iseq_t * iseq) {
+rb_get_iseq_body_local_iseq(rb_iseq_t  *iseq)
+{
     return iseq->body->local_iseq;
 }
 
 unsigned int
-rb_get_iseq_body_local_table_size(rb_iseq_t* iseq) {
+rb_get_iseq_body_local_table_size(rb_iseq_t *iseq)
+{
     return iseq->body->local_table_size;
 }
 
-VALUE*
-rb_get_iseq_body_iseq_encoded(rb_iseq_t* iseq) {
+VALUE *
+rb_get_iseq_body_iseq_encoded(rb_iseq_t *iseq)
+{
     return iseq->body->iseq_encoded;
 }
 
 bool
-rb_get_iseq_body_builtin_inline_p(rb_iseq_t* iseq) {
+rb_get_iseq_body_builtin_inline_p(rb_iseq_t *iseq)
+{
     return iseq->body->builtin_inline_p;
 }
 
 unsigned
-rb_get_iseq_body_stack_max(rb_iseq_t* iseq) {
+rb_get_iseq_body_stack_max(rb_iseq_t *iseq)
+{
     return iseq->body->stack_max;
 }
 
 bool
-rb_get_iseq_flags_has_opt(rb_iseq_t* iseq) {
+rb_get_iseq_flags_has_opt(rb_iseq_t *iseq)
+{
     return iseq->body->param.flags.has_opt;
 }
 
 bool
-rb_get_iseq_flags_has_kw(rb_iseq_t* iseq) {
+rb_get_iseq_flags_has_kw(rb_iseq_t *iseq)
+{
     return iseq->body->param.flags.has_kw;
 }
 
 bool
-rb_get_iseq_flags_has_post(rb_iseq_t* iseq) {
+rb_get_iseq_flags_has_post(rb_iseq_t *iseq)
+{
     return iseq->body->param.flags.has_post;
 }
 
 bool
-rb_get_iseq_flags_has_kwrest(rb_iseq_t* iseq) {
+rb_get_iseq_flags_has_kwrest(rb_iseq_t *iseq)
+{
     return iseq->body->param.flags.has_kwrest;
 }
 
 bool
-rb_get_iseq_flags_has_rest(rb_iseq_t *iseq) {
+rb_get_iseq_flags_has_rest(rb_iseq_t *iseq)
+{
     return iseq->body->param.flags.has_rest;
 }
 
 bool
-rb_get_iseq_flags_has_block(rb_iseq_t* iseq) {
+rb_get_iseq_flags_has_block(rb_iseq_t *iseq)
+{
     return iseq->body->param.flags.has_block;
 }
 
 bool
-rb_get_iseq_flags_has_accepts_no_kwarg(rb_iseq_t* iseq) {
+rb_get_iseq_flags_has_accepts_no_kwarg(rb_iseq_t *iseq)
+{
     return iseq->body->param.flags.accepts_no_kwarg;
 }
 
-const rb_seq_param_keyword_struct*
-rb_get_iseq_body_param_keyword(rb_iseq_t* iseq) {
+const rb_seq_param_keyword_struct *
+rb_get_iseq_body_param_keyword(rb_iseq_t *iseq)
+{
     return iseq->body->param.keyword;
 }
 
 unsigned
-rb_get_iseq_body_param_size(rb_iseq_t* iseq) {
+rb_get_iseq_body_param_size(rb_iseq_t *iseq)
+{
     return iseq->body->param.size;
 }
 
 int
-rb_get_iseq_body_param_lead_num(rb_iseq_t* iseq) {
+rb_get_iseq_body_param_lead_num(rb_iseq_t *iseq)
+{
     return iseq->body->param.lead_num;
 }
 
 int
-rb_get_iseq_body_param_opt_num(rb_iseq_t* iseq) {
+rb_get_iseq_body_param_opt_num(rb_iseq_t *iseq)
+{
     return iseq->body->param.opt_num;
 }
 
-const VALUE*
-rb_get_iseq_body_param_opt_table(rb_iseq_t* iseq) {
+const VALUE *
+rb_get_iseq_body_param_opt_table(rb_iseq_t *iseq)
+{
     return iseq->body->param.opt_table;
 }
 
@@ -521,7 +545,7 @@ rb_leaf_invokebuiltin_iseq_p(const rb_iseq_t *iseq)
 }
 
 // Return an rb_builtin_function if the iseq contains only that leaf builtin function.
-const struct rb_builtin_function*
+const struct rb_builtin_function *
 rb_leaf_builtin_function(const rb_iseq_t *iseq)
 {
     if (!rb_leaf_invokebuiltin_iseq_p(iseq))
@@ -530,17 +554,20 @@ rb_leaf_builtin_function(const rb_iseq_t *iseq)
 }
 
 struct rb_control_frame_struct *
-rb_get_ec_cfp(rb_execution_context_t *ec) {
+rb_get_ec_cfp(rb_execution_context_t *ec)
+{
     return ec->cfp;
 }
 
-VALUE*
-rb_get_cfp_pc(struct rb_control_frame_struct *cfp) {
+VALUE *
+rb_get_cfp_pc(struct rb_control_frame_struct *cfp)
+{
     return (VALUE*)cfp->pc;
 }
 
-VALUE*
-rb_get_cfp_sp(struct rb_control_frame_struct *cfp) {
+VALUE *
+rb_get_cfp_sp(struct rb_control_frame_struct *cfp)
+{
     return cfp->sp;
 }
 
@@ -564,12 +591,14 @@ rb_cfp_get_iseq(struct rb_control_frame_struct *cfp)
 }
 
 VALUE
-rb_get_cfp_self(struct rb_control_frame_struct *cfp) {
+rb_get_cfp_self(struct rb_control_frame_struct *cfp)
+{
     return cfp->self;
 }
 
-VALUE*
-rb_get_cfp_ep(struct rb_control_frame_struct *cfp) {
+VALUE *
+rb_get_cfp_ep(struct rb_control_frame_struct *cfp)
+{
     return (VALUE*)cfp->ep;
 }
 
@@ -660,7 +689,8 @@ rb_RCLASS_ORIGIN(VALUE c)
 }
 
 bool
-rb_yjit_multi_ractor_p(void) {
+rb_yjit_multi_ractor_p(void)
+{
     return rb_multi_ractor_p();
 }
 
