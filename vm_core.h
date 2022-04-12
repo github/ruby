@@ -81,7 +81,6 @@
 #include "ruby/st.h"
 #include "ruby_atomic.h"
 #include "vm_opts.h"
-#include "darray.h"
 
 #include "ruby/thread_native.h"
 #include THREAD_IMPL_H
@@ -318,10 +317,6 @@ pathobj_realpath(VALUE pathobj)
 /* Forward declarations */
 struct rb_mjit_unit;
 
-// List of YJIT block versions
-typedef rb_darray(struct yjit_block_version *) rb_yjit_block_array_t;
-typedef rb_darray(rb_yjit_block_array_t) rb_yjit_block_array_array_t;
-
 struct rb_iseq_constant_body {
     enum iseq_type {
 	ISEQ_TYPE_TOP,
@@ -466,12 +461,11 @@ struct rb_iseq_constant_body {
     struct rb_mjit_unit *jit_unit;
 #endif
 
-    // YJIT stores some data per iseq
-    // TODO(alan) #if YJIT_BUILD here. can't include yjit.h has circular dependency at the moment.
+#if USE_YJIT
+    // YJIT stores some data on each iseq.
+    // Note: Cannot use YJIT_BUILD here since yjit.h includes this header.
     void *yjit_payload;
-
-    // TODO(alan) remove this
-    rb_yjit_block_array_array_t yjit_blocks; // empty, or has a size equal to iseq_size
+#endif
 };
 
 /* T_IMEMO/iseq */
