@@ -65,18 +65,17 @@ void
 rb_yjit_mark_writable(void *mem_block, uint32_t mem_size)
 {
     if (mprotect(mem_block, mem_size, PROT_READ | PROT_WRITE)) {
-        fprintf(stderr, "Couldn't make JIT page region (%p, %lu bytes) writeable, errno: %s\n",
+        rb_bug("Couldn't make JIT page region (%p, %lu bytes) writeable, errno: %s\n",
             mem_block, (unsigned long)mem_size, strerror(errno));
-        abort();
     }
 }
 
 void
-rb_yjit_mark_executable(void *mem_block, uint32_t mem_size) {
+rb_yjit_mark_executable(void *mem_block, uint32_t mem_size)
+{
     if (mprotect(mem_block, mem_size, PROT_READ | PROT_EXEC)) {
-        fprintf(stderr, "Couldn't make JIT page (%p, %lu bytes) executable, errno: %s\n",
+        rb_bug("Couldn't make JIT page (%p, %lu bytes) executable, errno: %s\n",
             mem_block, (unsigned long)mem_size, strerror(errno));
-        abort();
     }
 }
 
