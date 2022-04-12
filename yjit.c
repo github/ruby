@@ -1,6 +1,10 @@
-// YJIT combined compilation unit. This setup allows spreading functions
-// across different files without having to worry about putting things
-// in headers and prefixing function names.
+// This part of YJIT helps interfacing with the rest of CRuby and with the OS.
+// Sometimes our FFI binding generation tool gives undesirable outputs when it
+// sees C features that Rust doesn't support well. We mitigate that by binding
+// functions which have simple parameter types. The boilerplate C functions for
+// that purpose are in this file.
+// Similarly, we wrap OS facilities we need in simple functions to help with
+// FFI and to avoid the need to use external crates.io Rust libraries.
 
 #include "internal.h"
 #include "internal/sanitizers.h"
