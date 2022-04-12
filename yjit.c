@@ -37,28 +37,6 @@ STATIC_ASSERT(64b_size_t, SIZE_MAX == UINT64_MAX);
 // into size_t but the standard seems to allow it.
 STATIC_ASSERT(size_t_no_padding_bits, sizeof(size_t) == sizeof(uint64_t));
 
-#ifndef YJIT_CHECK_MODE
-# define YJIT_CHECK_MODE 0
-#endif
-
-// >= 1: print when output code invalidation happens
-// >= 2: dump list of instructions when regions compile
-#ifndef YJIT_DUMP_MODE
-# define YJIT_DUMP_MODE 0
-#endif
-
-#if defined(__x86_64__) && !defined(_WIN32)
-# define PLATFORM_SUPPORTED_P 1
-#else
-# define PLATFORM_SUPPORTED_P 0
-#endif
-
-// USE_MJIT comes from configure options
-#define JIT_ENABLED USE_MJIT
-
-// Check if we need to include YJIT in the build
-#if JIT_ENABLED && PLATFORM_SUPPORTED_P
-
 // NOTE: We can trust that uint8_t has no "padding bits" since the C spec
 // guarantees it. Wording about padding bits is more explicit in C11 compared
 // to C99. See C11 7.20.1.1p2. All this is to say we have _some_ standards backing to
@@ -848,10 +826,6 @@ VALUE rb_yjit_get_stats(rb_execution_context_t *ec, VALUE self);
 void
 rb_yjit_init(void)
 {
-    if (!PLATFORM_SUPPORTED_P || !JIT_ENABLED) {
-        return;
-    }
-
     // Call the Rust initialization code
     void rb_yjit_init_rust(void);
     rb_yjit_init_rust();
@@ -861,5 +835,3 @@ rb_yjit_init(void)
     VALUE yjit_root = TypedData_Make_Struct(0, struct yjit_root_struct, &yjit_root_type, root);
     rb_gc_register_mark_object(yjit_root);
 }
-
-#endif // if JIT_ENABLED && PLATFORM_SUPPORTED_P
