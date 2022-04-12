@@ -5,16 +5,33 @@
 //! to use in Rust.
 extern crate bindgen;
 
-use std::path::PathBuf;
 use std::env;
+use std::path::PathBuf;
+
+const SRC_ROOT_ENV: &str = "YJIT_SRC_ROOT_PATH";
 
 fn main() {
+    // Path to repo is a required input for supporting running `configure`
+    // in a directory away from the code.
+    let src_root = env::var(SRC_ROOT_ENV).expect(
+        format!(
+            r#"The "{}" env var must be a path to the root of the Ruby repo"#,
+            SRC_ROOT_ENV
+        )
+        .as_ref(),
+    );
+    let src_root = PathBuf::from(src_root);
+
+    assert!(
+        src_root.is_dir(),
+        "{} must be set to a path to a directory",
+        SRC_ROOT_ENV
+    );
+
     // Remove this flag so rust-bindgen generates bindings
     // that are internal functions not public in libruby
     let filtered_clang_args = env::args().filter(|arg| arg != "-fvisibility=hidden");
 
-    // assume CWD is Ruby repo root so we could copy paste include path
-    // args from make.
     let bindings = bindgen::builder()
         .clang_args(filtered_clang_args)
         .header("internal.h")
@@ -23,9 +40,8 @@ fn main() {
         .header("vm_core.h")
         .header("vm_callinfo.h")
 
-        // Some C functions that were expressly for Rust YJIT in this
-        // file. TODO(alan): doesn't work in out-of-src builds.
-        .header("yjit.c")
+        // Our C file for glue code
+        .header(src_root.join("yjit.c").to_str().unwrap())
 
         // Don't want to copy over C comment
         .generate_comments(false)
@@ -171,7 +187,7 @@ fn main() {
         // From vm_core.h
         .allowlist_var("rb_mRubyVMFrozenCore")
         .allowlist_var("VM_BLOCK_HANDLER_NONE")
-        .allowlist_var("VM_ENV_FLAG_.*")
+        .allowlist_type("vm_frame_env_flags")
         .allowlist_type("rb_seq_param_keyword_struct")
         .allowlist_type("ruby_basic_operators")
         .allowlist_var(".*_REDEFINED_OP_FLAG")
@@ -259,7 +275,7 @@ fn main() {
         // Unwrap the Result and panic on failure.
         .expect("Unable to generate bindings");
 
-    let mut out_path: PathBuf = env::current_dir().expect("bad cwd");
+    let mut out_path: PathBuf = src_root;
     out_path.push("yjit");
     out_path.push("src");
     out_path.push("cruby_bindings.inc.rs");
@@ -267,9 +283,4 @@ fn main() {
     bindings
         .write_to_file(out_path)
         .expect("Couldn't write bindings!");
-
-    // Prints output to stdout to save having to reload the file
-    // Temporary for development.
-    let _ = bindings
-        .write(Box::new(std::io::stdout()));
 }

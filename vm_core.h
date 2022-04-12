@@ -1207,7 +1207,7 @@ typedef rb_control_frame_t *
 #define GC_GUARDED_PTR_REF(p) VM_TAGGED_PTR_REF((p), 0x03)
 #define GC_GUARDED_PTR_P(p)   (((VALUE)(p)) & 0x01)
 
-enum {
+enum vm_frame_env_flags {
     /* Frame/Environment flag bits:
      *   MMMM MMMM MMMM MMMM ____ _FFF FFFF EEEX (LSB)
      *

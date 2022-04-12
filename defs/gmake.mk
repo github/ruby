@@ -392,13 +392,16 @@ $(YJIT_LIBS): yjit-static-lib
 # TODO: might need to move for BSD Make support
 miniruby$(EXEEXT): $(YJIT_LIBS)
 
-# Generate rust bindings. See source for details. Needs `./configure --enable-yjit`
+# Generate Rust bindings. See source for details.
+# Needs `./configure --enable-yjit=dev` and Clang.
 ifneq ($(strip $(CARGO)),) # if configure found Cargo
 .PHONY: yjit-bindgen
-yjit-bindgen: miniruby$(EXEEXT)
-	cd '$(top_srcdir)'
-	# See make recipe for `.c.i`
-	$(CARGO) run --manifest-path '$(top_srcdir)/yjit/bindgen/Cargo.toml' -- $(CFLAGS) $(XCFLAGS) $(CPPFLAGS)
+yjit-bindgen: yjit.$(OBJEXT)
+	YJIT_SRC_ROOT_PATH='$(top_srcdir)' $(CARGO) run --manifest-path '$(top_srcdir)/yjit/bindgen/Cargo.toml' -- $(CFLAGS) $(XCFLAGS) $(CPPFLAGS)
+
+# For CI, check whether YJIT's FFI bindings are up-to-date.
+check-yjit-bindings: yjit-bindgen
+	git -C "$(top_srcdir)" diff --exit-code yjit/src/cruby_bindings.inc.rs
 endif
 
 # Query on the generated rdoc

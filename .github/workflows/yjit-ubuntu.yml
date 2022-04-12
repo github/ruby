@@ -21,7 +21,7 @@ jobs:
     # GitHub Action's image seems to already contain a Rust 1.58.0.
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       # For now we can't run cargo test --offline because it complains about the
       # capstone dependency, even though the dependency is optional
       #- run: cargo test --offline
@@ -38,6 +38,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - test_task: "check-yjit-bindings"
+            configure: "--with-gcc=clang-12 --enable-yjit=dev"
+
           - test_task: "check"
             configure: "--enable-yjit" # release build
 
@@ -52,9 +55,6 @@ jobs:
             configure: "--enable-yjit=dev"
 
           - test_task: "test-bundled-gems"
-            configure: "--enable-yjit=dev"
-
-          - test_task: "test-bundler-parallel"
             configure: "--enable-yjit=dev"
     env:
       GITPULLOPTIONS: --no-tags origin ${{github.ref}}
@@ -95,8 +95,6 @@ jobs:
         run: ../src/configure -C --disable-install-doc ${{ matrix.configure }}
       - run: make incs
       - run: make -j
-      # We want to know if this becomes broken
-      #- run: make -j yjit-bindgen
       - run: make leaked-globals
         if: ${{ matrix.test_task == 'check' }}
       - run: make prepare-gems
