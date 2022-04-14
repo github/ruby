@@ -1672,7 +1672,9 @@ rb_class_inherited_p(VALUE mod, VALUE arg)
  *   mod < other   ->  true, false, or nil
  *
  * Returns true if <i>mod</i> is a subclass of <i>other</i>. Returns
- * <code>nil</code> if there's no relationship between the two.
+ * <code>false</code> if <i>mod</i> is the same as <i>other</i>
+ * or <i>mod</i> is an ancestor of <i>other</i>.
+ * Returns <code>nil</code> if there's no relationship between the two.
  * (Think of the relationship in terms of the class definition:
  * "class A < B" implies "A < B".)
  *
@@ -1713,7 +1715,9 @@ rb_mod_ge(VALUE mod, VALUE arg)
  *   mod > other   ->  true, false, or nil
  *
  * Returns true if <i>mod</i> is an ancestor of <i>other</i>. Returns
- * <code>nil</code> if there's no relationship between the two.
+ * <code>false</code> if <i>mod</i> is the same as <i>other</i>
+ * or <i>mod</i> is a descendant of <i>other</i>.
+ * Returns <code>nil</code> if there's no relationship between the two.
  * (Think of the relationship in terms of the class definition:
  * "class A < B" implies "B > A".)
  *
@@ -4198,8 +4202,8 @@ f_sprintf(int c, const VALUE *v, VALUE _)
  *  - #!: Returns the boolean negation of +self+: +true+ or +false+.
  *  - #!=: Returns whether +self+ and the given object are _not_ equal.
  *  - #==: Returns whether +self+ and the given object are equivalent.
- *  - {__id__}[#method-i-__id__]: Returns the integer object identifier for +self+.
- *  - {__send__}[#method-i-__send__]: Calls the method identified by the given symbol.
+ *  - #__id__: Returns the integer object identifier for +self+.
+ *  - #__send__: Calls the method identified by the given symbol.
  *  - #equal?: Returns whether +self+ and the given object are the same object.
  *  - #instance_eval: Evaluates the given string or block in the context of +self+.
  *  - #instance_exec: Executes the given block in the context of +self+,
@@ -4395,12 +4399,10 @@ InitVM_Object(void)
      *
      * === Querying
      *
-     * - {#__callee__}[#method-i-__callee__]: Returns the called name
-     *   of the current method as a symbol.
-     * - {#__dir__}[#method-i-__dir__]: Returns the path to the directory
-     *   from which the current method is called.
-     * - {#__method__}[#method-i-__method__]: Returns the name
-     *   of the current method as a symbol.
+     * - #__callee__: Returns the called name of the current method as a symbol.
+     * - #__dir__: Returns the path to the directory from which the current
+     *   method is called.
+     * - #__method__: Returns the name of the current method as a symbol.
      * - #autoload?: Returns the file to be loaded when the given module is referenced.
      * - #binding: Returns a Binding for the context at the point of call.
      * - #block_given?: Returns +true+ if a block was passed to the calling method.
@@ -4458,7 +4460,8 @@ InitVM_Object(void)
      *
      * === Subprocesses
      *
-     * - {`command`}[#method-i-60]: Returns the standard output of running +command+ in a subshell.
+     * - {\`command`}[rdoc-ref:Kernel#`]: Returns the standard output of running
+     *   +command+ in a subshell.
      * - #exec: Replaces current process with a new process.
      * - #fork: Forks the current process into two processes.
      * - #spawn: Executes the given command and returns its pid without waiting
