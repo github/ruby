@@ -413,58 +413,58 @@ pub struct rb_cref_t {
 }
 
 impl VALUE {
-    // Dump info about the value to the console similarly to rp(VALUE)
+    /// Dump info about the value to the console similarly to rp(VALUE)
     pub fn dump_info(self) {
         unsafe { rb_obj_info_dump(self) }
     }
 
-    // Return whether the value is truthy or falsy in Ruby -- only nil and false are falsy.
-    pub fn test(self: VALUE) -> bool
+    /// Return whether the value is truthy or falsy in Ruby -- only nil and false are falsy.
+    pub fn test(self) -> bool
     {
         let VALUE(cval) = self;
         let VALUE(qnilval) = Qnil;
         (cval & !qnilval) != 0
     }
 
-    // Return true if the number is an immediate integer, flonum or static symbol
-    pub fn immediate_p(self: VALUE) -> bool
+    /// Return true if the number is an immediate integer, flonum or static symbol
+    fn immediate_p(self) -> bool
     {
         let VALUE(cval) = self;
         (cval & 7) != 0
     }
 
-    // Return true if the value is a Ruby immediate integer, flonum, static symbol, nil or false
-    pub fn special_const_p(self: VALUE) -> bool
+    /// Return true if the value is a Ruby immediate integer, flonum, static symbol, nil or false
+    pub fn special_const_p(self) -> bool
     {
         self.immediate_p() || !self.test()
     }
 
-    // Return true if the value is a Ruby Fixnum (immediate-size integer)
-    pub fn fixnum_p(self: VALUE) -> bool
+    /// Return true if the value is a Ruby Fixnum (immediate-size integer)
+    pub fn fixnum_p(self) -> bool
     {
         let VALUE(cval) = self;
         (cval & 1) == 1
     }
 
-    // Return true if the value is an immediate Ruby floating-point number (flonum)
-    pub fn flonum_p(self: VALUE) -> bool {
+    /// Return true if the value is an immediate Ruby floating-point number (flonum)
+    pub fn flonum_p(self) -> bool {
         let VALUE(cval) = self;
         (cval & 3) == 2
     }
 
-    // Return true for a static (non-heap) Ruby symbol
-    pub fn static_sym_p(self: VALUE) -> bool {
+    /// Return true for a static (non-heap) Ruby symbol
+    pub fn static_sym_p(self) -> bool {
         let VALUE(cval) = self;
         (cval & 0xff) == RUBY_SYMBOL_FLAG
     }
 
-    // Returns true or false depending on whether the value is nil
-    pub fn nil_p(self: VALUE) -> bool {
+    /// Returns true or false depending on whether the value is nil
+    pub fn nil_p(self) -> bool {
         self == Qnil
     }
 
-    // Read the flags bits from the RBasic object, then return a Ruby type enum (e.g. RUBY_T_ARRAY)
-    pub fn builtin_type(self: VALUE) -> ruby_value_type {
+    /// Read the flags bits from the RBasic object, then return a Ruby type enum (e.g. RUBY_T_ARRAY)
+    pub fn builtin_type(self) -> ruby_value_type {
         assert!(!self.special_const_p());
 
         let VALUE(cval) = self;
@@ -473,45 +473,45 @@ impl VALUE {
         (flags_bits & (RUBY_T_MASK as usize)) as ruby_value_type
     }
 
-    pub fn class_of(self: VALUE) -> VALUE {
+    pub fn class_of(self) -> VALUE {
         unsafe { CLASS_OF(self) }
     }
 
-    pub fn as_isize(self: VALUE) -> isize {
+    pub fn as_isize(self) -> isize {
         let VALUE(is) = self;
         is as isize
     }
 
-    pub fn as_i32(self: VALUE) -> i32 {
+    pub fn as_i32(self) -> i32 {
         self.as_i64().try_into().unwrap()
     }
 
-    pub fn as_u32(self: VALUE) -> u32 {
+    pub fn as_u32(self) -> u32 {
         let VALUE(i) = self;
         i.try_into().unwrap()
     }
 
-    pub fn as_i64(self: VALUE) -> i64 {
+    pub fn as_i64(self) -> i64 {
         let VALUE(i) = self;
         i as i64
     }
 
-    pub fn as_u64(self: VALUE) -> u64 {
+    pub fn as_u64(self) -> u64 {
         let VALUE(i) = self;
         i.try_into().unwrap()
     }
 
-    pub fn as_usize(self: VALUE) -> usize {
+    pub fn as_usize(self) -> usize {
         let VALUE(us) = self;
         us as usize
     }
 
-    pub fn as_ptr<T>(self: VALUE) -> *const T {
+    pub fn as_ptr<T>(self) -> *const T {
         let VALUE(us) = self;
         us as *const T
     }
 
-    pub fn as_mut_ptr<T>(self: VALUE) -> *mut T {
+    pub fn as_mut_ptr<T>(self) -> *mut T {
         let VALUE(us) = self;
         us as *mut T
     }
@@ -520,7 +520,7 @@ impl VALUE {
     /// Similar to [std::ptr::NonNull], but for `*const T`. `NonNull<T>`
     /// is for `*mut T` while our C functions are setup to use `*const T`.
     /// Casting from `NonNull<T>` to `*const T` is too noisy.
-    pub fn as_optional_ptr<T>(self: VALUE) -> Option<*const T> {
+    pub fn as_optional_ptr<T>(self) -> Option<*const T> {
         let ptr: *const T = self.as_ptr();
 
         if ptr.is_null() {
