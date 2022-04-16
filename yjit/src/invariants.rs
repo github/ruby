@@ -281,14 +281,14 @@ pub extern "C" fn rb_yjit_constant_state_changed(id: ID) {
             // If the global-constant-state option is set, then we're going to
             // invalidate every block that depends on any constant.
 
-            let constant_state = mem::take(&mut Invariants::get_instance().constant_state_blocks);
-
-            for (_, blocks) in constant_state.iter() {
-                for block in blocks.iter() {
-                    invalidate_block_version(block);
-                    incr_counter!(invalidate_constant_state_bump);
+            Invariants::get_instance().constant_state_blocks.keys().for_each(|id| {
+                if let Some(blocks) = Invariants::get_instance().constant_state_blocks.remove(&id) {
+                    for block in &blocks {
+                        invalidate_block_version(block);
+                        incr_counter!(invalidate_constant_state_bump);
+                    }
                 }
-            }
+            });
         } else {
             // If the global-constant-state option is not set, then we're only going
             // to invalidate the blocks that are associated with the given ID.
