@@ -523,12 +523,11 @@ class TestYJIT < Test::Unit::TestCase
     RUBY
   end
 
-  # FIXME: we may have broken cfunc kwarg logic during the port
   def test_cfunc_kwarg
-    #assert_no_exits('{}.store(:value, foo: 123)')
-    #assert_no_exits('{}.store(:value, foo: 123, bar: 456, baz: 789)')
-    #assert_no_exits('{}.merge(foo: 123)')
-    #assert_no_exits('{}.merge(foo: 123, bar: 456, baz: 789)')
+    assert_no_exits('{}.store(:value, foo: 123)')
+    assert_no_exits('{}.store(:value, foo: 123, bar: 456, baz: 789)')
+    assert_no_exits('{}.merge(foo: 123)')
+    assert_no_exits('{}.merge(foo: 123, bar: 456, baz: 789)')
   end
 
   # regression test simplified from URI::Generic#hostname=

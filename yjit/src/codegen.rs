@@ -3118,6 +3118,23 @@ fn c_method_tracing_currently_enabled(jit: &JITState) -> bool
     unsafe { rb_c_method_tracing_currently_enabled(jit.ec.unwrap() as *mut rb_execution_context_struct) }
 }
 
+// Similar to args_kw_argv_to_hash. It is called at runtime from within the
+// generated assembly to build a Ruby hash of the passed keyword arguments. The
+// keys are the Symbol objects associated with the keywords and the values are
+// the actual values. In the representation, both keys and values are VALUEs.
+unsafe extern "C" fn build_kwhash(ci: *const rb_callinfo, sp: *const VALUE) -> VALUE {
+    let kw_arg = vm_ci_kwarg(ci);
+    let kw_len: usize = get_cikw_keyword_len(kw_arg).try_into().unwrap();
+    let hash = rb_hash_new_with_size(kw_len as u64);
+
+    for kwarg_idx in 0..kw_len {
+        let key = get_cikw_keywords_idx(kw_arg, kwarg_idx.try_into().unwrap());
+        let val = sp.sub(kw_len).add(kwarg_idx).read();
+        rb_hash_aset(hash, key, val);
+    }
+    hash
+}
+
 fn gen_send_cfunc(
     jit: &mut JITState,
     ctx: &mut Context,
@@ -3139,14 +3156,21 @@ fn gen_send_cfunc(
         return CantCompile;
     }
 
+    let kw_arg = unsafe { vm_ci_kwarg(ci) };
+    let kw_arg_num = if kw_arg.is_null() { 0 } else { unsafe { get_cikw_keyword_len(kw_arg) } };
+
+    // Number of args which will be passed through to the callee
+    // This is adjusted by the kwargs being combined into a hash.
+    let passed_argc = if kw_arg.is_null() { argc } else { argc - kw_arg_num + 1 };
+
     // If the argument count doesn't match
-    if cfunc_argc >= 0 && cfunc_argc != argc {
+    if cfunc_argc >= 0 && cfunc_argc != passed_argc {
         gen_counter_incr!(cb, send_cfunc_argc_mismatch);
         return CantCompile;
     }
 
     // Don't JIT functions that need C stack arguments for now
-    if cfunc_argc >= 0 && argc + 1 > (C_ARG_REGS.len() as i32) {
+    if cfunc_argc >= 0 && passed_argc + 1 > (C_ARG_REGS.len() as i32) {
         gen_counter_incr!(cb, send_cfunc_toomany_args);
         return CantCompile;
     }
@@ -3158,14 +3182,16 @@ fn gen_send_cfunc(
     }
 
     // Delegate to codegen for C methods if we have it.
-    let codegen_p = lookup_cfunc_codegen(unsafe { (*cme).def });
-    if codegen_p.is_some() {
-        let known_cfunc_codegen = codegen_p.unwrap();
-        if known_cfunc_codegen(jit, ctx, cb, ocb, ci, cme, block, argc, recv_known_klass) {
-            // cfunc codegen generated code. Terminate the block so
-            // there isn't multiple calls in the same block.
-            jump_to_next_insn(jit, ctx, cb, ocb);
-            return EndBlock;
+    if kw_arg.is_null() {
+        let codegen_p = lookup_cfunc_codegen(unsafe { (*cme).def });
+        if codegen_p.is_some() {
+            let known_cfunc_codegen = codegen_p.unwrap();
+            if known_cfunc_codegen(jit, ctx, cb, ocb, ci, cme, block, argc, recv_known_klass) {
+                // cfunc codegen generated code. Terminate the block so
+                // there isn't multiple calls in the same block.
+                jump_to_next_insn(jit, ctx, cb, ocb);
+                return EndBlock;
+            }
         }
     }
 
@@ -3224,7 +3250,8 @@ fn gen_send_cfunc(
 
     // Write env flags at sp[-1]
     // sp[-1] = frame_type;
-    let frame_type = VM_FRAME_MAGIC_CFUNC | VM_FRAME_FLAG_CFRAME | VM_ENV_FLAG_LOCAL;
+    let mut frame_type = VM_FRAME_MAGIC_CFUNC | VM_FRAME_FLAG_CFRAME | VM_ENV_FLAG_LOCAL;
+    if !kw_arg.is_null() { frame_type |= VM_FRAME_FLAG_CFRAME_KW }
     mov(cb, mem_opnd(64, REG0, 8 * -1), uimm_opnd(frame_type.into()));
 
     // Allocate a new CFP (ec->cfp--)
@@ -3268,6 +3295,17 @@ fn gen_send_cfunc(
     }
     */
 
+    if !kw_arg.is_null() {
+        // Build a hash from all kwargs passed
+        jit_mov_gc_ptr(jit, cb, C_ARG_REGS[0], VALUE(ci as usize));
+        lea(cb, C_ARG_REGS[1], ctx.sp_opnd(0));
+        call_ptr(cb, REG0, build_kwhash as *const u8);
+
+        // Replace the stack location at the start of kwargs with the new hash
+        let stack_opnd = ctx.stack_opnd(argc - passed_argc);
+        mov(cb, stack_opnd, RAX);
+    }
+
     // Copy SP into RAX because REG_SP will get overwritten
     lea(cb, RAX, ctx.sp_opnd(0));
 
@@ -3282,7 +3320,7 @@ fn gen_send_cfunc(
     if cfunc_argc >= 0 {
         // Copy the arguments from the stack to the C argument registers
         // self is the 0th argument and is at index argc from the stack top
-        for i in 0..=argc as usize { // "as usize?" Yeah, you can't index an array by an i32.
+        for i in 0..=passed_argc as usize { // "as usize?" Yeah, you can't index an array by an i32.
             let stack_opnd = mem_opnd(64, RAX, -(argc + 1 - (i as i32)) * SIZEOF_VALUE_I32);
             let c_arg_reg = C_ARG_REGS[i];
             mov(cb, c_arg_reg, stack_opnd);
@@ -3293,7 +3331,7 @@ fn gen_send_cfunc(
     if cfunc_argc == -1 {
         // The method gets a pointer to the first argument
         // rb_f_puts(int argc, VALUE *argv, VALUE recv)
-        mov(cb, C_ARG_REGS[0], imm_opnd(argc.into()));
+        mov(cb, C_ARG_REGS[0], imm_opnd(passed_argc.into()));
         lea(cb, C_ARG_REGS[1], mem_opnd(64, RAX, -(argc) * SIZEOF_VALUE_I32));
         mov(cb, C_ARG_REGS[2], mem_opnd(64, RAX, -(argc + 1) * SIZEOF_VALUE_I32));
     }
@@ -4016,10 +4054,6 @@ fn gen_send_general(jit: &mut JITState, ctx: &mut Context, cb: &mut CodeBlock, o
                 return gen_send_iseq(jit, ctx, cb, ocb, ci, cme, block, argc);
             },
             VM_METHOD_TYPE_CFUNC => {
-                if flags & VM_CALL_KWARG != 0 {
-                    gen_counter_incr!(cb, send_cfunc_kwargs);
-                    return CantCompile;
-                }
                 return gen_send_cfunc(jit, ctx, cb, ocb, ci, cme, block, argc, &comptime_recv_klass);
             },
             VM_METHOD_TYPE_IVAR => {
