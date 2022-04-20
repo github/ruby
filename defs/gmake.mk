@@ -362,29 +362,37 @@ CARGO_VERBOSE_0 = -q
 CARGO_VERBOSE_1 =
 CARGO_VERBOSE = $(CARGO_VERBOSE_$(V))
 
+# Select between different build profiles with macro substitution
 .PHONY: yjit-static-lib
-yjit-static-lib:
-	$(Q) set -eu; if [ '$(YJIT_SUPPORT)' != 'dev' ]; then \
-	    echo 'building Rust YJIT (release mode)'; \
-	    $(RUSTC) \
+yjit-static-lib: yjit-static-lib-$(YJIT_SUPPORT)
+
+# YJIT_SUPPORT=yes when `configure` gets `--enable-yjit`
+yjit-static-lib-yes:
+	$(ECHO) 'building Rust YJIT (release mode)'
+	$(Q) $(RUSTC) \
 	        --crate-name=yjit \
 	        --crate-type=staticlib \
 	        --edition=2021 \
 	        -C opt-level=3 \
 	        -C overflow-checks=on \
 	        '--out-dir=$(CARGO_TARGET_DIR)/release/' \
-	        $(top_srcdir)/yjit/src/lib.rs ; \
-	else \
-	    echo 'building Rust YJIT (dev mode)'; \
-	    cd $(top_srcdir)/yjit && \
+	        $(top_srcdir)/yjit/src/lib.rs
+
+yjit-static-lib-no:
+	$(ECHO) 'Error: Tried to build YJIT without configuring it first. Check `make showconfig`?'
+	@false
+
+yjit-static-lib-dev:
+	$(ECHO) 'building Rust YJIT (dev mode)'
+	$(Q) cd $(top_srcdir)/yjit && \
 	        CARGO_TARGET_DIR='$(CARGO_TARGET_DIR)' \
 	        CARGO_TERM_PROGRESS_WHEN='never' \
-	        $(CARGO) $(CARGO_VERBOSE) build $(CARGO_BUILD_ARGS); \
-	fi
+	        $(CARGO) $(CARGO_VERBOSE) build $(CARGO_BUILD_ARGS)
 
-# This PHONY prerequisite makes it so that we always run cargo. When there are no Rust
-# changes on rebuild, Cargo does not touch the mtime of the static library and GNU make
-# avoids relinking.
+# This PHONY prerequisite makes it so that we always run cargo. When there are
+# no Rust changes on rebuild, Cargo does not touch the mtime of the static
+# library and GNU make avoids relinking. $(empty) seems to be important to
+# trigger rebuild each time in release mode.
 $(YJIT_LIBS): yjit-static-lib
 	$(empty)
 
