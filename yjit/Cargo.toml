@@ -15,15 +15,11 @@ crate-type = ["staticlib"]
 [dependencies]
 # No required dependencies to simplify build process. TODO: Link to yet to be
 # written rationale. Optional For development and testing purposes
-# FIXME: `capstone-sys` takes 23s to build in dev mode and 50s in release mode.
-# It might be better to dynamically link against system capstone instead of
-# depending on this crate.
 capstone = { version = "0.10.0", optional = true }
 
 [features]
-# NOTE: By having the Capstone dependency behind a feature, we allow
-# building without needing to install it, but then I have to run
-# `cargo test --features disassembly` for tests...
+# NOTE: Development builds select a set of these via configure.ac
+# For debugging, `make V=1` shows exact cargo invocation.
 disasm = ["capstone"]
 stats = []
 asm_comments = []
@@ -41,8 +37,3 @@ opt-level = 3
 # The extra robustness that comes from checking for arithmetic overflow is
 # worth the performance cost for the compiler.
 overflow-checks = true
-
-[profile.release.package.capstone]
-# Don't need the disassembler to run fast since it's for development uses.
-# Optimize for build time.
-opt-level = 0
