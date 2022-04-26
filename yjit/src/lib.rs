@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 #![allow(unused_assignments)]
 #![allow(unused_macros)]
+#![allow(clippy::style)] // We are laid back about style
 
 mod asm;
 mod cruby;
@@ -14,11 +15,3 @@ mod utils;
 mod options;
 mod stats;
 mod yjit;
-
-#[cfg(test)]
-mod tests {
-    /// Just as a sandbox for playing around
-    #[test]
-    fn sandbox() {
-    }
-}

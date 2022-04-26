@@ -1,6 +1,8 @@
 use std::mem;
 use std::collections::{BTreeMap};
 
+// Lots of manual vertical alignment in there that rustfmt doesn't handle well.
+#[rustfmt::skip]
 pub mod x86_64;
 
 /// Pointer to a piece of machine code

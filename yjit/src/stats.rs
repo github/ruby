@@ -11,7 +11,7 @@ static mut EXIT_OP_COUNT: [u64; VM_INSTRUCTION_SIZE] = [0; VM_INSTRUCTION_SIZE];
 
 // Macro to declare the stat counters
 macro_rules! make_counters {
-    ($($counter_name:ident),+) => {
+    ($($counter_name:ident,)+) => {
         // Struct containing the counter values
         #[derive(Default, Debug)]
         pub struct Counters { $(pub $counter_name: u64),+ }
@@ -59,7 +59,7 @@ macro_rules! ptr_to_counter {
 pub(crate) use ptr_to_counter;
 
 // Declare all the counters we track
-make_counters!(
+make_counters! {
     exec_instruction,
 
     send_keywords,
@@ -143,8 +143,8 @@ make_counters!(
     expandarray_rhs_too_small,
 
     gbpp_block_param_modified,
-    gbpp_block_handler_not_iseq
-);
+    gbpp_block_handler_not_iseq,
+}
 
 //===========================================================================
 
