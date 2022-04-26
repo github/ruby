@@ -1,5 +1,5 @@
-use crate::asm::*;
 use crate::asm::x86_64::*;
+use crate::asm::*;
 use crate::cruby::*;
 use std::slice;
 
@@ -56,14 +56,14 @@ mod tests {
     fn min_max_preserved_after_cast_to_usize() {
         use crate::utils::IntoUsize;
 
-        let min:usize = u64::MIN.as_usize();
+        let min: usize = u64::MIN.as_usize();
         assert_eq!(min, u64::MIN.try_into().unwrap());
-        let max:usize = u64::MAX.as_usize();
+        let max: usize = u64::MAX.as_usize();
         assert_eq!(max, u64::MAX.try_into().unwrap());
 
-        let min:usize = u32::MIN.as_usize();
+        let min: usize = u32::MIN.as_usize();
         assert_eq!(min, u32::MIN.try_into().unwrap());
-        let max:usize = u32::MAX.as_usize();
+        let max: usize = u32::MAX.as_usize();
         assert_eq!(max, u32::MAX.try_into().unwrap());
     }
 }
@@ -84,8 +84,7 @@ yjit_print_iseq(const rb_iseq_t *iseq)
 */
 
 // Save caller-save registers on the stack before a C call
-fn push_regs(cb: &mut CodeBlock)
-{
+fn push_regs(cb: &mut CodeBlock) {
     push(cb, RAX);
     push(cb, RCX);
     push(cb, RDX);
@@ -99,8 +98,7 @@ fn push_regs(cb: &mut CodeBlock)
 }
 
 // Restore caller-save registers from the after a C call
-fn pop_regs(cb: &mut CodeBlock)
-{
+fn pop_regs(cb: &mut CodeBlock) {
     popfq(cb);
     pop(cb, R11);
     pop(cb, R10);
@@ -113,10 +111,8 @@ fn pop_regs(cb: &mut CodeBlock)
     pop(cb, RAX);
 }
 
-pub fn print_int(cb: &mut CodeBlock, opnd: X86Opnd)
-{
-    extern "sysv64" fn print_int_fn(val: i64)
-    {
+pub fn print_int(cb: &mut CodeBlock, opnd: X86Opnd) {
+    extern "sysv64" fn print_int_fn(val: i64) {
         println!("{}", val);
     }
 
@@ -127,15 +123,14 @@ pub fn print_int(cb: &mut CodeBlock, opnd: X86Opnd)
             // Sign-extend the value if necessary
             if opnd.num_bits() < 64 {
                 movsx(cb, C_ARG_REGS[0], opnd);
-            }
-            else {
+            } else {
                 mov(cb, C_ARG_REGS[0], opnd);
             }
-        },
+        }
         X86Opnd::Imm(_) | X86Opnd::UImm(_) => {
             mov(cb, C_ARG_REGS[0], opnd);
         }
-        _ => unreachable!()
+        _ => unreachable!(),
     }
 
     mov(cb, RAX, const_ptr_opnd(print_int_fn as *const u8));
@@ -144,10 +139,8 @@ pub fn print_int(cb: &mut CodeBlock, opnd: X86Opnd)
 }
 
 /// Generate code to print a pointer
-pub fn print_ptr(cb: &mut CodeBlock, opnd: X86Opnd)
-{
-    extern "sysv64" fn print_ptr_fn(ptr: *const u8)
-    {
+pub fn print_ptr(cb: &mut CodeBlock, opnd: X86Opnd) {
+    extern "sysv64" fn print_ptr_fn(ptr: *const u8) {
         println!("{:p}", ptr);
     }
 
@@ -161,10 +154,8 @@ pub fn print_ptr(cb: &mut CodeBlock, opnd: X86Opnd)
 }
 
 /// Generate code to print a value
-pub fn print_value(cb: &mut CodeBlock, opnd: X86Opnd)
-{
-    extern "sysv64" fn print_value_fn(val: VALUE)
-    {
+pub fn print_value(cb: &mut CodeBlock, opnd: X86Opnd) {
+    extern "sysv64" fn print_value_fn(val: VALUE) {
         unsafe { rb_obj_info_dump(val) }
     }
 
@@ -180,10 +171,8 @@ pub fn print_value(cb: &mut CodeBlock, opnd: X86Opnd)
 }
 
 // Generate code to print constant string to stdout
-pub fn print_str(cb: &mut CodeBlock, str: &str)
-{
-    extern "sysv64" fn print_str_cfun(ptr: *const u8, num_bytes: usize)
-    {
+pub fn print_str(cb: &mut CodeBlock, str: &str) {
+    extern "sysv64" fn print_str_cfun(ptr: *const u8, num_bytes: usize) {
         unsafe {
             let slice = slice::from_raw_parts(ptr, num_bytes);
             let str = std::str::from_utf8(slice).unwrap();

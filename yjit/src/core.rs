@@ -1,19 +1,19 @@
-use std::rc::{Rc, Weak};
-use std::cell::*;
-use std::ptr;
-use std::mem;
-use std::mem::size_of;
-use std::hash::{Hash, Hasher};
-use crate::cruby::*;
-use crate::asm::*;
 use crate::asm::x86_64::*;
+use crate::asm::*;
 use crate::codegen::*;
+use crate::cruby::*;
 use crate::options::*;
 use crate::stats::*;
 use crate::utils::*;
+use core::ffi::c_void;
+use std::cell::*;
+use std::hash::{Hash, Hasher};
+use std::mem;
+use std::mem::size_of;
+use std::ptr;
+use std::rc::{Rc, Weak};
 use InsnOpnd::*;
 use TempMapping::*;
-use core::ffi::{c_void};
 
 // Maximum number of temp value types we keep track of
 pub const MAX_TEMP_TYPES: usize = 8;
@@ -48,8 +48,7 @@ impl Default for Type {
 
 impl Type {
     /// This returns an appropriate Type based on a known value
-    pub fn from(val: VALUE) -> Type
-    {
+    pub fn from(val: VALUE) -> Type {
         if val.special_const_p() {
             if val.fixnum_p() {
                 Type::Fixnum
@@ -121,8 +120,7 @@ impl Type {
     /// Returns 0 if the two are the same
     /// Returns > 0 if different but compatible
     /// Returns usize::MAX if incompatible
-    pub fn diff(self, dst: Self) -> usize
-    {
+    pub fn diff(self, dst: Self) -> usize {
         // Perfect match, difference is zero
         if self == dst {
             return 0;
@@ -149,8 +147,7 @@ impl Type {
 
     /// Upgrade this type into a more specific compatible type
     /// The new type must be compatible and at least as specific as the previously known type.
-    fn upgrade(&mut self, src: Self)
-    {
+    fn upgrade(&mut self, src: Self) {
         // Here we're checking that src is more specific than self
         assert!(src.diff(*self) != usize::MAX);
         *self = src;
@@ -161,10 +158,10 @@ impl Type {
 // self, a local variable or constant so that we can track its type
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum TempMapping {
-    MapToStack,             // Normal stack value
-    MapToSelf,              // Temp maps to the self operand
-    MapToLocal(u8),         // Temp maps to a local variable with index
-    //ConstMapping,         // Small constant (0, 1, 2, Qnil, Qfalse, Qtrue)
+    MapToStack, // Normal stack value
+    MapToSelf,  // Temp maps to the self operand
+    MapToLocal(u8), // Temp maps to a local variable with index
+                //ConstMapping,         // Small constant (0, 1, 2, Qnil, Qfalse, Qtrue)
 }
 
 impl Default for TempMapping {
@@ -183,19 +180,17 @@ pub enum InsnOpnd {
     StackOpnd(u16),
 }
 
-
 /// Code generation context
 /// Contains information we can use to specialize/optimize code
 /// There are a lot of context objects so we try to keep the size small.
 #[derive(Copy, Clone, Default, Debug)]
-pub struct Context
-{
+pub struct Context {
     // Number of values currently on the temporary stack
-    stack_size : u16,
+    stack_size: u16,
 
     // Offset of the JIT SP relative to the interpreter SP
     // This represents how far the JIT's SP is from the "real" SP
-    sp_offset : i16,
+    sp_offset: i16,
 
     // Depth of this block in the sidechain (eg: inline-cache chain)
     chain_depth: u8,
@@ -216,8 +211,7 @@ pub struct Context
 /// Tuple of (iseq, idx) used to identify basic blocks
 /// There are a lot of blockid objects so we try to keep the size small.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub struct BlockId
-{
+pub struct BlockId {
     /// Instruction sequence
     pub iseq: IseqPtr,
 
@@ -226,24 +220,26 @@ pub struct BlockId
 }
 
 /// Null block id constant
-pub const BLOCKID_NULL: BlockId = BlockId { iseq: ptr::null(), idx: 0 };
+pub const BLOCKID_NULL: BlockId = BlockId {
+    iseq: ptr::null(),
+    idx: 0,
+};
 
 /// Branch code shape enumeration
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub enum BranchShape
-{
-    Next0,  // Target 0 is next
-    Next1,  // Target 1 is next
-    Default // Neither target is next
+pub enum BranchShape {
+    Next0,   // Target 0 is next
+    Next1,   // Target 1 is next
+    Default, // Neither target is next
 }
 
 // Branch code generation function signature
-type BranchGenFn = fn(cb: &mut CodeBlock, target0: CodePtr, target1: Option<CodePtr>, shape: BranchShape) -> ();
+type BranchGenFn =
+    fn(cb: &mut CodeBlock, target0: CodePtr, target1: Option<CodePtr>, shape: BranchShape) -> ();
 
 /// Store info about an outgoing branch in a code segment
 /// Note: care must be taken to minimize the size of branch objects
-struct Branch
-{
+struct Branch {
     // Block this is attached to
     block: BlockRef,
 
@@ -252,7 +248,7 @@ struct Branch
     end_addr: Option<CodePtr>,
 
     // Context right after the branch instruction
-    src_ctx : Context,
+    src_ctx: Context,
 
     // Branch target blocks and their contexts
     targets: [BlockId; 2],
@@ -269,13 +265,12 @@ struct Branch
     shape: BranchShape,
 }
 
-impl std::fmt::Debug for Branch
-{
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
-    {
+impl std::fmt::Debug for Branch {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO: expand this if needed. #[derive(Debug)] on Branch gave a
         // strange error related to BranchGenFn
-        formatter.debug_struct("Branch")
+        formatter
+            .debug_struct("Branch")
             .field("start", &self.start_addr)
             .field("end", &self.end_addr)
             .field("targets", &self.targets)
@@ -283,13 +278,10 @@ impl std::fmt::Debug for Branch
     }
 }
 
-impl Branch
-{
+impl Branch {
     // Compute the size of the branch code
-    fn code_size(&self) -> usize
-    {
-        (self.end_addr.unwrap().raw_ptr() as usize) -
-        (self.start_addr.unwrap().raw_ptr() as usize)
+    fn code_size(&self) -> usize {
+        (self.end_addr.unwrap().raw_ptr() as usize) - (self.start_addr.unwrap().raw_ptr() as usize)
     }
 }
 
@@ -305,8 +297,7 @@ pub struct CmeDependency {
 /// Represents a portion of an iseq compiled with a given context
 /// Note: care must be taken to minimize the size of block_t objects
 #[derive(Debug)]
-pub struct Block
-{
+pub struct Block {
     // Bytecode sequence (iseq, idx) this is a version of
     blockid: BlockId,
 
@@ -399,16 +390,15 @@ impl PartialEq for BlockRef {
 }
 
 /// It's comparison by identity so all the requirements are statisfied
-impl Eq for BlockRef { }
+impl Eq for BlockRef {}
 
 /// This is all the data YJIT stores on an iseq
 /// This will be dynamically allocated by C code
 /// C code should pass an &mut IseqPayload to us
 /// when calling into YJIT
 #[derive(Default)]
-pub struct IseqPayload
-{
-    version_map: VersionMap
+pub struct IseqPayload {
+    version_map: VersionMap,
 }
 
 impl IseqPayload {
@@ -431,8 +421,7 @@ pub unsafe fn load_iseq_payload(iseq: IseqPtr) -> Option<&'static mut IseqPayloa
 }
 
 /// Get the payload object associated with an iseq. Create one if none exists.
-fn get_iseq_payload(iseq: IseqPtr) -> &'static mut IseqPayload
-{
+fn get_iseq_payload(iseq: IseqPtr) -> &'static mut IseqPayload {
     use core::ffi::c_void;
     type VoidPtr = *mut c_void;
 
@@ -464,8 +453,7 @@ fn get_iseq_payload(iseq: IseqPtr) -> &'static mut IseqPayload
 
 /// Free the per-iseq payload
 #[no_mangle]
-pub extern "C" fn rb_yjit_iseq_free(payload: *mut c_void)
-{
+pub extern "C" fn rb_yjit_iseq_free(payload: *mut c_void) {
     let payload = {
         if payload.is_null() {
             // Nothing to free.
@@ -492,8 +480,7 @@ pub extern "C" fn rb_yjit_iseq_free(payload: *mut c_void)
 
 /// GC callback for marking GC objects in the the per-iseq payload.
 #[no_mangle]
-pub extern "C" fn rb_yjit_iseq_mark(payload: *mut c_void)
-{
+pub extern "C" fn rb_yjit_iseq_mark(payload: *mut c_void) {
     let payload = if payload.is_null() {
         // Nothing to mark.
         return;
@@ -546,8 +533,7 @@ pub extern "C" fn rb_yjit_iseq_mark(payload: *mut c_void)
 /// GC callback for updating GC objects in the the per-iseq payload.
 /// This is a mirror of [rb_yjit_iseq_mark].
 #[no_mangle]
-pub extern "C" fn rb_yjit_iseq_update_references(payload: *mut c_void)
-{
+pub extern "C" fn rb_yjit_iseq_update_references(payload: *mut c_void) {
     let payload = if payload.is_null() {
         // Nothing to update.
         return;
@@ -568,25 +554,19 @@ pub extern "C" fn rb_yjit_iseq_update_references(payload: *mut c_void)
         for block in versions {
             let mut block = block.borrow_mut();
 
-            block.blockid.iseq = unsafe {
-                rb_gc_location(block.blockid.iseq.into())
-            }.as_iseq();
+            block.blockid.iseq = unsafe { rb_gc_location(block.blockid.iseq.into()) }.as_iseq();
 
             // Update method entry dependencies
             for cme_dep in &mut block.cme_dependencies {
                 cme_dep.receiver_klass = unsafe { rb_gc_location(cme_dep.receiver_klass) };
-                cme_dep.callee_cme = unsafe {
-                    rb_gc_location(cme_dep.callee_cme.into())
-                }.as_cme();
+                cme_dep.callee_cme = unsafe { rb_gc_location(cme_dep.callee_cme.into()) }.as_cme();
             }
 
             // Update outgoing branch entries
             for branch in &block.outgoing {
                 let mut branch = branch.borrow_mut();
                 for target in &mut branch.targets {
-                    target.iseq = unsafe {
-                        rb_gc_location(target.iseq.into())
-                    }.as_iseq();
+                    target.iseq = unsafe { rb_gc_location(target.iseq.into()) }.as_iseq();
                 }
             }
 
@@ -621,26 +601,28 @@ pub extern "C" fn rb_yjit_iseq_update_references(payload: *mut c_void)
 
     // I guess we need to make the outlined block executable as well because
     // we don't split the two at exact page boundaries.
-    CodegenGlobals::get_outlined_cb().unwrap().mark_all_executable();
+    CodegenGlobals::get_outlined_cb()
+        .unwrap()
+        .mark_all_executable();
 }
 
 /// Get all blocks for a particular place in an iseq.
-fn get_version_list(blockid: BlockId) -> &'static mut VersionList
-{
+fn get_version_list(blockid: BlockId) -> &'static mut VersionList {
     let payload = get_iseq_payload(blockid.iseq);
     let insn_idx = blockid.idx.as_usize();
 
     // Expand the version map as necessary
     if insn_idx >= payload.version_map.len() {
-        payload.version_map.resize(insn_idx + 1, VersionList::default());
+        payload
+            .version_map
+            .resize(insn_idx + 1, VersionList::default());
     }
 
     return payload.version_map.get_mut(insn_idx).unwrap();
 }
 
 /// Take all of the blocks for a particular place in an iseq
-pub fn take_version_list(blockid: BlockId) -> VersionList
-{
+pub fn take_version_list(blockid: BlockId) -> VersionList {
     let payload = get_iseq_payload(blockid.iseq);
     let insn_idx = blockid.idx.as_usize();
 
@@ -652,18 +634,20 @@ pub fn take_version_list(blockid: BlockId) -> VersionList
 }
 
 /// Count the number of block versions matching a given blockid
-fn get_num_versions(blockid: BlockId) -> usize
-{
+fn get_num_versions(blockid: BlockId) -> usize {
     let insn_idx = blockid.idx.as_usize();
     let payload = get_iseq_payload(blockid.iseq);
 
-    payload.version_map.get(insn_idx).map(|versions| versions.len()).unwrap_or(0)
+    payload
+        .version_map
+        .get(insn_idx)
+        .map(|versions| versions.len())
+        .unwrap_or(0)
 }
 
 /// Get a list of block versions generated for an iseq
 /// This is used for disassembly (see disasm.rs)
 pub fn get_iseq_block_list(iseq: IseqPtr) -> Vec<BlockRef> {
-
     let payload = get_iseq_payload(iseq);
 
     let mut blocks = Vec::<BlockRef>::new();
@@ -684,8 +668,7 @@ pub fn get_iseq_block_list(iseq: IseqPtr) -> Vec<BlockRef> {
 
 /// Retrieve a basic block version for an (iseq, idx) tuple
 /// This will return None if no version is found
-fn find_block_version(blockid: BlockId, ctx: &Context) -> Option<BlockRef>
-{
+fn find_block_version(blockid: BlockId, ctx: &Context) -> Option<BlockRef> {
     let versions = get_version_list(blockid);
 
     // Best match found
@@ -717,8 +700,7 @@ fn find_block_version(blockid: BlockId, ctx: &Context) -> Option<BlockRef>
 }
 
 /// Produce a generic context when the block version limit is hit for a blockid
-pub fn limit_block_versions(blockid: BlockId, ctx: &Context) -> Context
-{
+pub fn limit_block_versions(blockid: BlockId, ctx: &Context) -> Context {
     // Guard chains implement limits separately, do nothing
     if ctx.chain_depth > 0 {
         return *ctx;
@@ -742,8 +724,7 @@ pub fn limit_block_versions(blockid: BlockId, ctx: &Context) -> Context
 
 /// Keep track of a block version. Block should be fully constructed.
 /// Uses `cb` for running write barriers.
-fn add_block_version(blockref: &BlockRef, cb: &CodeBlock)
-{
+fn add_block_version(blockref: &BlockRef, cb: &CodeBlock) {
     let block = blockref.borrow();
 
     // Function entry blocks must have stack size 0
@@ -775,8 +756,7 @@ fn add_block_version(blockref: &BlockRef, cb: &CodeBlock)
 }
 
 /// Remove a block version from the version map of its parent ISEQ
-fn remove_block_version(blockref: &BlockRef)
-{
+fn remove_block_version(blockref: &BlockRef) {
     let block = blockref.borrow();
     let version_list = get_version_list(block.blockid);
 
@@ -864,7 +844,11 @@ impl Block {
 
     /// Instantiate a new CmeDependency struct and add it to the list of
     /// dependencies for this block.
-    pub fn add_cme_dependency(&mut self, receiver_klass: VALUE, callee_cme: *const rb_callable_method_entry_t) {
+    pub fn add_cme_dependency(
+        &mut self,
+        receiver_klass: VALUE,
+        callee_cme: *const rb_callable_method_entry_t,
+    ) {
         self.cme_dependencies.push(CmeDependency {
             receiver_klass,
             callee_cme,
@@ -872,10 +856,8 @@ impl Block {
     }
 
     // Compute the size of the block code
-    pub fn code_size(&self) -> usize
-    {
-        (self.end_addr.unwrap().raw_ptr() as usize) -
-        (self.start_addr.unwrap().raw_ptr() as usize)
+    pub fn code_size(&self) -> usize {
+        (self.end_addr.unwrap().raw_ptr() as usize) - (self.start_addr.unwrap().raw_ptr() as usize)
     }
 }
 
@@ -888,7 +870,7 @@ impl Context {
             local_types: [Type::Unknown; MAX_LOCAL_TYPES],
             temp_types: [Type::Unknown; MAX_TEMP_TYPES],
             self_type: Type::Unknown,
-            temp_mapping: [MapToStack; MAX_TEMP_TYPES]
+            temp_mapping: [MapToStack; MAX_TEMP_TYPES],
         };
     }
 
@@ -921,8 +903,7 @@ impl Context {
     }
 
     /// Get an operand for the adjusted stack pointer address
-    pub fn sp_opnd(&self, offset_bytes: isize) -> X86Opnd
-    {
+    pub fn sp_opnd(&self, offset_bytes: isize) -> X86Opnd {
         let offset = ((self.sp_offset as isize) * (SIZEOF_VALUE as isize)) + offset_bytes;
         let offset = offset as i32;
         return mem_opnd(64, REG_SP, offset);
@@ -930,8 +911,7 @@ impl Context {
 
     /// Push one new value on the temp stack with an explicit mapping
     /// Return a pointer to the new stack top
-    pub fn stack_push_mapping(&mut self, (mapping, temp_type): (TempMapping, Type)) -> X86Opnd
-    {
+    pub fn stack_push_mapping(&mut self, (mapping, temp_type): (TempMapping, Type)) -> X86Opnd {
         // If type propagation is disabled, store no types
         if get_option!(no_type_prop) {
             return self.stack_push_mapping((mapping, Type::Unknown));
@@ -959,33 +939,27 @@ impl Context {
 
     /// Push one new value on the temp stack
     /// Return a pointer to the new stack top
-    pub fn stack_push(&mut self, val_type: Type) -> X86Opnd
-    {
+    pub fn stack_push(&mut self, val_type: Type) -> X86Opnd {
         return self.stack_push_mapping((MapToStack, val_type));
     }
 
     /// Push the self value on the stack
-    pub fn stack_push_self(&mut self) -> X86Opnd
-    {
+    pub fn stack_push_self(&mut self) -> X86Opnd {
         return self.stack_push_mapping((MapToSelf, Type::Unknown));
     }
 
     /// Push a local variable on the stack
-    pub fn stack_push_local(&mut self, local_idx: usize) -> X86Opnd
-    {
+    pub fn stack_push_local(&mut self, local_idx: usize) -> X86Opnd {
         if local_idx >= MAX_LOCAL_TYPES {
             return self.stack_push(Type::Unknown);
         }
 
-        return self.stack_push_mapping(
-            (MapToLocal(local_idx as u8), Type::Unknown)
-        );
+        return self.stack_push_mapping((MapToLocal(local_idx as u8), Type::Unknown));
     }
 
     // Pop N values off the stack
     // Return a pointer to the stack top before the pop operation
-    pub fn stack_pop(&mut self, n: usize) -> X86Opnd
-    {
+    pub fn stack_pop(&mut self, n: usize) -> X86Opnd {
         assert!(n <= self.stack_size.into());
 
         // SP points just above the topmost value
@@ -1009,8 +983,7 @@ impl Context {
     }
 
     /// Get an operand pointing to a slot on the temp stack
-    pub fn stack_opnd(&self, idx: i32) -> X86Opnd
-    {
+    pub fn stack_opnd(&self, idx: i32) -> X86Opnd {
         // SP points just above the topmost value
         let offset = ((self.sp_offset as i32) - 1 - idx) * (SIZEOF_VALUE as i32);
         let opnd = mem_opnd(64, REG_SP, offset);
@@ -1018,12 +991,9 @@ impl Context {
     }
 
     /// Get the type of an instruction operand
-    pub fn get_opnd_type(&self, opnd: InsnOpnd) -> Type
-    {
+    pub fn get_opnd_type(&self, opnd: InsnOpnd) -> Type {
         match opnd {
-            SelfOpnd => {
-                self.self_type
-            },
+            SelfOpnd => self.self_type,
             StackOpnd(idx) => {
                 let idx = idx as u16;
                 assert!(idx < self.stack_size);
@@ -1037,16 +1007,12 @@ impl Context {
                 let mapping = self.temp_mapping[stack_idx];
 
                 match mapping {
-                    MapToSelf => {
-                        self.self_type
-                    },
-                    MapToStack => {
-                        self.temp_types[(self.stack_size - 1 - idx) as usize]
-                    },
+                    MapToSelf => self.self_type,
+                    MapToStack => self.temp_types[(self.stack_size - 1 - idx) as usize],
                     MapToLocal(idx) => {
                         assert!((idx as usize) < MAX_LOCAL_TYPES);
-                        return self.local_types[idx as usize]
-                    },
+                        return self.local_types[idx as usize];
+                    }
                 }
             }
         }
@@ -1055,7 +1021,7 @@ impl Context {
     /// Get the currently tracked type for a local variable
     pub fn get_local_type(&self, idx: usize) -> Type {
         if idx > MAX_LOCAL_TYPES {
-            return Type::Unknown
+            return Type::Unknown;
         }
 
         return self.local_types[idx];
@@ -1065,17 +1031,14 @@ impl Context {
     /// This value must be compatible and at least as specific as the previously known type.
     /// If this value originated from self, or an lvar, the learned type will be
     /// propagated back to its source.
-    pub fn upgrade_opnd_type(&mut self, opnd: InsnOpnd, opnd_type: Type)
-    {
+    pub fn upgrade_opnd_type(&mut self, opnd: InsnOpnd, opnd_type: Type) {
         // If type propagation is disabled, store no types
         if get_option!(no_type_prop) {
             return;
         }
 
         match opnd {
-            SelfOpnd => {
-                self.self_type.upgrade(opnd_type)
-            },
+            SelfOpnd => self.self_type.upgrade(opnd_type),
             StackOpnd(idx) => {
                 let idx = idx as u16;
                 assert!(idx < self.stack_size);
@@ -1089,17 +1052,13 @@ impl Context {
                 let mapping = self.temp_mapping[stack_idx];
 
                 match mapping {
-                    MapToSelf => {
-                        self.self_type.upgrade(opnd_type)
-                    },
-                    MapToStack => {
-                        self.temp_types[stack_idx].upgrade(opnd_type)
-                    },
+                    MapToSelf => self.self_type.upgrade(opnd_type),
+                    MapToStack => self.temp_types[stack_idx].upgrade(opnd_type),
                     MapToLocal(idx) => {
                         let idx = idx as usize;
                         assert!(idx < MAX_LOCAL_TYPES);
                         self.local_types[idx].upgrade(opnd_type);
-                    },
+                    }
                 }
             }
         }
@@ -1110,14 +1069,11 @@ impl Context {
     This is can be used with stack_push_mapping or set_opnd_mapping to copy
     a stack value's type while maintaining the mapping.
     */
-    pub fn get_opnd_mapping(&self, opnd: InsnOpnd) -> (TempMapping, Type)
-    {
+    pub fn get_opnd_mapping(&self, opnd: InsnOpnd) -> (TempMapping, Type) {
         let opnd_type = self.get_opnd_type(opnd);
 
         match opnd {
-            SelfOpnd => {
-                (MapToSelf, opnd_type)
-            },
+            SelfOpnd => (MapToSelf, opnd_type),
             StackOpnd(idx) => {
                 let idx = idx as u16;
                 assert!(idx < self.stack_size);
@@ -1125,8 +1081,7 @@ impl Context {
 
                 if stack_idx < MAX_TEMP_TYPES {
                     (self.temp_mapping[stack_idx], opnd_type)
-                }
-                else {
+                } else {
                     // We can't know the source of this stack operand, so we assume it is
                     // a stack-only temporary. type will be UNKNOWN
                     assert!(opnd_type == Type::Unknown);
@@ -1137,8 +1092,7 @@ impl Context {
     }
 
     /// Overwrite both the type and mapping of a stack operand.
-    pub fn set_opnd_mapping(&mut self, opnd: InsnOpnd, (mapping, opnd_type): (TempMapping, Type))
-    {
+    pub fn set_opnd_mapping(&mut self, opnd: InsnOpnd, (mapping, opnd_type): (TempMapping, Type)) {
         match opnd {
             SelfOpnd => unreachable!("self always maps to self"),
             StackOpnd(idx) => {
@@ -1188,7 +1142,7 @@ impl Context {
                     } else {
                         MapToLocal(idx)
                     }
-                },
+                }
             }
         }
 
@@ -1207,7 +1161,7 @@ impl Context {
                 MapToLocal(idx) => {
                     self.temp_types[i] = self.local_types[idx as usize];
                     MapToStack
-                },
+                }
             }
         }
 
@@ -1219,8 +1173,7 @@ impl Context {
     /// Returns 0 if the two contexts are the same
     /// Returns > 0 if different but compatible
     /// Returns usize::MAX if incompatible
-    pub fn diff(&self, dst: &Context) -> usize
-    {
+    pub fn diff(&self, dst: &Context) -> usize {
         // Self is the source context (at the end of the predecessor)
         let src = self;
 
@@ -1279,8 +1232,7 @@ impl Context {
                     // We can safely drop information about the source of the temp
                     // stack operand.
                     diff += 1;
-                }
-                else {
+                } else {
                     return usize::MAX;
                 }
             }
@@ -1307,8 +1259,13 @@ impl BlockId {
 }
 
 /// See [gen_block_series_body]. This simply counts compilation failures.
-fn gen_block_series(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> Option<BlockRef>
-{
+fn gen_block_series(
+    blockid: BlockId,
+    start_ctx: &Context,
+    ec: EcPtr,
+    cb: &mut CodeBlock,
+    ocb: &mut OutlinedCb,
+) -> Option<BlockRef> {
     let result = gen_block_series_body(blockid, start_ctx, ec, cb, ocb);
     if result.is_none() {
         incr_counter!(compilation_failure);
@@ -1319,8 +1276,13 @@ fn gen_block_series(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &mut C
 
 /// Immediately compile a series of block versions at a starting point and
 /// return the starting block.
-fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &mut CodeBlock, ocb: &mut OutlinedCb) -> Option<BlockRef>
-{
+fn gen_block_series_body(
+    blockid: BlockId,
+    start_ctx: &Context,
+    ec: EcPtr,
+    cb: &mut CodeBlock,
+    ocb: &mut OutlinedCb,
+) -> Option<BlockRef> {
     // Keep track of all blocks compiled in this batch
     const EXPECTED_BATCH_SIZE: usize = 4;
     let mut batch = Vec::with_capacity(EXPECTED_BATCH_SIZE);
@@ -1340,7 +1302,9 @@ fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &
             let last_block = last_blockref.borrow();
             match last_block.outgoing.last() {
                 Some(branch) => branch.clone(),
-                None => { break; } // If last block has no branches, stop.
+                None => {
+                    break;
+                } // If last block has no branches, stop.
             }
         };
         let mut last_branch = last_branchref.borrow_mut();
@@ -1349,13 +1313,18 @@ fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &
         // leaving `None`s in the `dst_addrs` array.
         match &last_branch.dst_addrs {
             [None, None] => (),
-            _ => { break; } // If there is no next block to compile, stop
+            _ => {
+                break;
+            } // If there is no next block to compile, stop
         };
 
         // Get id and context for the new block
         let requested_id = last_branch.targets[0];
         let requested_ctx = &last_branch.target_ctxs[0];
-        assert_ne!(last_branch.targets[0], BLOCKID_NULL, "block id must be filled");
+        assert_ne!(
+            last_branch.targets[0], BLOCKID_NULL,
+            "block id must be filled"
+        );
 
         // Generate new block using context from the last branch.
         let result = gen_single_block(requested_id, requested_ctx, ec, cb, ocb);
@@ -1384,7 +1353,10 @@ fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &
         // Connect the last branch and the new block
         last_branch.blocks[0] = Some(new_blockref.clone());
         last_branch.dst_addrs[0] = new_blockref.borrow().start_addr;
-        new_blockref.borrow_mut().incoming.push(last_branchref.clone());
+        new_blockref
+            .borrow_mut()
+            .incoming
+            .push(last_branchref.clone());
 
         // This block should immediately follow the last branch
         assert!(new_blockref.borrow().start_addr == last_branch.end_addr);
@@ -1401,8 +1373,7 @@ fn gen_block_series_body(blockid: BlockId, start_ctx: &Context, ec: EcPtr, cb: &
 
 /// Generate a block version that is an entry point inserted into an iseq
 /// NOTE: this function assumes that the VM lock has been taken
-pub fn gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> Option<CodePtr>
-{
+pub fn gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> Option<CodePtr> {
     // Compute the current instruction index based on the current PC
     let insn_idx: u32 = unsafe {
         let pc_zero = rb_iseq_pc_at_idx(iseq, 0);
@@ -1411,7 +1382,10 @@ pub fn gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> Option<CodePtr>
     };
 
     // The entry context makes no assumptions about types
-    let blockid = BlockId { iseq, idx: insn_idx };
+    let blockid = BlockId {
+        iseq,
+        idx: insn_idx,
+    };
 
     // Get the inline and outlined code blocks
     let cb = CodegenGlobals::get_inline_cb();
@@ -1434,7 +1408,7 @@ pub fn gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> Option<CodePtr>
         Some(block) => {
             let block = block.borrow();
             if block.end_idx == insn_idx {
-                return None
+                return None;
             }
         }
     }
@@ -1444,8 +1418,7 @@ pub fn gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> Option<CodePtr>
 }
 
 /// Generate code for a branch, possibly rewriting and changing the size of it
-fn regenerate_branch(cb: &mut CodeBlock, branch: &mut Branch)
-{
+fn regenerate_branch(cb: &mut CodeBlock, branch: &mut Branch) {
     // FIXME
     /*
     if (branch->start_addr < cb_get_ptr(cb, yjit_codepage_frozen_bytes)) {
@@ -1462,7 +1435,12 @@ fn regenerate_branch(cb: &mut CodeBlock, branch: &mut Branch)
     // Rewrite the branch
     assert!(branch.dst_addrs[0].is_some());
     cb.set_write_ptr(branch.start_addr.unwrap());
-    (branch.gen_fn)(cb, branch.dst_addrs[0].unwrap(), branch.dst_addrs[1], branch.shape);
+    (branch.gen_fn)(
+        cb,
+        branch.dst_addrs[0].unwrap(),
+        branch.dst_addrs[1],
+        branch.shape,
+    );
     branch.end_addr = Some(cb.get_write_ptr());
 
     // The block may have shrunk after the branch is rewritten
@@ -1481,16 +1459,14 @@ fn regenerate_branch(cb: &mut CodeBlock, branch: &mut Branch)
     if old_write_pos > cb.get_write_pos() {
         // We rewound cb->write_pos to generate the branch, now restore it.
         cb.set_pos(old_write_pos);
-    }
-    else {
+    } else {
         // The branch sits at the end of cb and consumed some memory.
         // Keep cb.write_pos.
     }
 }
 
 /// Create a new outgoing branch entry for a block
-fn make_branch_entry(block: BlockRef, src_ctx: &Context, gen_fn: BranchGenFn) -> BranchRef
-{
+fn make_branch_entry(block: BlockRef, src_ctx: &Context, gen_fn: BranchGenFn) -> BranchRef {
     let branch = Branch {
         // Block this is attached to
         block: block.clone(),
@@ -1500,7 +1476,7 @@ fn make_branch_entry(block: BlockRef, src_ctx: &Context, gen_fn: BranchGenFn) ->
         end_addr: None,
 
         // Context right after the branch instruction
-        src_ctx : *src_ctx,
+        src_ctx: *src_ctx,
 
         // Branch target blocks and their contexts
         targets: [BLOCKID_NULL, BLOCKID_NULL],
@@ -1529,16 +1505,16 @@ fn make_branch_entry(block: BlockRef, src_ctx: &Context, gen_fn: BranchGenFn) ->
 extern "sysv64" fn branch_stub_hit(
     branch_ptr: *const c_void,
     target_idx: u32,
-    ec: EcPtr
-) -> *const u8
-{
-    with_vm_lock(src_loc!(), || branch_stub_hit_body(branch_ptr, target_idx, ec))
+    ec: EcPtr,
+) -> *const u8 {
+    with_vm_lock(src_loc!(), || {
+        branch_stub_hit_body(branch_ptr, target_idx, ec)
+    })
 }
 
 /// Called by the generated code when a branch stub is executed
 /// Triggers compilation of branches and code patching
-fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -> *const u8
-{
+fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -> *const u8 {
     assert!(!branch_ptr.is_null());
 
     //branch_ptr is actually:
@@ -1559,7 +1535,7 @@ fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -
     let target_branch_shape = match target_idx {
         0 => BranchShape::Next0,
         1 => BranchShape::Next1,
-        _ => unreachable!("target_idx < 2 must always hold")
+        _ => unreachable!("target_idx < 2 must always hold"),
     };
 
     let cb = CodegenGlobals::get_inline_cb();
@@ -1597,7 +1573,6 @@ fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -
 
     // If this block hasn't yet been compiled
     if block.is_none() {
-
         let branch_old_shape = branch.shape;
         let mut branch_modified = false;
 
@@ -1638,7 +1613,7 @@ fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -
             let mut block: RefMut<_> = block_rc.borrow_mut();
 
             // Branch shape should reflect layout
-            assert!(! (branch.shape == target_branch_shape && block.start_addr != branch.end_addr));
+            assert!(!(branch.shape == target_branch_shape && block.start_addr != branch.end_addr));
 
             // Add this branch to the list of incoming branches for the target
             block.incoming.push(branch_rc.clone());
@@ -1675,7 +1650,10 @@ fn branch_stub_hit_body(branch_ptr: *const c_void, target_idx: u32, ec: EcPtr) -
     cb.mark_all_executable();
 
     let new_branch_size = branch.code_size();
-    assert!(new_branch_size <= branch_size_on_entry, "branch stubs should never enlarge branches");
+    assert!(
+        new_branch_size <= branch_size_on_entry,
+        "branch stubs should never enlarge branches"
+    );
 
     // Return a pointer to the compiled block version
     dst_addr.raw_ptr()
@@ -1687,9 +1665,8 @@ fn get_branch_target(
     ctx: &Context,
     branchref: &BranchRef,
     target_idx: u32,
-    ocb: &mut OutlinedCb
-) -> Option<CodePtr>
-{
+    ocb: &mut OutlinedCb,
+) -> Option<CodePtr> {
     let maybe_block = find_block_version(target, ctx);
 
     // If the block already exists
@@ -1713,7 +1690,7 @@ fn get_branch_target(
     // Get a raw pointer to the branch while keeping the reference count alive
     // Here clone increments the strong count by 1
     // This means the branch stub owns its own reference to the branch
-    let branch_ptr: *const RefCell<Branch> = BranchRef::into_raw( branchref.clone() );
+    let branch_ptr: *const RefCell<Branch> = BranchRef::into_raw(branchref.clone());
 
     // Call branch_stub_hit(branch_idx, target_idx, ec)
     mov(ocb, C_ARG_REGS[2], REG_EC);
@@ -1741,16 +1718,19 @@ pub fn gen_branch(
     ctx0: &Context,
     target1: Option<BlockId>,
     ctx1: Option<&Context>,
-    gen_fn: BranchGenFn
-)
-{
+    gen_fn: BranchGenFn,
+) {
     assert!(target0 != BLOCKID_NULL);
 
     let branchref = make_branch_entry(jit.get_block(), src_ctx, gen_fn);
 
     // Get the branch targets or stubs
     let dst_addr0 = get_branch_target(target0, ctx0, &branchref, 0, ocb);
-    let dst_addr1 = if ctx1.is_some() { get_branch_target(target1.unwrap(), ctx1.unwrap(), &branchref, 1, ocb) } else { None };
+    let dst_addr1 = if ctx1.is_some() {
+        get_branch_target(target1.unwrap(), ctx1.unwrap(), &branchref, 1, ocb)
+    } else {
+        None
+    };
 
     let mut branch = branchref.borrow_mut();
 
@@ -1763,15 +1743,23 @@ pub fn gen_branch(
         branch.targets[1] = target1.unwrap();
     }
     branch.target_ctxs[0] = *ctx0;
-    branch.target_ctxs[1] = if ctx1.is_some() { *ctx1.unwrap() } else { Context::default() };
+    branch.target_ctxs[1] = if ctx1.is_some() {
+        *ctx1.unwrap()
+    } else {
+        Context::default()
+    };
 
     // Call the branch generation function
     branch.start_addr = Some(cb.get_write_ptr());
     regenerate_branch(cb, &mut branch);
 }
 
-fn gen_jump_branch(cb: &mut CodeBlock, target0: CodePtr, _target1: Option<CodePtr>, shape: BranchShape)
-{
+fn gen_jump_branch(
+    cb: &mut CodeBlock,
+    target0: CodePtr,
+    _target1: Option<CodePtr>,
+    shape: BranchShape,
+) {
     if shape == BranchShape::Next1 {
         panic!("Branch shape Next1 not allowed in gen_jump_branch!");
     }
@@ -1781,13 +1769,7 @@ fn gen_jump_branch(cb: &mut CodeBlock, target0: CodePtr, _target1: Option<CodePt
     }
 }
 
-pub fn gen_direct_jump(
-    jit: &JITState,
-    ctx: &Context,
-    target0: BlockId,
-    cb: &mut CodeBlock,
-)
-{
+pub fn gen_direct_jump(jit: &JITState, ctx: &Context, target0: BlockId, cb: &mut CodeBlock) {
     assert!(target0 != BLOCKID_NULL);
 
     let branchref = make_branch_entry(jit.get_block(), ctx, gen_jump_branch);
@@ -1812,8 +1794,7 @@ pub fn gen_direct_jump(
         branch.start_addr = Some(cb.get_write_ptr());
         gen_jump_branch(cb, branch.dst_addrs[0].unwrap(), None, BranchShape::Default);
         branch.end_addr = Some(cb.get_write_ptr());
-    }
-    else {
+    } else {
         // This None target address signals gen_block_series() to compile the
         // target block right after this one (fallthrough).
         branch.dst_addrs[0] = None;
@@ -1824,8 +1805,12 @@ pub fn gen_direct_jump(
 }
 
 /// Create a stub to force the code up to this point to be executed
-pub fn defer_compilation(jit: &JITState, cur_ctx: &Context, cb: &mut CodeBlock, ocb: &mut OutlinedCb)
-{
+pub fn defer_compilation(
+    jit: &JITState,
+    cur_ctx: &Context,
+    cb: &mut CodeBlock,
+    ocb: &mut OutlinedCb,
+) {
     if cur_ctx.chain_depth != 0 {
         panic!("Double defer!");
     }
@@ -1844,7 +1829,10 @@ pub fn defer_compilation(jit: &JITState, cur_ctx: &Context, cb: &mut CodeBlock, 
     let block = block_rc.borrow();
 
     branch.target_ctxs[0] = next_ctx;
-    branch.targets[0] = BlockId { iseq: block.blockid.iseq, idx: jit.get_insn_idx() };
+    branch.targets[0] = BlockId {
+        iseq: block.blockid.iseq,
+        idx: jit.get_insn_idx(),
+    };
     branch.dst_addrs[0] = get_branch_target(branch.targets[0], &next_ctx, &branch_rc, 0, ocb);
 
     // Call the branch generation function
@@ -1854,8 +1842,7 @@ pub fn defer_compilation(jit: &JITState, cur_ctx: &Context, cb: &mut CodeBlock, 
 }
 
 // Remove all references to a block then free it.
-fn free_block(blockref: &BlockRef)
-{
+fn free_block(blockref: &BlockRef) {
     use crate::invariants::*;
 
     block_assumptions_free(blockref);
@@ -1886,7 +1873,9 @@ fn free_block(blockref: &BlockRef)
             if let Some(succ) = succ {
                 // Remove outgoing branch from the successor's incoming list
                 let mut succ_block = succ.borrow_mut();
-                succ_block.incoming.retain(|succ_incoming| !Rc::ptr_eq(succ_incoming, out_branchref));
+                succ_block
+                    .incoming
+                    .retain(|succ_incoming| !Rc::ptr_eq(succ_incoming, out_branchref));
             }
         }
     }
@@ -1895,8 +1884,7 @@ fn free_block(blockref: &BlockRef)
 }
 
 // Some runtime checks for integrity of a program location
-pub fn verify_blockid(blockid: BlockId)
-{
+pub fn verify_blockid(blockid: BlockId) {
     unsafe {
         assert!(rb_IMEMO_TYPE_P(blockid.iseq.into(), imemo_iseq) != 0);
         assert!(blockid.idx < get_iseq_encoded_size(blockid.iseq));
@@ -1904,8 +1892,7 @@ pub fn verify_blockid(blockid: BlockId)
 }
 
 // Invalidate one specific block version
-pub fn invalidate_block_version(blockref: &BlockRef)
-{
+pub fn invalidate_block_version(blockref: &BlockRef) {
     //ASSERT_vm_locking();
 
     // TODO: want to assert that all other ractors are stopped here. Can't patch
@@ -1931,9 +1918,15 @@ pub fn invalidate_block_version(blockref: &BlockRef)
     // after patching as the start of the block would be in the middle of something
     // generated by branch_t::gen_fn.
     {
-        let block_start = block.start_addr.expect("invalidation needs constructed block");
-        let block_end = block.end_addr.expect("invalidation needs constructed block");
-        let block_entry_exit = block.entry_exit.expect("invalidation needs the entry_exit field");
+        let block_start = block
+            .start_addr
+            .expect("invalidation needs constructed block");
+        let block_end = block
+            .end_addr
+            .expect("invalidation needs constructed block");
+        let block_entry_exit = block
+            .entry_exit
+            .expect("invalidation needs the entry_exit field");
 
         if block_start == block_entry_exit {
             // Some blocks exit on entry. Patching a jump to the entry at the
@@ -1946,7 +1939,10 @@ pub fn invalidate_block_version(blockref: &BlockRef)
             let cur_pos = cb.get_write_ptr();
             cb.set_write_ptr(block_start);
             jmp_ptr(cb, block_entry_exit);
-            assert!(cb.get_write_ptr() < block_end, "invalidation wrote past end of block");
+            assert!(
+                cb.get_write_ptr() < block_end,
+                "invalidation wrote past end of block"
+            );
             cb.set_write_ptr(cur_pos);
         }
     }
@@ -1954,7 +1950,11 @@ pub fn invalidate_block_version(blockref: &BlockRef)
     // For each incoming branch
     for branchref in &block.incoming {
         let mut branch = branchref.borrow_mut();
-        let target_idx = if branch.dst_addrs[0] == code_ptr { 0 } else { 1 };
+        let target_idx = if branch.dst_addrs[0] == code_ptr {
+            0
+        } else {
+            1
+        };
         assert_eq!(branch.dst_addrs[target_idx], code_ptr);
         assert_eq!(blockref, branch.blocks[target_idx].as_ref().unwrap());
 
@@ -1969,13 +1969,8 @@ pub fn invalidate_block_version(blockref: &BlockRef)
 
         // Create a stub for this branch target
         mem::drop(branch); // end RefCell borrow as get_branch_target() can borrow the branch.
-        let mut branch_target = get_branch_target(
-            block.blockid,
-            &block.ctx,
-            branchref,
-            target_idx as u32,
-            ocb,
-        );
+        let mut branch_target =
+            get_branch_target(block.blockid, &block.ctx, branchref, target_idx as u32, ocb);
 
         if branch_target.is_none() {
             // We were unable to generate a stub (e.g. OOM). Use the block's

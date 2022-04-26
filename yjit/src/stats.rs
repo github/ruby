@@ -1,10 +1,10 @@
 //! Everything related to the collection of runtime stats in YJIT
 //! See the stats feature and the --yjit-stats command-line option
 
+use crate::codegen::CodegenGlobals;
 use crate::cruby::*;
 use crate::options::*;
-use crate::codegen::{CodegenGlobals};
-use crate::yjit::{yjit_enabled_p};
+use crate::yjit::yjit_enabled_p;
 
 // YJIT exit counts for each instruction type
 static mut EXIT_OP_COUNT: [u64; VM_INSTRUCTION_SIZE] = [0; VM_INSTRUCTION_SIZE];
@@ -39,9 +39,7 @@ macro_rules! incr_counter {
     ($counter_name:ident) => {
         #[allow(unused_unsafe)]
         {
-            unsafe {
-                COUNTERS.$counter_name += 1
-            }
+            unsafe { COUNTERS.$counter_name += 1 }
         }
     };
 }
@@ -154,7 +152,7 @@ make_counters! {
 pub extern "C" fn rb_yjit_stats_enabled_p(_ec: EcPtr, _ruby_self: VALUE) -> VALUE {
     #[cfg(feature = "stats")]
     if get_option!(gen_stats) {
-        return Qtrue
+        return Qtrue;
     }
 
     return Qfalse;
@@ -169,7 +167,6 @@ pub extern "C" fn rb_yjit_get_stats(_ec: EcPtr, _ruby_self: VALUE) -> VALUE {
 
 /// Export all YJIT statistics as a Ruby hash.
 fn rb_yjit_gen_stats_dict() -> VALUE {
-
     // If YJIT is not enabled, return Qnil
     if !yjit_enabled_p() {
         return Qnil;
@@ -259,8 +256,7 @@ pub extern "C" fn rb_yjit_collect_binding_set() {
 }
 
 #[no_mangle]
-pub extern "C" fn rb_yjit_count_side_exit_op(exit_pc: *const VALUE) -> *const VALUE
-{
+pub extern "C" fn rb_yjit_count_side_exit_op(exit_pc: *const VALUE) -> *const VALUE {
     #[cfg(not(test))]
     unsafe {
         // Get the opcode from the encoded insn handler at this PC

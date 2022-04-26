@@ -1,5 +1,5 @@
+use std::collections::BTreeMap;
 use std::mem;
-use std::collections::{BTreeMap};
 
 // Lots of manual vertical alignment in there that rustfmt doesn't handle well.
 #[rustfmt::skip]
@@ -38,18 +38,16 @@ impl From<*mut u8> for CodePtr {
 
 /// Compute an offset in bytes of a given struct field
 macro_rules! offset_of {
-    ($struct_type:ty, $field_name:tt) => {
-        {
-            // Null pointer to our struct type
-            let foo = (0 as * const $struct_type);
+    ($struct_type:ty, $field_name:tt) => {{
+        // Null pointer to our struct type
+        let foo = (0 as *const $struct_type);
 
-            unsafe {
-                let ptr_field = (&(*foo).$field_name as *const _ as usize);
-                let ptr_base = (foo as usize);
-                ptr_field - ptr_base
-            }
+        unsafe {
+            let ptr_field = (&(*foo).$field_name as *const _ as usize);
+            let ptr_base = (foo as usize);
+            ptr_field - ptr_base
         }
-    };
+    }};
 }
 pub(crate) use offset_of;
 
@@ -61,8 +59,7 @@ pub(crate) use offset_of;
 const ALIGNED_WRITE_POSITION_NONE: usize = 1;
 
 /// Reference to an ASM label
-struct LabelRef
-{
+struct LabelRef {
     // Position in the code block where the label reference exists
     pos: usize,
 
@@ -71,8 +68,7 @@ struct LabelRef
 }
 
 /// Block of memory into which instructions can be assembled
-pub struct CodeBlock
-{
+pub struct CodeBlock {
     // Block of non-executable memory used for dummy code blocks
     // This memory is owned by this block and lives as long as the block
     dummy_block: Vec<u8>,
@@ -109,11 +105,10 @@ pub struct CodeBlock
     // Set if the CodeBlock is unable to output some instructions,
     // for example, when there is not enough space or when a jump
     // target is too far away.
-    dropped_bytes: bool
+    dropped_bytes: bool,
 }
 
-impl CodeBlock
-{
+impl CodeBlock {
     pub fn new_dummy(mem_size: usize) -> Self {
         // Allocate some non-executable memory
         let mut dummy_block = vec![0; mem_size];
@@ -130,7 +125,7 @@ impl CodeBlock
             asm_comments: BTreeMap::new(),
             current_aligned_write_pos: ALIGNED_WRITE_POSITION_NONE,
             page_size: 4096,
-            dropped_bytes: false
+            dropped_bytes: false,
         }
     }
 
@@ -146,7 +141,7 @@ impl CodeBlock
             asm_comments: BTreeMap::new(),
             current_aligned_write_pos: ALIGNED_WRITE_POSITION_NONE,
             page_size,
-            dropped_bytes: false
+            dropped_bytes: false,
         }
     }
 
@@ -200,8 +195,7 @@ impl CodeBlock
     }
 
     // Align the current write pointer to a multiple of bytes
-    pub fn align_pos(&mut self, multiple: u32)
-    {
+    pub fn align_pos(&mut self, multiple: u32) {
         // Compute the alignment boundary that is lower or equal
         // Do everything with usize
         let multiple: usize = multiple.try_into().unwrap();
@@ -269,15 +263,12 @@ impl CodeBlock
         // Switch on the number of bits
         match num_bits {
             8 => self.write_byte(val as u8),
-            16 => self.write_bytes(&[
-                ( val       & 0xff) as u8,
-                ((val >> 8) & 0xff) as u8
-            ]),
+            16 => self.write_bytes(&[(val & 0xff) as u8, ((val >> 8) & 0xff) as u8]),
             32 => self.write_bytes(&[
-                ( val        & 0xff) as u8,
-                ((val >>  8) & 0xff) as u8,
+                (val & 0xff) as u8,
+                ((val >> 8) & 0xff) as u8,
                 ((val >> 16) & 0xff) as u8,
-                ((val >> 24) & 0xff) as u8
+                ((val >> 24) & 0xff) as u8,
             ]),
             _ => {
                 let mut cur = val;
@@ -319,7 +310,10 @@ impl CodeBlock
         // TODO: add an asseer here
 
         // Keep track of the reference
-        self.label_refs.push(LabelRef { pos: self.write_pos, label_idx });
+        self.label_refs.push(LabelRef {
+            pos: self.write_pos,
+            label_idx,
+        });
     }
 
     // Link internal label references
@@ -382,18 +376,14 @@ impl CodeBlock
 
 /// Wrapper struct so we can use the type system to distinguish
 /// Between the inlined and outlined code blocks
-pub struct OutlinedCb
-{
+pub struct OutlinedCb {
     // This must remain private
     cb: CodeBlock,
 }
 
-impl OutlinedCb
-{
+impl OutlinedCb {
     pub fn wrap(cb: CodeBlock) -> Self {
-        OutlinedCb {
-            cb: cb
-        }
+        OutlinedCb { cb: cb }
     }
 
     pub fn unwrap(&mut self) -> &mut CodeBlock {

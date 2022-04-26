@@ -1,15 +1,14 @@
-use std::fmt::Write;
-use crate::cruby::*;
-use crate::codegen::*;
 use crate::asm::*;
+use crate::codegen::*;
 use crate::core::*;
+use crate::cruby::*;
 use crate::yjit::yjit_enabled_p;
+use std::fmt::Write;
 
 /// Primitive called in yjit.rb
 /// Produce a string representing the disassembly for an ISEQ
 #[no_mangle]
 pub extern "C" fn rb_yjit_disasm_iseq(_ec: EcPtr, _ruby_self: VALUE, iseqw: VALUE) -> VALUE {
-
     #[cfg(not(feature = "disasm"))]
     {
         let _ = iseqw;
@@ -56,11 +55,9 @@ fn disasm_iseq(iseq: IseqPtr) -> String {
 
         if addr_a < addr_b {
             Ordering::Less
-        }
-        else if addr_a == addr_b {
+        } else if addr_a == addr_b {
             Ordering::Equal
-        }
-        else {
+        } else {
             Ordering::Greater
         }
     });
@@ -82,7 +79,10 @@ fn disasm_iseq(iseq: IseqPtr) -> String {
         .unwrap();
 
     out.push_str(&format!("NUM BLOCK VERSIONS: {}\n", block_list.len()));
-    out.push_str(&format!("TOTAL INLINE CODE SIZE: {} bytes\n", total_code_size));
+    out.push_str(&format!(
+        "TOTAL INLINE CODE SIZE: {} bytes\n",
+        total_code_size
+    ));
 
     // For each block, sorted by increasing start address
     for block_idx in 0..block_list.len() {
@@ -122,7 +122,7 @@ fn disasm_iseq(iseq: IseqPtr) -> String {
         // If this is not the last block
         if block_idx < block_list.len() - 1 {
             // Compute the size of the gap between this block and the next
-            let next_block = block_list[block_idx+1].borrow();
+            let next_block = block_list[block_idx + 1].borrow();
             let next_start_addr = next_block.get_start_addr().unwrap().raw_ptr();
             let gap_size = (next_start_addr as usize) - (end_addr as usize);
 
@@ -167,7 +167,11 @@ pub extern "C" fn rb_yjit_insns_compiled(_ec: EcPtr, _ruby_self: VALUE, iseqw: V
                 let op_sym = rust_str_to_sym(&op_name);
 
                 // Store the instruction index and opcode symbol
-                rb_ary_store(insn_ary, (2 * idx + 0) as i64, VALUE::fixnum_from_usize(insn_idx as usize));
+                rb_ary_store(
+                    insn_ary,
+                    (2 * idx + 0) as i64,
+                    VALUE::fixnum_from_usize(insn_idx as usize),
+                );
                 rb_ary_store(insn_ary, (2 * idx + 1) as i64, op_sym);
             }
 
@@ -195,7 +199,9 @@ fn insns_compiled(iseq: IseqPtr) -> Vec<(String, u32)> {
             // Get the current pc and opcode
             let pc = unsafe { rb_iseq_pc_at_idx(iseq, insn_idx) };
             // try_into() call below is unfortunate. Maybe pick i32 instead of usize for opcodes.
-            let opcode: usize = unsafe { rb_iseq_opcode_at_pc(iseq, pc) }.try_into().unwrap();
+            let opcode: usize = unsafe { rb_iseq_opcode_at_pc(iseq, pc) }
+                .try_into()
+                .unwrap();
 
             // Get the mnemonic for this opcode
             let op_name = insn_name(opcode);

@@ -1,18 +1,18 @@
 //! Code to track assumptions made during code generation and invalidate
 //! generated code if and when these assumptions are invalidated.
 
+use crate::asm::OutlinedCb;
+use crate::codegen::*;
 use crate::core::*;
 use crate::cruby::*;
-use crate::codegen::*;
+use crate::options::*;
 use crate::stats::*;
-use crate::asm::OutlinedCb;
 use crate::utils::IntoUsize;
 use crate::yjit::yjit_enabled_p;
-use crate::options::*;
 
-use std::os::raw::c_void;
 use std::collections::{HashMap, HashSet};
 use std::mem;
+use std::os::raw::c_void;
 
 // Invariants to track:
 // assume_bop_not_redefined(jit, INTEGER_REDEFINED_OP_FLAG, BOP_PLUS)
@@ -88,13 +88,26 @@ impl Invariants {
 /// A public function that can be called from within the code generation
 /// functions to ensure that the block being generated is invalidated when the
 /// basic operator is redefined.
-pub fn assume_bop_not_redefined(jit: &mut JITState, ocb: &mut OutlinedCb, klass: RedefinitionFlag, bop: ruby_basic_operators) -> bool {
+pub fn assume_bop_not_redefined(
+    jit: &mut JITState,
+    ocb: &mut OutlinedCb,
+    klass: RedefinitionFlag,
+    bop: ruby_basic_operators,
+) -> bool {
     if unsafe { BASIC_OP_UNREDEFINED_P(bop, klass) } {
         jit_ensure_block_entry_exit(jit, ocb);
 
         let invariants = Invariants::get_instance();
-        invariants.basic_operator_blocks.entry((klass, bop)).or_insert(HashSet::new()).insert(jit.get_block());
-        invariants.block_basic_operators.entry(jit.get_block()).or_insert(HashSet::new()).insert((klass, bop));
+        invariants
+            .basic_operator_blocks
+            .entry((klass, bop))
+            .or_insert(HashSet::new())
+            .insert(jit.get_block());
+        invariants
+            .block_basic_operators
+            .entry(jit.get_block())
+            .or_insert(HashSet::new())
+            .insert((klass, bop));
 
         return true;
     } else {
@@ -109,7 +122,12 @@ pub fn assume_bop_not_redefined(jit: &mut JITState, ocb: &mut OutlinedCb, klass:
 // rb_yjit_cme_invalidate() invalidates the block.
 //
 // @raise NoMemoryError
-pub fn assume_method_lookup_stable(jit: &mut JITState, ocb: &mut OutlinedCb, receiver_klass: VALUE, callee_cme: *const rb_callable_method_entry_t) {
+pub fn assume_method_lookup_stable(
+    jit: &mut JITState,
+    ocb: &mut OutlinedCb,
+    receiver_klass: VALUE,
+    callee_cme: *const rb_callable_method_entry_t,
+) {
     // RUBY_ASSERT(rb_callable_method_entry(receiver_klass, cme->called_id) == cme);
     // RUBY_ASSERT_ALWAYS(RB_TYPE_P(receiver_klass, T_CLASS) || RB_TYPE_P(receiver_klass, T_ICLASS));
     // RUBY_ASSERT_ALWAYS(!rb_objspace_garbage_object_p(receiver_klass));
@@ -117,14 +135,23 @@ pub fn assume_method_lookup_stable(jit: &mut JITState, ocb: &mut OutlinedCb, rec
     jit_ensure_block_entry_exit(jit, ocb);
 
     let block = jit.get_block();
-    block.borrow_mut().add_cme_dependency(receiver_klass, callee_cme);
+    block
+        .borrow_mut()
+        .add_cme_dependency(receiver_klass, callee_cme);
 
-    Invariants::get_instance().cme_validity.entry(callee_cme).or_insert(HashSet::new()).insert(block.clone());
+    Invariants::get_instance()
+        .cme_validity
+        .entry(callee_cme)
+        .or_insert(HashSet::new())
+        .insert(block.clone());
 
     let mid = unsafe { (*callee_cme).called_id };
-    Invariants::get_instance().method_lookup
-        .entry(receiver_klass).or_insert(HashMap::new())
-        .entry(mid).or_insert(HashSet::new())
+    Invariants::get_instance()
+        .method_lookup
+        .entry(receiver_klass)
+        .or_insert(HashMap::new())
+        .entry(mid)
+        .or_insert(HashSet::new())
         .insert(block.clone());
 }
 
@@ -135,7 +162,9 @@ pub fn assume_single_ractor_mode(jit: &mut JITState, ocb: &mut OutlinedCb) -> bo
         false
     } else {
         jit_ensure_block_entry_exit(jit, ocb);
-        Invariants::get_instance().single_ractor.insert(jit.get_block());
+        Invariants::get_instance()
+            .single_ractor
+            .insert(jit.get_block());
         true
     }
 }
@@ -147,7 +176,12 @@ pub fn assume_single_ractor_mode(jit: &mut JITState, ocb: &mut OutlinedCb) -> bo
 pub fn assume_stable_constant_names(jit: &mut JITState, ocb: &mut OutlinedCb) {
     /// Tracks that a block is assuming that the name component of a constant
     /// has not changed since the last call to this function.
-    unsafe extern "C" fn assume_stable_constant_name(code: *mut VALUE, insn: VALUE, index: u64, data: *mut c_void) -> bool {
+    unsafe extern "C" fn assume_stable_constant_name(
+        code: *mut VALUE,
+        insn: VALUE,
+        index: u64,
+        data: *mut c_void,
+    ) -> bool {
         if insn.as_usize() == OP_OPT_SETINLINECACHE {
             return false;
         }
@@ -161,8 +195,16 @@ pub fn assume_stable_constant_names(jit: &mut JITState, ocb: &mut OutlinedCb) {
             let id = code.add(index.as_usize() + 1).read().as_u64() as ID;
 
             let invariants = Invariants::get_instance();
-            invariants.constant_state_blocks.entry(id).or_insert(HashSet::new()).insert(jit.get_block());
-            invariants.block_constant_states.entry(jit.get_block()).or_insert(HashSet::new()).insert(id);
+            invariants
+                .constant_state_blocks
+                .entry(id)
+                .or_insert(HashSet::new())
+                .insert(jit.get_block());
+            invariants
+                .block_constant_states
+                .entry(jit.get_block())
+                .or_insert(HashSet::new())
+                .insert(id);
         }
 
         true
@@ -179,7 +221,7 @@ pub fn assume_stable_constant_names(jit: &mut JITState, ocb: &mut OutlinedCb) {
             iseq,
             start_index.try_into().unwrap(),
             Some(assume_stable_constant_name),
-            jit as *mut _ as *mut c_void
+            jit as *mut _ as *mut c_void,
         );
     };
 }
@@ -197,12 +239,15 @@ pub extern "C" fn rb_yjit_bop_redefined(klass: RedefinitionFlag, bop: ruby_basic
     with_vm_lock(src_loc!(), || {
         // Loop through the blocks that are associated with this class and basic
         // operator and invalidate them.
-        Invariants::get_instance().basic_operator_blocks.remove(&(klass, bop)).map(|blocks| {
-            for block in blocks.iter() {
-                invalidate_block_version(block);
-                incr_counter!(invalidate_bop_redefined);
-            }
-        });
+        Invariants::get_instance()
+            .basic_operator_blocks
+            .remove(&(klass, bop))
+            .map(|blocks| {
+                for block in blocks.iter() {
+                    invalidate_block_version(block);
+                    incr_counter!(invalidate_bop_redefined);
+                }
+            });
     });
 }
 
@@ -236,14 +281,17 @@ pub extern "C" fn rb_yjit_method_lookup_change(klass: VALUE, mid: ID) {
     }
 
     with_vm_lock(src_loc!(), || {
-        Invariants::get_instance().method_lookup.entry(klass).and_modify(|deps| {
-            if let Some(deps) = deps.remove(&mid) {
-                for block in &deps {
-                    invalidate_block_version(block);
-                    incr_counter!(invalidate_method_lookup);
+        Invariants::get_instance()
+            .method_lookup
+            .entry(klass)
+            .and_modify(|deps| {
+                if let Some(deps) = deps.remove(&mid) {
+                    for block in &deps {
+                        invalidate_block_version(block);
+                        incr_counter!(invalidate_method_lookup);
+                    }
                 }
-            }
-        });
+            });
     });
 }
 
@@ -281,14 +329,19 @@ pub extern "C" fn rb_yjit_constant_state_changed(id: ID) {
             // If the global-constant-state option is set, then we're going to
             // invalidate every block that depends on any constant.
 
-            Invariants::get_instance().constant_state_blocks.keys().for_each(|id| {
-                if let Some(blocks) = Invariants::get_instance().constant_state_blocks.remove(&id) {
-                    for block in &blocks {
-                        invalidate_block_version(block);
-                        incr_counter!(invalidate_constant_state_bump);
+            Invariants::get_instance()
+                .constant_state_blocks
+                .keys()
+                .for_each(|id| {
+                    if let Some(blocks) =
+                        Invariants::get_instance().constant_state_blocks.remove(&id)
+                    {
+                        for block in &blocks {
+                            invalidate_block_version(block);
+                            incr_counter!(invalidate_constant_state_bump);
+                        }
                     }
-                }
-            });
+                });
         } else {
             // If the global-constant-state option is not set, then we're only going
             // to invalidate the blocks that are associated with the given ID.
@@ -431,7 +484,10 @@ pub extern "C" fn rb_yjit_constant_ic_update(iseq: *const rb_iseq_t, ic: IC) {
         let ic_operand: IC = unsafe { ic_pc.read() }.as_mut_ptr();
 
         if ic == ic_operand {
-            for block in take_version_list(BlockId { iseq, idx: get_insn_idx }) {
+            for block in take_version_list(BlockId {
+                iseq,
+                idx: get_insn_idx,
+            }) {
                 invalidate_block_version(&block);
                 incr_counter!(invalidate_constant_ic_fill);
             }
@@ -462,8 +518,7 @@ pub extern "C" fn rb_yjit_constant_ic_update(iseq: *const rb_iseq_t, ic: IC) {
 // In addition to patching, we prevent future entries into invalidated code by
 // removing all live blocks from their iseq.
 #[no_mangle]
-pub extern "C" fn rb_yjit_tracing_invalidate_all()
-{
+pub extern "C" fn rb_yjit_tracing_invalidate_all() {
     if !yjit_enabled_p() {
         return;
     }
@@ -516,10 +571,15 @@ pub extern "C" fn rb_yjit_tracing_invalidate_all()
         // change the code. There could be other ractors sleeping in
         // branch_stub_hit(), for example. We could harden this by changing memory
         // protection on the frozen range.
-        assert!(CodegenGlobals::get_inline_frozen_bytes() <= old_pos, "frozen bytes should increase monotonically");
+        assert!(
+            CodegenGlobals::get_inline_frozen_bytes() <= old_pos,
+            "frozen bytes should increase monotonically"
+        );
         CodegenGlobals::set_inline_frozen_bytes(old_pos);
 
-        CodegenGlobals::get_outlined_cb().unwrap().mark_all_executable();
+        CodegenGlobals::get_outlined_cb()
+            .unwrap()
+            .mark_all_executable();
         cb.mark_all_executable();
     });
 }

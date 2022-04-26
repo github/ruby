@@ -6,12 +6,12 @@
 #![allow(clippy::style)] // We are laid back about style
 
 mod asm;
-mod cruby;
-mod core;
 mod codegen;
-mod invariants;
+mod core;
+mod cruby;
 mod disasm;
-mod utils;
+mod invariants;
 mod options;
 mod stats;
+mod utils;
 mod yjit;
