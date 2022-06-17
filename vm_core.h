@@ -348,6 +348,10 @@ struct rb_mjit_unit;
 typedef rb_darray(struct yjit_block_version *) rb_yjit_block_array_t;
 typedef rb_darray(rb_yjit_block_array_t) rb_yjit_block_array_array_t;
 
+typedef uintptr_t iseq_bits_t;
+
+#define ISEQ_IS_SIZE(body) (body->ic_size + body->ivc_size + body->ise_size)
+
 struct rb_iseq_constant_body {
     enum iseq_type {
 	ISEQ_TYPE_TOP,
@@ -457,7 +461,7 @@ struct rb_iseq_constant_body {
     const struct rb_iseq_struct *parent_iseq;
     struct rb_iseq_struct *local_iseq; /* local_iseq->flip_cnt can be modified */
 
-    union iseq_inline_storage_entry *is_entries;
+    union iseq_inline_storage_entry *is_entries; /* [ TS_(ICVARC|IVC) ... | TS_ISE | TS_IC ] */
     struct rb_call_data *call_data; //struct rb_call_data calls[ci_size];
 
     struct {
@@ -469,9 +473,12 @@ struct rb_iseq_constant_body {
     } variable;
 
     unsigned int local_table_size;
-    unsigned int is_size;
+    unsigned int ic_size;  // Number if IC caches
+    unsigned int ise_size; // Number of ISE caches
+    unsigned int ivc_size; // Number of IVC and ICVARC caches
     unsigned int ci_size;
     unsigned int stack_max; /* for stack overflow check */
+    iseq_bits_t * mark_offset_bits; /* Find references for GC */
 
     char catch_except_p; /* If a frame of this ISeq may catch exception, set TRUE */
     // If true, this ISeq is leaf *and* backtraces are not used, for example,
@@ -517,6 +524,8 @@ struct rb_iseq_struct {
         } exec;
     } aux;
 };
+
+#define ISEQ_BODY(iseq) ((iseq)->body)
 
 #ifndef USE_LAZY_LOAD
 #define USE_LAZY_LOAD 0
