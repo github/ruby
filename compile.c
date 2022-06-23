@@ -2344,6 +2344,7 @@ iseq_set_sequence(rb_iseq_t *iseq, LINK_ANCHOR *const anchor)
     int code_size = code_index;
 
     iseq_bits_t tmp[1] = {0};
+    bool needs_bitmap = false;
 
     if (ISEQ_MBITS_BUFLEN(code_index) == 1) {
         mark_offset_bits = tmp;
@@ -2401,6 +2402,7 @@ iseq_set_sequence(rb_iseq_t *iseq, LINK_ANCHOR *const anchor)
                             ISEQ_MBITS_SET(mark_offset_bits, code_index + 1 + j);
 			    RB_OBJ_WRITTEN(iseq, Qundef, map);
                             FL_SET(iseqv, ISEQ_MARKABLE_ISEQ);
+                            needs_bitmap = true;
 			    break;
 			}
 		      case TS_LINDEX:
@@ -2417,6 +2419,7 @@ iseq_set_sequence(rb_iseq_t *iseq, LINK_ANCHOR *const anchor)
 				RB_OBJ_WRITTEN(iseq, Qundef, v);
                                 ISEQ_MBITS_SET(mark_offset_bits, code_index + 1 + j);
                                 FL_SET(iseqv, ISEQ_MARKABLE_ISEQ);
+                                needs_bitmap = true;
 			    }
 			    break;
 			}
@@ -2541,7 +2544,13 @@ iseq_set_sequence(rb_iseq_t *iseq, LINK_ANCHOR *const anchor)
         body->mark_bits.single = mark_offset_bits[0];
     }
     else {
-        body->mark_bits.list = mark_offset_bits;
+        if (needs_bitmap) {
+            body->mark_bits.list = mark_offset_bits;
+        }
+        else {
+            body->mark_bits.list = 0;
+            ruby_xfree(mark_offset_bits);
+        }
     }
 
     /* get rid of memory leak when REALLOC failed */
@@ -11173,6 +11182,7 @@ ibf_load_code(const struct ibf_load *load, rb_iseq_t *iseq, ibf_offset_t bytecod
     else {
         mark_offset_bits = ZALLOC_N(iseq_bits_t, ISEQ_MBITS_BUFLEN(iseq_size));
     }
+    bool needs_bitmap = false;
 
     unsigned int min_ic_index, min_ise_index, min_ivc_index;
     min_ic_index = min_ise_index = min_ivc_index = UINT_MAX;
@@ -11199,6 +11209,7 @@ ibf_load_code(const struct ibf_load *load, rb_iseq_t *iseq, ibf_offset_t bytecod
                         RB_OBJ_WRITTEN(iseqv, Qundef, v);
                         ISEQ_MBITS_SET(mark_offset_bits, code_index);
                         FL_SET(iseqv, ISEQ_MARKABLE_ISEQ);
+                        needs_bitmap = true;
                     }
                     break;
                 }
@@ -11220,6 +11231,7 @@ ibf_load_code(const struct ibf_load *load, rb_iseq_t *iseq, ibf_offset_t bytecod
                     ISEQ_MBITS_SET(mark_offset_bits, code_index);
                     RB_OBJ_WRITTEN(iseqv, Qundef, v);
                     FL_SET(iseqv, ISEQ_MARKABLE_ISEQ);
+                    needs_bitmap = true;
                     break;
                 }
               case TS_ISEQ:
@@ -11231,6 +11243,7 @@ ibf_load_code(const struct ibf_load *load, rb_iseq_t *iseq, ibf_offset_t bytecod
                         RB_OBJ_WRITTEN(iseqv, Qundef, v);
                         ISEQ_MBITS_SET(mark_offset_bits, code_index);
                         FL_SET(iseqv, ISEQ_MARKABLE_ISEQ);
+                        needs_bitmap = true;
                     }
                     break;
                 }
@@ -11314,7 +11327,13 @@ ibf_load_code(const struct ibf_load *load, rb_iseq_t *iseq, ibf_offset_t bytecod
         load_body->mark_bits.single = mark_offset_bits[0];
     }
     else {
-        load_body->mark_bits.list = mark_offset_bits;
+        if (needs_bitmap) {
+            load_body->mark_bits.list = mark_offset_bits;
+        }
+        else {
+            load_body->mark_bits.list = 0;
+            ruby_xfree(mark_offset_bits);
+        }
     }
 
     assert(code_index == iseq_size);
