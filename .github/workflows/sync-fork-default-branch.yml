@@ -1,0 +1,20 @@
+name: Sync Fork's Default Branch
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron: "0 13 * * 1" # Mondays at 1pm UTC
+
+jobs:
+  sync-fork:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Sync Repo
+      run: gh repo sync github/ruby
