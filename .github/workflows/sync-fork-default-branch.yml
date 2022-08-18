@@ -5,7 +5,7 @@ permissions:
 
 on:
   schedule:
-    - cron: "0 13 * * 1" # Mondays at 1pm UTC
+    - cron: "0 0 * * *" # every day at midnight UTC
 
 jobs:
   sync-fork:
