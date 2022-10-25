@@ -33,7 +33,6 @@
 #include "ruby/internal/fl_type.h"
 #include "ruby/internal/value.h"
 #include "ruby/internal/value_type.h"
-#include "shape.h"
 
 /**
  * Convenient casting macro.
@@ -221,8 +220,11 @@ ROBJECT_IVPTR(VALUE obj)
         ret = ptr->as.heap.ivptr;
     }
 
-    uint32_t i, len = ROBJECT_IV_COUNT(obj);
+    uint32_t i, len = ROBJECT_NUMIV(obj);
     for (i  = 0; i < len; i++) {
+      if (ret[i] == 0XBADCAFA) {
+        break;
+      }
       if (ret[i] == 16) {
         rb_bug("weird in read ivptr");
       }
