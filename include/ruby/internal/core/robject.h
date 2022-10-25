@@ -206,7 +206,7 @@ RBIMPL_ATTR_ARTIFICIAL()
  * @shyouhei finds no reason for this to be visible from extension libraries.
  */
 static inline VALUE *
-ROBJECT_IVPTR(VALUE obj)
+ROBJECT_IVPTR_no_verify(VALUE obj)
 {
     RBIMPL_ASSERT_TYPE(obj, RUBY_T_OBJECT);
 
@@ -219,7 +219,13 @@ ROBJECT_IVPTR(VALUE obj)
     else {
         ret = ptr->as.heap.ivptr;
     }
+    return ret;
+}
 
+static inline VALUE *
+ROBJECT_IVPTR(VALUE obj)
+{
+    VALUE * ret = ROBJECT_IVPTR_no_verify(obj);
     uint32_t i, len = ROBJECT_NUMIV(obj);
     for (i  = 0; i < len; i++) {
       if (ret[i] == 0XBADCAFA) {

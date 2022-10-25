@@ -2936,9 +2936,9 @@ rb_class_instance_allocate_internal(VALUE klass, VALUE flags, bool wb_protected)
 #endif
 
 #if RUBY_DEBUG
-    VALUE *ptr = ROBJECT_IVPTR(obj);
+    VALUE *ptr = ROBJECT_IVPTR_no_verify(obj);
     for (size_t i = 0; i < ROBJECT_NUMIV(obj); i++) {
-        ptr[i] = Qundef;
+        ptr[i] = 0xBADCAFA;
     }
 #endif
 
