@@ -4871,9 +4871,6 @@ obj_memsize_of(VALUE obj, int use_all_types)
             if (RCLASS_CVC_TBL(obj)) {
                 size += rb_id_table_memsize(RCLASS_CVC_TBL(obj));
             }
-            if (RCLASS_EXT(obj)->iv_tbl) {
-                size += st_memsize(RCLASS_EXT(obj)->iv_tbl);
-            }
             if (RCLASS_EXT(obj)->const_tbl) {
                 size += rb_id_table_memsize(RCLASS_EXT(obj)->const_tbl);
             }
