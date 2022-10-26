@@ -382,6 +382,10 @@ vm_push_frame(rb_execution_context_t *ec,
         *sp++ = Qnil;
     }
 
+    if (!SPECIAL_CONST_P(self) && BUILTIN_TYPE(self) == T_OBJECT) {
+        ROBJECT_IVPTR(self);
+    }
+
     /* setup ep with managing data */
     *sp++ = cref_or_me; /* ep[-2] / Qnil or T_IMEMO(cref) or T_IMEMO(ment) */
     *sp++ = specval     /* ep[-1] / block handler or prev env ptr */;

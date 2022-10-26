@@ -64,6 +64,7 @@ INSN_ENTRY(<%= insn.name %>)
     INC_SP(INSN_ATTR(sp_inc));
 %   insn.rets.reverse_each.with_index do |ret, i|
     TOPN(<%= i %>) = <%= insn.cast_to_VALUE ret %>;
+    if (RB_TYPE_P(TOPN(<%= i %>), T_OBJECT)) ROBJECT_IVPTR(TOPN(<%= i %>));
     VM_ASSERT(!RB_TYPE_P(TOPN(<%= i %>), T_NONE));
     VM_ASSERT(!RB_TYPE_P(TOPN(<%= i %>), T_MOVED));
 %   end
