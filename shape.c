@@ -518,7 +518,27 @@ rb_shape_find_by_id(VALUE mod, VALUE id)
 }
 #endif
 
-void
+void rb_obj_shape_info_dump(VALUE obj) {
+    VALUE * ret = ROBJECT_IVPTR_no_verify(obj);
+
+    fprintf(stderr, "NUMIV: %i\n", ROBJECT_NUMIV(obj));
+    fprintf(stderr, "IV_COUNT: %i\n", ROBJECT_IV_COUNT(obj));
+
+    for (unsigned j = 0; j < ROBJECT_NUMIV(obj); j++) {
+        fprintf(stderr, "IV_PTR[%i] = %p\n", j, (void *)ret[j]);
+    }
+
+    shape_id_t shape_id = rb_shape_get_shape_id(obj);
+    fprintf(stderr, "shape_id: %i\n", shape_id);
+
+    while (shape_id != SHAPE_ROOT) {
+        rb_shape_t *shape = rb_shape_get_shape_by_id(shape_id);
+        fprintf(stderr, "  type=%i name=%s next_iv_index=%i\n", (int)shape->type, rb_id2name(shape->edge_name), shape->next_iv_index);
+        shape_id = shape->parent_id;
+    }
+}
+
+    void
 Init_shape(void)
 {
 #if VM_CHECK_MODE > 0

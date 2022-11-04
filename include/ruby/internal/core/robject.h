@@ -223,6 +223,7 @@ ROBJECT_IVPTR_no_verify(VALUE obj)
 }
 
 void rb_obj_info_dump(VALUE obj);
+void rb_obj_shape_info_dump(VALUE obj);
 
 static inline VALUE *
 ROBJECT_IVPTR(VALUE obj)
@@ -235,6 +236,7 @@ ROBJECT_IVPTR(VALUE obj)
       }
       if (ret[i] == 16) {
           rb_obj_info_dump(obj);
+          rb_obj_shape_info_dump(obj);
         rb_bug("weird in read ivptr");
       }
     }
