@@ -222,6 +222,8 @@ ROBJECT_IVPTR_no_verify(VALUE obj)
     return ret;
 }
 
+void rb_obj_info_dump(VALUE obj);
+
 static inline VALUE *
 ROBJECT_IVPTR(VALUE obj)
 {
@@ -229,9 +231,10 @@ ROBJECT_IVPTR(VALUE obj)
     uint32_t i, len = ROBJECT_NUMIV(obj);
     for (i  = 0; i < len; i++) {
       if (ret[i] == 0XBADCAFA) {
-        break;
+        continue;
       }
       if (ret[i] == 16) {
+          rb_obj_info_dump(obj);
         rb_bug("weird in read ivptr");
       }
     }
