@@ -236,6 +236,8 @@ make_counters! {
     invokeblock_iseq_arg0_splat,
     invokeblock_megamorphic,
     invokeblock_none,
+    invokeblock_ifunc_args_splat,
+    invokeblock_ifunc_kw_splat,
     invokeblock_proc,
     invokeblock_symbol,
 
@@ -253,7 +255,7 @@ make_counters! {
     guard_invokesuper_me_changed,
 
     guard_invokeblock_iseq_block_changed,
-    guard_invokeblock_iseq_tag_changed,
+    guard_invokeblock_tag_changed,
 
     traced_cfunc_return,
 
