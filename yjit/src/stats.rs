@@ -257,6 +257,9 @@ make_counters! {
     setivar_not_object,
     setivar_frozen,
 
+    // Not using "getivar_" to exclude this from exit reasons
+    get_ivar_max_depth,
+
     oaref_argc_not_one,
     oaref_arg_not_fixnum,
 
