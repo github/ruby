@@ -231,7 +231,7 @@ rb_get_path_check_convert(VALUE obj)
 
     check_path_encoding(obj);
     if (!rb_str_to_cstr(obj)) {
-        rb_raise(rb_eArgError, "path name contains null byte");
+        rb_bug(rb_eArgError, "path name contains null byte");
     }
 
     return rb_str_new4(obj);
