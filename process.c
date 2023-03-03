@@ -529,13 +529,6 @@ clear_pid_cache(void)
     cached_pid = Qnil;
 }
 
-static inline void
-rb_process_atfork(void)
-{
-    clear_pid_cache();
-    rb_thread_atfork(); /* calls mjit_resume() */
-}
-
 /*
  *  call-seq:
  *     Process.pid   -> integer
@@ -1802,9 +1795,13 @@ before_fork_ruby(void)
 }
 
 static void
-after_fork_ruby(void)
+after_fork_ruby(rb_pid_t pid)
 {
     rb_threadptr_pending_interrupt_clear(GET_THREAD());
+    if (pid == 0) {
+        clear_pid_cache();
+        rb_thread_atfork();
+    }
     after_exec();
 }
 #endif
@@ -4249,7 +4246,7 @@ rb_mjit_fork(void)
     if (pid > 0) mjit_add_waiting_pid(vm, pid);
     rb_native_mutex_unlock(&vm->waitpid_lock);
 
-    after_fork_ruby();
+    after_fork_ruby(pid);
     disable_child_handler_fork_parent(&old);
     if (pid == 0) rb_thread_atfork();
 
@@ -4352,13 +4349,12 @@ rb_fork_ruby2(struct rb_process_status *status)
             status->pid = pid;
             status->error = err;
         }
-        after_fork_ruby();
+        after_fork_ruby(pid);
         disable_child_handler_fork_parent(&old); /* yes, bad name */
 
         if (mjit_enabled && pid > 0) mjit_resume(); /* child (pid == 0) is cared by rb_thread_atfork */
 
         if (pid >= 0) { /* fork succeed */
-            if (pid == 0) rb_process_atfork();
             return pid;
         }
 
@@ -7137,8 +7133,7 @@ rb_daemon(int nochdir, int noclose)
     if (mjit_enabled) mjit_pause(false); // Don't leave locked mutex to child.
     before_fork_ruby();
     err = daemon(nochdir, noclose);
-    after_fork_ruby();
-    rb_process_atfork();
+    after_fork_ruby(0);
 #else
     int n;
 
