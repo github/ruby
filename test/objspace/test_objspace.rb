@@ -217,6 +217,14 @@ class TestObjSpace < Test::Unit::TestCase
       assert_equal(self.class.name, ObjectSpace.allocation_class_path(o3))
       assert_equal(__method__,      ObjectSpace.allocation_method_id(o3))
 
+      # [Bug #19456]
+      o4 =
+        # This line intentionally left blank
+        # This line intentionally left blank
+        1.0 / 0.0; line4 = __LINE__; c4 = GC.count
+      assert_equal(__FILE__, ObjectSpace.allocation_sourcefile(o4))
+      assert_equal(line4, ObjectSpace.allocation_sourceline(o4))
+
       # [Bug #19482]
       EnvUtil.under_gc_stress do
         100.times do
