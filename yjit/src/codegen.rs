@@ -337,9 +337,10 @@ fn verify_ctx(jit: &JITState, ctx: &Context) {
         // If the actual type differs from the learned type
         if val_type.diff(learned_type) == usize::MAX {
             panic!(
-                "verify_ctx: ctx type ({:?}) incompatible with actual value on stack: {}",
+                "verify_ctx: ctx type ({:?}) incompatible with actual value on stack: {} ({:?})",
                 learned_type,
-                obj_info_str(stack_val)
+                obj_info_str(stack_val),
+                val_type,
             );
         }
     }
@@ -2033,8 +2034,8 @@ pub const OPT_AREF_MAX_CHAIN_DEPTH: i32 = 2;
 // expandarray
 pub const EXPANDARRAY_MAX_CHAIN_DEPTH: i32 = 4;
 
-// up to 5 different classes
-pub const SEND_MAX_DEPTH: i32 = 5;
+// up to 20 different classes
+pub const SEND_MAX_DEPTH: i32 = 20;
 
 // up to 20 different methods for send
 pub const SEND_MAX_CHAIN_DEPTH: i32 = 20;
