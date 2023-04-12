@@ -28,6 +28,9 @@ pub struct Options {
     // Trace locations of exits
     pub gen_trace_exits: bool,
 
+    // how often to sample exit trace data
+    pub trace_exits_sample_rate: usize,
+
     /// Dump compiled and executed instructions for debugging
     pub dump_insns: bool,
 
@@ -56,6 +59,7 @@ pub static mut OPTIONS: Options = Options {
     max_versions: 4,
     gen_stats: false,
     gen_trace_exits: false,
+    trace_exits_sample_rate: 0,
     dump_insns: false,
     dump_disasm: None,
     verify_ctx: false,
@@ -156,7 +160,8 @@ pub fn parse_option(str_ptr: *const std::os::raw::c_char) -> Option<()> {
         ("greedy-versioning", "") => unsafe { OPTIONS.greedy_versioning = true },
         ("no-type-prop", "") => unsafe { OPTIONS.no_type_prop = true },
         ("stats", "") => unsafe { OPTIONS.gen_stats = true },
-        ("trace-exits", "") => unsafe { OPTIONS.gen_trace_exits = true; OPTIONS.gen_stats = true },
+        ("trace-exits", "") => unsafe { OPTIONS.gen_trace_exits = true; OPTIONS.gen_stats = true; OPTIONS.trace_exits_sample_rate = 0 },
+        ("trace-exits-sample-rate", sample_rate) => unsafe { OPTIONS.gen_trace_exits = true; OPTIONS.gen_stats = true; OPTIONS.trace_exits_sample_rate = sample_rate.parse().unwrap(); },
         ("dump-insns", "") => unsafe { OPTIONS.dump_insns = true },
         ("verify-ctx", "") => unsafe { OPTIONS.verify_ctx = true },
         ("global-constant-state", "") => unsafe { OPTIONS.global_constant_state = true },
@@ -164,6 +169,21 @@ pub fn parse_option(str_ptr: *const std::os::raw::c_char) -> Option<()> {
         // Option name not recognized
         _ => {
             return None;
+        }
+    }
+
+
+    // before we continue, check that sample_rate is either 0 or a prime number
+    let trace_sample_rate;
+    unsafe { trace_sample_rate = OPTIONS.trace_exits_sample_rate; }
+    if trace_sample_rate > 1 {
+        let mut i = 2;
+        while i*i <= trace_sample_rate {
+            if trace_sample_rate % i == 0 {
+                println!("Warning: using a non-prime number as you sampling rate can result in less accurate sampling data");
+                return Some(());
+            }
+            i += 1;
         }
     }
 
