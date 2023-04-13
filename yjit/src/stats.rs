@@ -501,9 +501,9 @@ pub extern "C" fn rb_yjit_record_exit_stack(exit_pc: *const VALUE)
     if get_option!(trace_exits_sample_rate) > 0 {
         if get_option!(trace_exits_sample_rate) <= *YjitExitLocations::get_skipped_samples() {
             YjitExitLocations::get_instance().skipped_samples = 0;
-            return;
         } else {
             YjitExitLocations::get_instance().skipped_samples += 1;
+            return;
         }
     }
 
