@@ -1745,7 +1745,6 @@ class TestRegexp < Test::Unit::TestCase
       timeout = #{ EnvUtil.apply_timeout_scale(10).inspect }
     begin;
       Regexp.timeout = timeout
-
       assert_nil(/^(a*)*$/ =~ "a" * 1000000 + "x")
     end;
   end
@@ -1755,7 +1754,6 @@ class TestRegexp < Test::Unit::TestCase
       timeout = #{ EnvUtil.apply_timeout_scale(10).inspect }
     begin;
       Regexp.timeout = timeout
-
       assert_nil(/^a*b?a*$/ =~ "a" * 1000000 + "x")
     end;
   end
@@ -1765,8 +1763,25 @@ class TestRegexp < Test::Unit::TestCase
       timeout = #{ EnvUtil.apply_timeout_scale(10).inspect }
     begin;
       Regexp.timeout = timeout
+      assert_nil(/^a*?(?>a*a*)$/ =~ "a" * 1000000 + "x")
+    end;
+  end
 
-      assert_nil(/^(?>a?a?)(a|a)*$/ =~ "a" * 1000000 + "x")
+  def test_match_cache_positive_look_ahead
+    assert_separately([], "#{<<-"begin;"}\n#{<<-'end;'}")
+      timeout = #{ EnvUtil.apply_timeout_scale(10).inspect }
+    begin;
+       Regexp.timeout = timeout
+       assert_nil(/^a*?(?=a*a*)$/ =~ "a" * 1000000 + "x")
+    end;
+  end
+
+  def test_match_cache_negative_look_ahead
+    assert_separately([], "#{<<-"begin;"}\n#{<<-'end;'}")
+      timeout = #{ EnvUtil.apply_timeout_scale(10).inspect }
+    begin;
+      Regexp.timeout = timeout
+      assert_nil(/^a*?(?!a*a*)$/ =~ "a" * 1000000 + "x")
     end;
   end
 
@@ -1812,6 +1827,9 @@ class TestRegexp < Test::Unit::TestCase
     assert_send [Regexp, :linear_time?, 'a', Regexp::IGNORECASE]
     assert_not_send [Regexp, :linear_time?, /(a)\1/]
     assert_not_send [Regexp, :linear_time?, "(a)\\1"]
+
+    assert_not_send [Regexp, :linear_time?, /(?=(a))/]
+    assert_not_send [Regexp, :linear_time?, /(?>(a))/]
 
     assert_raise(TypeError) {Regexp.linear_time?(nil)}
     assert_raise(TypeError) {Regexp.linear_time?(Regexp.allocate)}
