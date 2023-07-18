@@ -167,14 +167,11 @@ module RubyVM::YJIT
     # Average length of instruction sequences executed by YJIT
     avg_len_in_yjit = retired_in_yjit.to_f / total_exits
 
-    # This only available on yjit stats builds
-    if stats.key?(:vm_insns_count)
-      # Proportion of instructions that retire in YJIT
-      total_insns_count = retired_in_yjit + stats[:vm_insns_count]
-      yjit_ratio_pct = 100.0 * retired_in_yjit.to_f / total_insns_count
-      stats[:total_insns_count] = total_insns_count
-      stats[:ratio_in_yjit] = yjit_ratio_pct
-    end
+    # Proportion of instructions that retire in YJIT
+    total_insns_count = retired_in_yjit + stats[:vm_insns_count]
+    yjit_ratio_pct = 100.0 * retired_in_yjit.to_f / total_insns_count
+    stats[:total_insns_count] = total_insns_count
+    stats[:ratio_in_yjit] = yjit_ratio_pct
 
     # Make those stats available in RubyVM::YJIT.runtime_stats as well
     stats[:side_exit_count]  = side_exits
@@ -284,14 +281,10 @@ module RubyVM::YJIT
       $stderr.puts "object_shape_count:    " + ("%10d" % stats[:object_shape_count])
       $stderr.puts "side_exit_count:       " + ("%10d" % stats[:side_exit_count])
       $stderr.puts "total_exit_count:      " + ("%10d" % stats[:total_exit_count])
-      $stderr.puts "total_insns_count:     " + ("%10d" % stats[:total_insns_count]) if stats.key?(:total_insns_count)
-      if stats.key?(:vm_insns_count)
-        $stderr.puts "vm_insns_count:        " + ("%10d" % stats[:vm_insns_count])
-      end
+      $stderr.puts "total_insns_count:     " + ("%10d" % stats[:total_insns_count])
+      $stderr.puts "vm_insns_count:        " + ("%10d" % stats[:vm_insns_count])
       $stderr.puts "yjit_insns_count:      " + ("%10d" % stats[:exec_instruction])
-      if stats.key?(:ratio_in_yjit)
-        $stderr.puts "ratio_in_yjit:         " + ("%9.1f" % stats[:ratio_in_yjit]) + "%"
-      end
+      $stderr.puts "ratio_in_yjit:         " + ("%9.1f" % stats[:ratio_in_yjit]) + "%"
       $stderr.puts "avg_len_in_yjit:       " + ("%10.1f" % stats[:avg_len_in_yjit])
 
       print_sorted_exit_counts(stats, prefix: "exit_")
