@@ -337,6 +337,9 @@ fn main() {
         // From include/ruby/internal/intern/vm.h
         .allowlist_function("rb_get_alloc_func")
 
+        // From internal/vm.h
+        .allowlist_var("rb_vm_insns_count")
+
         // From gc.h and internal/gc.h
         .allowlist_function("rb_class_allocate_instance")
         .allowlist_function("rb_obj_info")
