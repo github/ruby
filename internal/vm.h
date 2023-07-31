@@ -103,7 +103,7 @@ MJIT_SYMBOL_EXPORT_END
 void rb_clear_constant_cache(void);
 
 /* vm_dump.c */
-void rb_print_backtrace(void);
+void rb_print_backtrace(FILE *);
 
 /* vm_backtrace.c */
 VALUE rb_vm_thread_backtrace(int argc, const VALUE *argv, VALUE thval);
@@ -111,7 +111,7 @@ VALUE rb_vm_thread_backtrace_locations(int argc, const VALUE *argv, VALUE thval)
 VALUE rb_vm_backtrace(int argc, const VALUE * argv, struct rb_execution_context_struct * ec);
 VALUE rb_vm_backtrace_locations(int argc, const VALUE * argv, struct rb_execution_context_struct * ec);
 VALUE rb_make_backtrace(void);
-void rb_backtrace_print_as_bugreport(void);
+void rb_backtrace_print_as_bugreport(FILE*);
 int rb_backtrace_p(VALUE obj);
 VALUE rb_backtrace_to_str_ary(VALUE obj);
 VALUE rb_backtrace_to_location_ary(VALUE obj);

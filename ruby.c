@@ -1117,6 +1117,8 @@ setup_yjit_options(const char *s)
 }
 #endif
 
+static const char *test_crash_report_template;
+
 static long
 proc_options(long argc, char **argv, ruby_cmdline_options_t *opt, int envopt)
 {
@@ -1527,6 +1529,9 @@ proc_options(long argc, char **argv, ruby_cmdline_options_t *opt, int envopt)
                 long n = strtol(s, &e, 10);
                 if (errno == ERANGE || n < 0 || *e) rb_raise(rb_eRuntimeError, "wrong limit for backtrace length");
                 rb_backtrace_length_limit = n;
+            }
+            else if (is_option_with_arg("test-crashreport", true, false)) {
+                test_crash_report_template = s;
             }
             else {
                 rb_raise(rb_eRuntimeError,
@@ -2739,6 +2744,11 @@ ruby_process_options(int argc, char **argv)
 #ifndef HAVE_SETPROCTITLE
     ruby_init_setproctitle(argc, argv);
 #endif
+
+    if (test_crash_report_template) {
+        void ruby_test_bug_report(const char *template);
+        ruby_test_bug_report(test_crash_report_template);
+    }
 
     return (void*)(struct RData*)iseq;
 }
