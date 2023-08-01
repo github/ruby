@@ -721,7 +721,7 @@ pub fn gen_single_block(
     if get_option_ref!(dump_disasm).is_some() {
         let blockid_idx = blockid.idx;
         let chain_depth = if ctx.get_chain_depth() > 0 { format!(", chain_depth: {}", ctx.get_chain_depth()) } else { "".to_string() };
-        asm.comment(&format!("Block: {} (ISEQ offset: {}{})", iseq_get_location(blockid.iseq, blockid_idx), blockid_idx, chain_depth));
+        asm.comment(&format!("Block: {} (ISEQ offset: {}{})", iseq_get_location(blockid.iseq), blockid_idx, chain_depth));
     }
 
     // For each instruction to compile
