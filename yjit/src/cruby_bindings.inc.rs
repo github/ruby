@@ -1308,4 +1308,6 @@ extern "C" {
         file: *const ::std::os::raw::c_char,
         line: ::std::os::raw::c_int,
     );
+    pub fn rb_yjit_sendish_sp_pops(ci: *const rb_callinfo) -> usize;
+    pub fn rb_yjit_invokeblock_sp_pops(ci: *const rb_callinfo) -> usize;
 }

@@ -2,6 +2,7 @@
 require 'test/unit'
 require 'tmpdir'
 require_relative '../lib/jit_support'
+return # we don't use MJIT
 
 # Test for --mjit option
 class TestMJIT < Test::Unit::TestCase

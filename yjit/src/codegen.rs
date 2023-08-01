@@ -5653,6 +5653,39 @@ fn gen_struct_aset(
     EndBlock
 }
 
+// Generate code that calls a method with dynamic dispatch
+fn gen_send_dynamic<F: Fn(&mut Assembler) -> Opnd>(
+    jit: &mut JITState,
+    ctx: &mut Context,
+    asm: &mut Assembler,
+    cd: *const rb_call_data,
+    sp_pops: usize,
+    vm_sendish: F,
+) -> CodegenStatus {
+    // Our frame handling is not compatible with tailcall
+    if unsafe { vm_ci_flag((*cd).ci) } & VM_CALL_TAILCALL != 0 {
+        return CantCompile;
+    }
+
+    // Save PC and SP to prepare for dynamic dispatch
+    jit_prepare_routine_call(jit, ctx, asm);
+
+    // Pop arguments and a receiver
+    ctx.stack_pop(sp_pops);
+
+    // Dispatch a method
+    let ret = vm_sendish(asm);
+
+    // Push the return value
+    let stack_ret = ctx.stack_push(Type::Unknown);
+    asm.mov(stack_ret, ret);
+
+    // Fix the interpreter SP deviated by vm_sendish
+    asm.mov(Opnd::mem(64, CFP, RUBY_OFFSET_CFP_SP), SP);
+
+    KeepCompiling
+}
+
 fn gen_send_general(
     jit: &mut JITState,
     ctx: &mut Context,
@@ -6112,9 +6145,23 @@ fn gen_opt_send_without_block(
     asm: &mut Assembler,
     ocb: &mut OutlinedCb,
 ) -> CodegenStatus {
+    // Generate specialized code if possible
     let cd = jit_get_arg(jit, 0).as_ptr();
+    let status = gen_send_general(jit, ctx, asm, ocb, cd, None);
+    if status != CantCompile {
+        return status;
+    }
 
-    gen_send_general(jit, ctx, asm, ocb, cd, None)
+    // Otherwise, fallback to dynamic dispatch using the interpreter's implementation of send
+    gen_send_dynamic(jit, ctx, asm, cd, unsafe { rb_yjit_sendish_sp_pops((*cd).ci) }, |asm| {
+        extern "C" {
+            fn rb_vm_opt_send_without_block(ec: EcPtr, cfp: CfpPtr, cd: VALUE) -> VALUE;
+        }
+        asm.ccall(
+            rb_vm_opt_send_without_block as *const u8,
+            vec![EC, CFP, (cd as usize).into()],
+        )
+    })
 }
 
 fn gen_send(
@@ -6123,9 +6170,25 @@ fn gen_send(
     asm: &mut Assembler,
     ocb: &mut OutlinedCb,
 ) -> CodegenStatus {
+    // Generate specialized code if possible
     let cd = jit_get_arg(jit, 0).as_ptr();
     let block = jit_get_arg(jit, 1).as_optional_ptr();
-    return gen_send_general(jit, ctx, asm, ocb, cd, block);
+    let status = gen_send_general(jit, ctx, asm, ocb, cd, block);
+    if status != CantCompile {
+        return status;
+    }
+
+    // Otherwise, fallback to dynamic dispatch using the interpreter's implementation of send
+    let blockiseq = jit_get_arg(jit, 1).as_iseq();
+    gen_send_dynamic(jit, ctx, asm, cd, unsafe { rb_yjit_sendish_sp_pops((*cd).ci) }, |asm| {
+        extern "C" {
+            fn rb_vm_send(ec: EcPtr, cfp: CfpPtr, cd: VALUE, blockiseq: IseqPtr) -> VALUE;
+        }
+        asm.ccall(
+            rb_vm_send as *const u8,
+            vec![EC, CFP, (cd as usize).into(), VALUE(blockiseq as usize).into()],
+        )
+    })
 }
 
 fn gen_invokeblock(
@@ -6134,13 +6197,38 @@ fn gen_invokeblock(
     asm: &mut Assembler,
     ocb: &mut OutlinedCb,
 ) -> CodegenStatus {
+    // Generate specialized code if possible
+    let cd = jit_get_arg(jit, 0).as_ptr();
+    let status = gen_invokeblock_specialized(jit, ctx, asm, ocb, cd);
+    if status != CantCompile {
+        return status;
+    }
+
+    // Otherwise, fallback to dynamic dispatch using the interpreter's implementation of send
+    gen_send_dynamic(jit, ctx, asm, cd, unsafe { rb_yjit_invokeblock_sp_pops((*cd).ci) }, |asm| {
+        extern "C" {
+            fn rb_vm_invokeblock(ec: EcPtr, cfp: CfpPtr, cd: VALUE) -> VALUE;
+        }
+        asm.ccall(
+            rb_vm_invokeblock as *const u8,
+            vec![EC, CFP, (cd as usize).into()],
+        )
+    })
+}
+
+fn gen_invokeblock_specialized(
+    jit: &mut JITState,
+    ctx: &mut Context,
+    asm: &mut Assembler,
+    ocb: &mut OutlinedCb,
+    cd: *const rb_call_data,
+) -> CodegenStatus {
     if !jit_at_current_insn(jit) {
         defer_compilation(jit, ctx, asm, ocb);
         return EndBlock;
     }
 
     // Get call info
-    let cd = jit_get_arg(jit, 0).as_ptr();
     let ci = unsafe { get_call_data_ci(cd) };
     let argc: i32 = unsafe { vm_ci_argc(ci) }.try_into().unwrap();
     let flags = unsafe { vm_ci_flag(ci) };
@@ -6225,7 +6313,33 @@ fn gen_invokesuper(
     asm: &mut Assembler,
     ocb: &mut OutlinedCb,
 ) -> CodegenStatus {
-    let cd: *const rb_call_data = jit_get_arg(jit, 0).as_ptr();
+    // Generate specialized code if possible
+    let cd = jit_get_arg(jit, 0).as_ptr();
+    let status = gen_invokesuper_specialized(jit, ctx, asm, ocb, cd);
+    if status != CantCompile {
+        return status;
+    }
+
+    // Otherwise, fallback to dynamic dispatch using the interpreter's implementation of send
+    let blockiseq = jit_get_arg(jit, 1).as_iseq();
+    gen_send_dynamic(jit, ctx, asm, cd, unsafe { rb_yjit_sendish_sp_pops((*cd).ci) }, |asm| {
+        extern "C" {
+            fn rb_vm_invokesuper(ec: EcPtr, cfp: CfpPtr, cd: VALUE, blockiseq: IseqPtr) -> VALUE;
+        }
+        asm.ccall(
+            rb_vm_invokesuper as *const u8,
+            vec![EC, CFP, (cd as usize).into(), VALUE(blockiseq as usize).into()],
+        )
+    })
+}
+
+fn gen_invokesuper_specialized(
+    jit: &mut JITState,
+    ctx: &mut Context,
+    asm: &mut Assembler,
+    ocb: &mut OutlinedCb,
+    cd: *const rb_call_data,
+) -> CodegenStatus {
     let block: Option<IseqPtr> = jit_get_arg(jit, 1).as_optional_ptr();
 
     // Defer compilation so we can specialize on class of receiver

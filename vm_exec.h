@@ -181,10 +181,20 @@ default:                        \
 #endif
 #endif
 
+// Run the interpreter from the JIT
+#define VM_EXEC(ec, val) do { \
+    if (val == Qundef) { \
+        VM_ENV_FLAGS_SET(ec->cfp->ep, VM_FRAME_FLAG_FINISH); \
+        val = vm_exec(ec, true); \
+    } \
+} while (0)
+
+// Run the JIT from the interpreter
 #define JIT_EXEC(ec, val) do { \
     jit_func_t func; \
     if (val == Qundef && (func = jit_compile(ec))) { \
         val = func(ec, ec->cfp); \
+        RESTORE_REGS(); /* fix cfp for tailcall */ \
         if (ec->tag->state) THROW_EXCEPTION(val); \
     } \
 } while (0)
