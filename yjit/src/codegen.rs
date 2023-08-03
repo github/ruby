@@ -3966,7 +3966,7 @@ fn jit_protected_callee_ancestry_guard(
         ],
     );
     asm.test(val, val);
-    asm.jz(counted_exit!(ocb, side_exit, send_se_protected_check_failed).into())
+    asm.jz(counted_exit!(ocb, side_exit, guard_send_se_protected_check_failed).into())
 }
 
 // Codegen for rb_obj_not().
@@ -4657,7 +4657,7 @@ fn gen_send_cfunc(
     asm.comment("stack overflow check");
     let stack_limit = asm.lea(ctx.sp_opnd((SIZEOF_VALUE * 4 + 2 * RUBY_SIZEOF_CONTROL_FRAME) as isize));
     asm.cmp(CFP, stack_limit);
-    asm.jbe(counted_exit!(ocb, side_exit, send_se_cf_overflow).as_side_exit());
+    asm.jbe(counted_exit!(ocb, side_exit, guard_send_se_cf_overflow).as_side_exit());
 
     // Number of args which will be passed through to the callee
     // This is adjusted by the kwargs being combined into a hash.
@@ -4860,12 +4860,12 @@ fn push_splat_args(required_args: i32, ctx: &mut Context, asm: &mut Assembler, o
     guard_object_is_heap(
         asm,
         array_reg,
-        counted_exit!(ocb, side_exit, send_splat_not_array),
+        counted_exit!(ocb, side_exit, guard_send_splat_not_array),
     );
     guard_object_is_array(
         asm,
         array_reg,
-        counted_exit!(ocb, side_exit, send_splat_not_array),
+        counted_exit!(ocb, side_exit, guard_send_splat_not_array),
     );
 
     // Pull out the embed flag to check if it's an embedded array.
@@ -4887,7 +4887,7 @@ fn push_splat_args(required_args: i32, ctx: &mut Context, asm: &mut Assembler, o
 
     // Only handle the case where the number of values in the array is equal to the number requested
     asm.cmp(array_len_opnd, required_args.into());
-    asm.jne(counted_exit!(ocb, side_exit, send_splatarray_length_not_equal).into());
+    asm.jne(counted_exit!(ocb, side_exit, guard_send_splatarray_length_not_equal).into());
 
     let array_opnd = ctx.stack_pop(1);
 
@@ -5284,7 +5284,7 @@ fn gen_send_iseq(
         (SIZEOF_VALUE as i32) * (num_locals + stack_max) + 2 * (RUBY_SIZEOF_CONTROL_FRAME as i32);
     let stack_limit = asm.lea(ctx.sp_opnd(locals_offs as isize));
     asm.cmp(CFP, stack_limit);
-    asm.jbe(counted_exit!(ocb, side_exit, send_se_cf_overflow).as_side_exit());
+    asm.jbe(counted_exit!(ocb, side_exit, guard_send_se_cf_overflow).as_side_exit());
 
     // push_splat_args does stack manipulation so we can no longer side exit
     if flags & VM_CALL_ARGS_SPLAT != 0 {
@@ -5967,13 +5967,13 @@ fn gen_send_general(
                             if compile_time_name.string_p() {
                                 (
                                     unsafe { rb_cString },
-                                    counted_exit!(ocb, side_exit, send_send_chain_not_string),
+                                    counted_exit!(ocb, side_exit, guard_send_send_chain_not_string),
 
                                 )
                             } else {
                                 (
                                     unsafe { rb_cSymbol },
-                                    counted_exit!(ocb, side_exit, send_send_chain_not_sym),
+                                    counted_exit!(ocb, side_exit, guard_send_send_chain_not_sym),
                                 )
                             }
                         };
@@ -5998,7 +5998,7 @@ fn gen_send_general(
                         let symbol_id_opnd = asm.ccall(rb_get_symbol_id as *const u8, vec![name_opnd]);
 
                         asm.comment("chain_guard_send");
-                        let chain_exit = counted_exit!(ocb, side_exit, send_send_chain);
+                        let chain_exit = counted_exit!(ocb, side_exit, guard_send_send_chain);
                         asm.cmp(symbol_id_opnd, 0.into());
                         asm.jbe(chain_exit.into());
 

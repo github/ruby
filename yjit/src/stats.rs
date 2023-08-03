@@ -167,6 +167,7 @@ pub(crate) use ptr_to_counter;
 make_counters! {
     exec_instruction,
 
+    // Method calls that fallback to dynamic dispatch
     send_keywords,
     send_kw_splat,
     send_args_splat_super,
@@ -206,10 +207,6 @@ make_counters! {
     send_iseq_too_many_kwargs,
     send_not_implemented_method,
     send_getter_arity,
-    send_se_cf_overflow,
-    send_se_protected_check_failed,
-    send_splatarray_length_not_equal,
-    send_splat_not_array,
     send_args_splat_non_iseq,
     send_args_splat_cfunc,
     send_iseq_ruby2_keywords,
@@ -218,13 +215,19 @@ make_counters! {
     send_send_null_mid,
     send_send_null_cme,
     send_send_nested,
-    send_send_chain,
     send_send_chain_string,
-    send_send_chain_not_string,
-    send_send_chain_not_sym,
     send_send_chain_not_string_or_sym,
     send_send_getter,
     send_send_builtin,
+
+    // Method calls that exit to the interpreter
+    guard_send_se_cf_overflow,
+    guard_send_se_protected_check_failed,
+    guard_send_splatarray_length_not_equal,
+    guard_send_splat_not_array,
+    guard_send_send_chain,
+    guard_send_send_chain_not_string,
+    guard_send_send_chain_not_sym,
 
     send_bmethod_ractor,
     send_bmethod_block_arg,
