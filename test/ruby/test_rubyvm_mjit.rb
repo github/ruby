@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 require 'test/unit'
 require_relative '../lib/jit_support'
+return # we don't use MJIT
 
 return if RbConfig::CONFIG["MJIT_SUPPORT"] == 'no'
 

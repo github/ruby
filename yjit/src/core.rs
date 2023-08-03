@@ -14,6 +14,9 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::mem;
 use std::rc::{Rc};
+use mem::MaybeUninit;
+use std::ptr;
+use ptr::NonNull;
 use YARVOpnd::*;
 use TempMapping::*;
 use crate::invariants::block_assumptions_free;
@@ -379,6 +382,35 @@ impl Branch {
     }
 }
 
+// Store info about code used on YJIT entry
+pub struct Entry {
+    // Positions where the generated code starts and ends
+    start_addr: CodePtr,
+    end_addr: CodePtr, // exclusive
+}
+
+/// A [Branch] for a [Block] that is under construction.
+pub struct PendingEntry {
+    pub uninit_entry: Box<MaybeUninit<Entry>>,
+    start_addr: Cell<Option<CodePtr>>,
+    end_addr: Cell<Option<CodePtr>>, // exclusive
+}
+
+impl PendingEntry {
+    // Construct the entry in the heap
+    pub fn into_entry(mut self) -> EntryRef {
+        // Make the entry
+        let entry = Entry {
+            start_addr: self.start_addr.get().unwrap(),
+            end_addr: self.end_addr.get().unwrap(),
+        };
+        // Move it to the designated place on the heap and unwrap MaybeUninit.
+        self.uninit_entry.write(entry);
+        let raw_entry: *mut MaybeUninit<Entry> = Box::into_raw(self.uninit_entry);
+        NonNull::new(raw_entry as *mut Entry).expect("no null from Box")
+    }
+}
+
 // In case a block is invalidated, this helps to remove all pointers to the block.
 pub type CmePtr = *const rb_callable_method_entry_t;
 
@@ -431,6 +463,9 @@ pub struct BlockRef(Rc<RefCell<Block>>);
 
 /// Reference-counted pointer to a branch that can be borrowed mutably
 type BranchRef = Rc<RefCell<Branch>>;
+
+/// Pointer to an entry that is already added to an ISEQ
+pub type EntryRef = NonNull<Entry>;
 
 /// List of block versions for a given blockid
 type VersionList = Vec<BlockRef>;
@@ -492,6 +527,9 @@ pub struct IseqPayload {
 
     // Indexes of code pages used by this this ISEQ
     pub pages: HashSet<usize>,
+
+    // List of ISEQ entry codes
+    pub entries: Vec<EntryRef>,
 
     // Blocks that are invalidated but are not yet deallocated.
     // The code GC will free them later.
@@ -607,6 +645,12 @@ pub extern "C" fn rb_yjit_iseq_free(payload: *mut c_void) {
     // It drops right before this function returns.
     // SAFETY: We got the pointer from Box::into_raw().
     let payload = unsafe { Box::from_raw(payload) };
+
+    // Free all entries
+    for entryref in payload.entries.iter() {
+        let entry = unsafe { Box::from_raw(entryref.as_ptr()) };
+        mem::drop(entry);
+    }
 
     // Increment the freed iseq count
     incr_counter!(freed_iseq_count);
@@ -1554,9 +1598,8 @@ fn gen_block_series_body(
 pub fn gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> Option<CodePtr> {
     // Compute the current instruction index based on the current PC
     let insn_idx: u32 = unsafe {
-        let pc_zero = rb_iseq_pc_at_idx(iseq, 0);
         let ec_pc = get_cfp_pc(get_ec_cfp(ec));
-        ec_pc.offset_from(pc_zero).try_into().ok()?
+        iseq_pc_to_insn_idx(iseq, ec_pc)?
     };
 
     // The entry context makes no assumptions about types
@@ -1570,7 +1613,7 @@ pub fn gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> Option<CodePtr> {
     let ocb = CodegenGlobals::get_outlined_cb();
 
     // Write the interpreter entry prologue. Might be NULL when out of memory.
-    let code_ptr = gen_entry_prologue(cb, iseq, insn_idx);
+    let code_ptr = gen_entry_prologue(cb, ocb, iseq, insn_idx);
 
     // Try to generate code for the entry block
     let block = gen_block_series(blockid, &Context::default(), ec, cb, ocb);
@@ -1597,6 +1640,151 @@ pub fn gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> Option<CodePtr> {
 
     // Compilation successful and block not empty
     return code_ptr;
+}
+
+// Change the entry's jump target from an entry stub to a next entry
+pub fn regenerate_entry(cb: &mut CodeBlock, entryref: &EntryRef, next_entry: CodePtr) {
+    let mut asm = Assembler::new();
+    asm.comment("regenerate_entry");
+
+    // gen_entry_guard generates cmp + jne. We're rewriting only jne.
+    asm.jne(next_entry.into());
+
+    // Move write_pos to rewrite the entry
+    let old_write_pos = cb.get_write_pos();
+    let old_dropped_bytes = cb.has_dropped_bytes();
+    cb.set_write_ptr(unsafe { entryref.as_ref() }.start_addr);
+    cb.set_dropped_bytes(false);
+    asm.compile(cb);
+
+    // Rewind write_pos to the original one
+    assert_eq!(cb.get_write_ptr(), unsafe { entryref.as_ref() }.end_addr);
+    cb.set_pos(old_write_pos);
+    cb.set_dropped_bytes(old_dropped_bytes);
+}
+
+pub type PendingEntryRef = Rc<PendingEntry>;
+
+/// Create a new entry reference for an ISEQ
+pub fn new_pending_entry() -> PendingEntryRef {
+    let entry = PendingEntry {
+        uninit_entry: Box::new(MaybeUninit::uninit()),
+        start_addr: Cell::new(None),
+        end_addr: Cell::new(None),
+    };
+    return Rc::new(entry);
+}
+
+c_callable! {
+    /// Generated code calls this function with the SysV calling convention.
+    /// See [gen_call_entry_stub_hit].
+    fn entry_stub_hit(entry_ptr: *const c_void, ec: EcPtr) -> *const u8 {
+        with_vm_lock(src_loc!(), || {
+            match entry_stub_hit_body(entry_ptr, ec) {
+                Some(addr) => addr,
+                // Failed to service the stub by generating a new block so now we
+                // need to exit to the interpreter at the stubbed location.
+                None => return CodegenGlobals::get_stub_exit_code().raw_ptr(),
+            }
+        })
+    }
+}
+
+/// Called by the generated code when an entry stub is executed
+fn entry_stub_hit_body(entry_ptr: *const c_void, ec: EcPtr) -> Option<*const u8> {
+    // Get ISEQ and insn_idx from the current ec->cfp
+    let cfp = unsafe { get_ec_cfp(ec) };
+    let iseq = unsafe { get_cfp_iseq(cfp) };
+    let insn_idx = iseq_pc_to_insn_idx(iseq, unsafe { get_cfp_pc(cfp) })?;
+
+    let cb = CodegenGlobals::get_inline_cb();
+    let ocb = CodegenGlobals::get_outlined_cb();
+
+    // Compile a new entry guard as a next entry
+    let next_entry = cb.get_write_ptr();
+    let mut asm = Assembler::new();
+    let pending_entry = gen_entry_chain_guard(&mut asm, ocb, iseq, insn_idx)?;
+    asm.compile(cb);
+
+    // Try to find an existing compiled version of this block
+    let blockid = BlockId { iseq, idx: insn_idx };
+    let ctx = Context::default();
+    let blockref = match find_block_version(blockid, &ctx) {
+        // If an existing block is found, generate a jump to the block.
+        Some(blockref) => {
+            let mut asm = Assembler::new();
+            asm.jmp(blockref.borrow().start_addr?.into());
+            asm.compile(cb);
+            blockref
+        }
+        // If this block hasn't yet been compiled, generate blocks after the entry guard.
+        None => match gen_block_series(blockid, &ctx, ec, cb, ocb) {
+            Some(blockref) => blockref,
+            None => { // No space
+                // Trigger code GC. This entry point will be recompiled later.
+                cb.code_gc();
+                return None;
+            }
+        }
+    };
+
+    // Regenerate the previous entry
+    assert!(!entry_ptr.is_null());
+    let entryref = NonNull::<Entry>::new(entry_ptr as *mut Entry).expect("Entry should not be null");
+    regenerate_entry(cb, &entryref, next_entry);
+
+    // Write an entry to the heap and push it to the ISEQ
+    let pending_entry = Rc::try_unwrap(pending_entry).ok().expect("PendingEntry should be unique");
+    get_or_create_iseq_payload(iseq).entries.push(pending_entry.into_entry());
+
+    cb.mark_all_executable();
+    ocb.unwrap().mark_all_executable();
+
+    // Let the stub jump to the block
+    let block = blockref.borrow();
+    Some(block.start_addr?.raw_ptr())
+}
+
+/// Generate a stub that calls entry_stub_hit
+pub fn gen_entry_stub(entry_address: usize, ocb: &mut OutlinedCb) -> Option<CodePtr> {
+    let ocb = ocb.unwrap();
+    let stub_addr = ocb.get_write_ptr();
+
+    let mut asm = Assembler::new();
+    asm.comment("entry stub hit");
+
+    asm.mov(C_ARG_OPNDS[0], entry_address.into());
+
+    // Jump to trampoline to call entry_stub_hit()
+    // Not really a side exit, just don't need a padded jump here.
+    asm.jmp(CodegenGlobals::get_entry_stub_hit_trampoline().as_side_exit());
+
+    asm.compile(ocb);
+
+    if ocb.has_dropped_bytes() {
+        return None; // No space
+    } else {
+        return Some(stub_addr);
+    }
+}
+
+/// A trampoline used by gen_entry_stub. entry_stub_hit may issue Code GC, so
+/// it's useful for Code GC to call entry_stub_hit from a globally shared code.
+pub fn gen_entry_stub_hit_trampoline(ocb: &mut OutlinedCb) -> CodePtr {
+    let ocb = ocb.unwrap();
+    let code_ptr = ocb.get_write_ptr();
+    let mut asm = Assembler::new();
+
+    // See gen_entry_guard for how it's used.
+    asm.comment("entry_stub_hit() trampoline");
+    let jump_addr = asm.ccall(entry_stub_hit as *mut u8, vec![C_ARG_OPNDS[0], EC]);
+
+    // Jump to the address returned by the entry_stub_hit() call
+    asm.jmp_opnd(jump_addr);
+
+    asm.compile(ocb);
+
+    code_ptr
 }
 
 /// Generate code for a branch, possibly rewriting and changing the size of it
@@ -1964,6 +2152,28 @@ pub fn gen_branch_stub_hit_trampoline(ocb: &mut OutlinedCb) -> CodePtr {
 
 impl Assembler
 {
+    /// Mark the start position of a patchable entry point in the machine code
+    pub fn mark_entry_start(&mut self, entryref: &PendingEntryRef) {
+        // We need to create our own entry rc object
+        // so that we can move the closure below
+        let entryref = entryref.clone();
+
+        self.pos_marker(move |code_ptr| {
+            entryref.start_addr.set(Some(code_ptr));
+        });
+    }
+
+    /// Mark the end position of a patchable entry point in the machine code
+    pub fn mark_entry_end(&mut self, entryref: &PendingEntryRef) {
+        // We need to create our own entry rc object
+        // so that we can move the closure below
+        let entryref = entryref.clone();
+
+        self.pos_marker(move |code_ptr| {
+            entryref.end_addr.set(Some(code_ptr));
+        });
+    }
+
     // Mark the start position of a patchable branch in the machine code
     fn mark_branch_start(&mut self, branchref: &BranchRef)
     {
