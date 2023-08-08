@@ -219,8 +219,11 @@ make_counters! {
     send_send_chain_not_string_or_sym,
     send_send_getter,
     send_send_builtin,
+    send_bmethod_ractor,
+    send_bmethod_block_arg,
 
     // Method calls that exit to the interpreter
+    guard_send_klass_megamorphic,
     guard_send_se_cf_overflow,
     guard_send_se_protected_check_failed,
     guard_send_splatarray_length_not_equal,
@@ -228,9 +231,6 @@ make_counters! {
     guard_send_send_chain,
     guard_send_send_chain_not_string,
     guard_send_send_chain_not_sym,
-
-    send_bmethod_ractor,
-    send_bmethod_block_arg,
 
     traced_cfunc_return,
 
@@ -258,9 +258,6 @@ make_counters! {
     setivar_name_not_mapped,
     setivar_not_object,
     setivar_frozen,
-
-    // Not using "getivar_" to exclude this from exit reasons
-    get_ivar_max_depth,
 
     oaref_argc_not_one,
     oaref_arg_not_fixnum,
@@ -302,6 +299,10 @@ make_counters! {
     exec_mem_non_bump_alloc,
 
     num_gc_obj_refs,
+
+    num_send_megamorphic,
+    num_getivar_megamorphic,
+    num_setivar_megamorphic,
 }
 
 //===========================================================================

@@ -1999,9 +1999,9 @@ fn gen_get_ivar(
     // Check if the comptime receiver is a T_OBJECT
     let receiver_t_object = unsafe { RB_TYPE_P(comptime_receiver, RUBY_T_OBJECT) };
     // Use a general C call at the last chain to avoid exits on megamorphic shapes
-    let last_chain = ctx.get_chain_depth() as i32 == max_chain_depth - 1;
-    if last_chain {
-        gen_counter_incr!(asm, get_ivar_max_depth);
+    let megamorphic = ctx.get_chain_depth() as i32 >= max_chain_depth;
+    if megamorphic {
+        gen_counter_incr!(asm, num_getivar_megamorphic);
     }
 
     // If the class uses the default allocator, instances should all be T_OBJECT
@@ -2009,7 +2009,7 @@ fn gen_get_ivar(
     //       Eventually, we can encode whether an object is T_OBJECT or not
     //       inside object shapes.
     // too-complex shapes can't use index access, so we use rb_ivar_get for them too.
-    if !receiver_t_object || uses_custom_allocator || comptime_receiver.shape_too_complex() || last_chain {
+    if !receiver_t_object || uses_custom_allocator || comptime_receiver.shape_too_complex() || megamorphic {
         // General case. Call rb_ivar_get().
         // VALUE rb_ivar_get(VALUE obj, ID id)
         asm.comment("call rb_ivar_get()");
@@ -2231,10 +2231,15 @@ fn gen_setinstancevariable(
 
     // Check if the comptime receiver is a T_OBJECT
     let receiver_t_object = unsafe { RB_TYPE_P(comptime_receiver, RUBY_T_OBJECT) };
+    // Use a general C call at the last chain to avoid exits on megamorphic shapes
+    let megamorphic = ctx.get_chain_depth() as i32 >= SET_IVAR_MAX_DEPTH;
+    if megamorphic {
+        gen_counter_incr!(asm, num_setivar_megamorphic);
+    }
 
     // If the receiver isn't a T_OBJECT, or uses a custom allocator,
     // then just write out the IV write as a function call
-    if !receiver_t_object || uses_custom_allocator {
+    if !receiver_t_object || uses_custom_allocator || megamorphic {
         asm.comment("call rb_vm_setinstancevariable()");
 
         let ic = jit_get_arg(jit, 1).as_u64(); // type IVC
@@ -5734,12 +5739,19 @@ fn gen_send_general(
     let comptime_recv = jit_peek_at_stack(jit, ctx, recv_idx as isize);
     let comptime_recv_klass = comptime_recv.class_of();
 
+    // If megamorphic, let the caller fallback to dynamic dispatch
+    if ctx.get_chain_depth() as i32 >= SEND_MAX_DEPTH {
+        gen_counter_incr!(asm, num_send_megamorphic);
+        return CantCompile;
+    }
+
     // Guard that the receiver has the same class as the one from compile time
     let side_exit = get_side_exit(jit, ocb, ctx);
 
     // Points to the receiver operand on the stack
     let recv = ctx.stack_opnd(recv_idx);
     let recv_opnd = StackOpnd(recv_idx.try_into().unwrap());
+    let megamorphic_exit = counted_exit!(ocb, side_exit, guard_send_klass_megamorphic);
     jit_guard_known_klass(
         jit,
         ctx,
@@ -5750,7 +5762,7 @@ fn gen_send_general(
         recv_opnd,
         comptime_recv,
         SEND_MAX_DEPTH,
-        side_exit,
+        megamorphic_exit,
     );
 
     // Do method lookup

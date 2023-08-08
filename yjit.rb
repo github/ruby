@@ -259,6 +259,10 @@ module RubyVM::YJIT
       # Number of failed compiler invocations
       compilation_failure = stats[:compilation_failure]
 
+      $stderr.puts "num_send_megamorphic:  " + ("%10d" % stats[:num_send_megamorphic])
+      $stderr.puts "num_getivar_megamorphic: " + ("%10d" % stats[:num_getivar_megamorphic])
+      $stderr.puts "num_setivar_megamorphic: " + ("%10d" % stats[:num_setivar_megamorphic])
+
       $stderr.puts "bindings_allocations:  " + ("%10d" % stats[:binding_allocations])
       $stderr.puts "bindings_set:          " + ("%10d" % stats[:binding_set])
       $stderr.puts "compilation_failure:   " + ("%10d" % compilation_failure) if compilation_failure != 0
