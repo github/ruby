@@ -79,8 +79,6 @@ struct rb_mjit_compile_info {
     bool disable_const_cache;
 };
 
-typedef VALUE (*jit_func_t)(rb_execution_context_t *, rb_control_frame_t *);
-
 RUBY_SYMBOL_EXPORT_BEGIN
 RUBY_EXTERN struct mjit_options mjit_opts;
 RUBY_EXTERN bool mjit_call_p;

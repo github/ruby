@@ -450,6 +450,9 @@ jit_exec(rb_execution_context_t *ec)
         return Qundef;
     }
 }
+#else
+# define jit_compile(ec) ((jit_func_t)0)
+# define jit_exec(ec) Qundef
 #endif
 
 #include "vm_insnhelper.c"

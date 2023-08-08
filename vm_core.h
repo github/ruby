@@ -368,6 +368,8 @@ enum rb_iseq_type {
     ISEQ_TYPE_PLAIN
 };
 
+typedef VALUE (*jit_func_t)(struct rb_execution_context_struct *, struct rb_control_frame_struct *);
+
 struct rb_iseq_constant_body {
     enum rb_iseq_type type;
 
