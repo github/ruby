@@ -104,9 +104,11 @@ fn rb_bug_panic_hook() {
 
 /// Called from C code to begin compiling a function
 /// NOTE: this should be wrapped in RB_VM_LOCK_ENTER(), rb_vm_barrier() on the C side
+/// If jit_exception is true, compile JIT code for handling exceptions.
+/// See [jit_compile_exception] for details.
 #[no_mangle]
-pub extern "C" fn rb_yjit_iseq_gen_entry_point(iseq: IseqPtr, ec: EcPtr) -> *const u8 {
-    let maybe_code_ptr = gen_entry_point(iseq, ec);
+pub extern "C" fn rb_yjit_iseq_gen_entry_point(iseq: IseqPtr, ec: EcPtr, jit_exception: bool) -> *const u8 {
+    let maybe_code_ptr = gen_entry_point(iseq, ec, jit_exception);
 
     match maybe_code_ptr {
         Some(ptr) => ptr.raw_ptr(),

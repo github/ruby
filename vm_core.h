@@ -368,7 +368,7 @@ enum rb_iseq_type {
     ISEQ_TYPE_PLAIN
 };
 
-typedef VALUE (*jit_func_t)(struct rb_execution_context_struct *, struct rb_control_frame_struct *);
+typedef VALUE (*rb_jit_func_t)(struct rb_execution_context_struct *, struct rb_control_frame_struct *);
 
 struct rb_iseq_constant_body {
     enum rb_iseq_type type;
@@ -506,10 +506,17 @@ struct rb_iseq_constant_body {
     const rb_iseq_t *mandatory_only_iseq;
 
 #if USE_MJIT || USE_YJIT
-    // Function pointer for JIT code
-    VALUE (*jit_func)(struct rb_execution_context_struct *, struct rb_control_frame_struct *);
-    // Number of total calls with jit_exec()
-    long unsigned total_calls;
+    // Function pointer for JIT code on jit_exec()
+    rb_jit_func_t jit_entry;
+    // Number of calls on jit_exec()
+    long unsigned jit_entry_calls;
+#endif
+
+#if USE_YJIT
+    // Function pointer for JIT code on jit_exec_exception()
+    rb_jit_func_t jit_exception;
+    // Number of calls on jit_exec_exception()
+    long unsigned jit_exception_calls;
 #endif
 
 #if USE_MJIT

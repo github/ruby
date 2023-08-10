@@ -191,7 +191,7 @@ default:                        \
 
 // Run the JIT from the interpreter
 #define JIT_EXEC(ec, val) do { \
-    jit_func_t func; \
+    rb_jit_func_t func; \
     if (val == Qundef && (func = jit_compile(ec))) { \
         val = func(ec, ec->cfp); \
         RESTORE_REGS(); /* fix cfp for tailcall */ \

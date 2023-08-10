@@ -2468,6 +2468,12 @@ vm_base_ptr(const rb_control_frame_t *cfp)
 #endif
 }
 
+VALUE *
+rb_vm_base_ptr(const rb_control_frame_t *cfp)
+{
+    return vm_base_ptr(cfp);
+}
+
 /* method call processes with call_info */
 
 #include "vm_args.c"

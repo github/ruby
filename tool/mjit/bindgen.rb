@@ -410,6 +410,7 @@ generator = BindingGenerator.new(
     rb_serial_t
     rb_shape
     rb_shape_t
+    rb_jit_func_t
   ],
   dynamic_types: %w[
     VALUE
@@ -418,7 +419,7 @@ generator = BindingGenerator.new(
   skip_fields: {
     'rb_execution_context_struct.machine': %w[regs], # differs between macOS and Linux
     rb_execution_context_struct: %w[method_missing_reason], # non-leading bit fields not supported
-    rb_iseq_constant_body: %w[yjit_payload], # conditionally defined
+    rb_iseq_constant_body: %w[jit_exception jit_exception_calls yjit_payload], # conditionally defined
   },
   ruby_fields: {
     rb_iseq_location_struct: %w[

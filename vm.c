@@ -389,14 +389,14 @@ static inline VALUE mjit_check_iseq(rb_execution_context_t *ec, const rb_iseq_t 
 static VALUE
 mjit_check_iseq(rb_execution_context_t *ec, const rb_iseq_t *iseq, struct rb_iseq_constant_body *body)
 {
-    uintptr_t mjit_state = (uintptr_t)(body->jit_func);
+    uintptr_t mjit_state = (uintptr_t)(body->jit_entry);
     ASSUME(MJIT_FUNC_STATE_P(mjit_state));
     switch ((enum rb_mjit_func_state)mjit_state) {
       case MJIT_FUNC_NOT_COMPILED:
-        if (body->total_calls == mjit_opts.call_threshold) {
+        if (body->jit_entry_calls == mjit_opts.call_threshold) {
             rb_mjit_add_iseq_to_process(iseq);
-            if (UNLIKELY(mjit_opts.wait && !MJIT_FUNC_STATE_P(body->jit_func))) {
-                return body->jit_func(ec, ec->cfp);
+            if (UNLIKELY(mjit_opts.wait && !MJIT_FUNC_STATE_P(body->jit_entry))) {
+                return body->jit_entry(ec, ec->cfp);
             }
         }
         break;
@@ -407,8 +407,15 @@ mjit_check_iseq(rb_execution_context_t *ec, const rb_iseq_t *iseq, struct rb_ise
     return Qundef;
 }
 
-// Try to compile the current ISeq in ec. Return 0 if not compiled.
-static inline jit_func_t
+// Generate JIT code that supports the following kinds of ISEQ entries:
+//   * The first ISEQ on vm_exec (e.g. <main>, or Ruby methods/blocks
+//     called by a C method). The current frame has VM_FRAME_FLAG_FINISH.
+//     The current vm_exec stops if JIT code returns a non-Qundef value.
+//   * ISEQs called by the interpreter on vm_sendish (e.g. Ruby methods or
+//     blocks called by a Ruby frame that isn't compiled or side-exited).
+//     The current frame doesn't have VM_FRAME_FLAG_FINISH. The current
+//     vm_exec does NOT stop whether JIT code returns Qundef or not.
+static inline rb_jit_func_t
 jit_compile(rb_execution_context_t *ec)
 {
     // Increment the ISEQ's call counter
@@ -416,32 +423,31 @@ jit_compile(rb_execution_context_t *ec)
     struct rb_iseq_constant_body *body = ISEQ_BODY(iseq);
     bool yjit_enabled = rb_yjit_compile_new_iseqs();
     if (yjit_enabled || mjit_call_p) {
-        body->total_calls++;
+        body->jit_entry_calls++;
     }
     else {
-        return 0;
+        return NULL;
     }
 
-    // Trigger JIT compilation as needed
-    if (yjit_enabled) {
-        if (body->total_calls == rb_yjit_call_threshold())  {
-            rb_yjit_compile_iseq(iseq, ec);
+    // Trigger JIT compilation if not compiled
+    if (body->jit_entry == NULL) {
+        if (yjit_enabled) {
+            if (body->jit_entry_calls == rb_yjit_call_threshold())  {
+                rb_yjit_compile_iseq(iseq, ec, false);
+            }
+        }
+        else if (UNLIKELY(MJIT_FUNC_STATE_P(body->jit_entry))) {
+            mjit_check_iseq(ec, iseq, body);
         }
     }
-    else if (UNLIKELY(MJIT_FUNC_STATE_P(body->jit_func))) {
-        mjit_check_iseq(ec, iseq, body);
-    }
-
-    return body->jit_func;
+    return body->jit_entry;
 }
 
-// Try to execute the current iseq in ec.  Use JIT code if it is ready.
-// If it is not, add ISEQ to the compilation queue and return Qundef for MJIT.
-// YJIT compiles on the thread running the iseq.
+// Execute JIT code compiled by jit_compile()
 static inline VALUE
 jit_exec(rb_execution_context_t *ec)
 {
-    jit_func_t func = jit_compile(ec);
+    rb_jit_func_t func = jit_compile(ec);
     if (func) {
         // Call the JIT code
         return func(ec, ec->cfp);
@@ -451,8 +457,53 @@ jit_exec(rb_execution_context_t *ec)
     }
 }
 #else
-# define jit_compile(ec) ((jit_func_t)0)
+# define jit_compile(ec) ((rb_jit_func_t)0)
 # define jit_exec(ec) Qundef
+#endif
+
+#if USE_YJIT
+// Generate JIT code that supports the following kind of ISEQ entry:
+//   * The first ISEQ pushed by vm_exec_handle_exception. The frame would
+//     point to a location specified by a catch table, and it doesn't have
+//     VM_FRAME_FLAG_FINISH. The current vm_exec stops if JIT code returns
+//     a non-Qundef value. So you should not return a non-Qundef value
+//     until ec->cfp is changed to a frame with VM_FRAME_FLAG_FINISH.
+static inline rb_jit_func_t
+jit_compile_exception(rb_execution_context_t *ec)
+{
+    // Increment the ISEQ's call counter
+    const rb_iseq_t *iseq = ec->cfp->iseq;
+    struct rb_iseq_constant_body *body = ISEQ_BODY(iseq);
+    if (rb_yjit_compile_new_iseqs()) {
+        body->jit_exception_calls++;
+    }
+    else {
+        return NULL;
+    }
+
+    // Trigger JIT compilation if not compiled
+    if (body->jit_exception == NULL && body->jit_exception_calls == rb_yjit_call_threshold()) {
+        rb_yjit_compile_iseq(iseq, ec, true);
+    }
+    return body->jit_exception;
+}
+
+// Execute JIT code compiled by jit_compile_exception()
+static inline VALUE
+jit_exec_exception(rb_execution_context_t *ec)
+{
+    rb_jit_func_t func = jit_compile_exception(ec);
+    if (func) {
+        // Call the JIT code
+        return func(ec, ec->cfp);
+    }
+    else {
+        return Qundef;
+    }
+}
+#else
+# define jit_compile_exception(ec) ((rb_jit_func_t)0)
+# define jit_exec_exception(ec) Qundef
 #endif
 
 #include "vm_insnhelper.c"
@@ -2385,8 +2436,11 @@ vm_exec(rb_execution_context_t *ec, bool jit_enable_p)
         result = ec->errinfo;
         rb_ec_raised_reset(ec, RAISED_STACKOVERFLOW | RAISED_NOMEMORY);
         while (UNDEF_P(result = vm_exec_handle_exception(ec, state, result, &initial))) {
-            /* caught a jump, exec the handler */
-            result = vm_exec_core(ec, initial);
+            // caught a jump, exec the handler. JIT code in jit_exec_exception()
+            // may return Qundef to run remaining frames with vm_exec_core().
+            if (UNDEF_P(result = jit_exec_exception(ec))) {
+                result = vm_exec_core(ec, initial);
+            }
           vm_loop_start:
             VM_ASSERT(ec->tag == &_tag);
             /* when caught `throw`, `tag.state` is set. */

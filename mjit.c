@@ -321,7 +321,7 @@ static void
 free_unit(struct rb_mjit_unit *unit)
 {
     if (unit->iseq) { // ISeq is not GCed
-        ISEQ_BODY(unit->iseq)->jit_func = (jit_func_t)MJIT_FUNC_FAILED;
+        ISEQ_BODY(unit->iseq)->jit_entry = (rb_jit_func_t)MJIT_FUNC_FAILED;
         ISEQ_BODY(unit->iseq)->mjit_unit = NULL;
     }
     if (unit->cc_entries) {
@@ -402,7 +402,7 @@ get_from_list(struct rb_mjit_unit_list *list)
             continue;
         }
 
-        if (best == NULL || ISEQ_BODY(best->iseq)->total_calls < ISEQ_BODY(unit->iseq)->total_calls) {
+        if (best == NULL || ISEQ_BODY(best->iseq)->jit_entry_calls < ISEQ_BODY(unit->iseq)->jit_entry_calls) {
             best = unit;
         }
     }
@@ -789,7 +789,7 @@ load_batch_funcs_from_so(struct rb_mjit_unit *unit, char *c_file, char *so_file)
         if (child_unit->iseq) { // Check whether GCed or not
             // Usage of jit_code might be not in a critical section.
             const rb_iseq_t *iseq = child_unit->iseq;
-            MJIT_ATOMIC_SET(ISEQ_BODY(iseq)->jit_func, (jit_func_t)func);
+            MJIT_ATOMIC_SET(ISEQ_BODY(iseq)->jit_entry, (rb_jit_func_t)func);
 
             verbose(1, "JIT success: %s@%s:%d",
                     RSTRING_PTR(ISEQ_BODY(iseq)->location.label),
@@ -837,7 +837,7 @@ load_compact_funcs_from_so(struct rb_mjit_unit *unit, char *c_file, char *so_fil
 
             if (child_unit->iseq) { // Check whether GCed or not
                 // Usage of jit_code might be not in a critical section.
-                MJIT_ATOMIC_SET(ISEQ_BODY(child_unit->iseq)->jit_func, (jit_func_t)func);
+                MJIT_ATOMIC_SET(ISEQ_BODY(child_unit->iseq)->jit_entry, (rb_jit_func_t)func);
             }
         }
     }
@@ -1100,7 +1100,7 @@ check_unit_queue(void)
     VM_ASSERT(unit_queue.length > 0);
     while ((child_unit = get_from_list(&unit_queue)) != NULL && (active_units_length + unit->units.length) < mjit_opts.max_cache_size) {
         add_to_list(child_unit, &unit->units);
-        ISEQ_BODY(child_unit->iseq)->jit_func = (jit_func_t)MJIT_FUNC_COMPILING;
+        ISEQ_BODY(child_unit->iseq)->jit_entry = (rb_jit_func_t)MJIT_FUNC_COMPILING;
     }
 
     // Run the MJIT compiler synchronously
@@ -1328,7 +1328,7 @@ mjit_hook_custom_compile(const rb_iseq_t *iseq)
         VALUE iseq_class = rb_funcall(rb_mMJITC, rb_intern("rb_iseq_t"), 0);
         VALUE iseq_ptr = rb_funcall(iseq_class, rb_intern("new"), 1, ULONG2NUM((size_t)iseq));
         VALUE jit_func = rb_funcall(rb_mMJIT, rb_intern("compile"), 1, iseq_ptr);
-        ISEQ_BODY(iseq)->jit_func = (jit_func_t)NUM2ULONG(jit_func);
+        ISEQ_BODY(iseq)->jit_entry = (rb_jit_func_t)NUM2ULONG(jit_func);
     });
 }
 
@@ -1343,18 +1343,18 @@ mjit_add_iseq_to_process(const rb_iseq_t *iseq, const struct rb_mjit_compile_inf
     if (pch_status != PCH_SUCCESS || !rb_ractor_main_p()) // TODO: Support non-main Ractors
         return;
     if (!mjit_target_iseq_p(iseq)) {
-        ISEQ_BODY(iseq)->jit_func = (jit_func_t)MJIT_FUNC_FAILED; // skip mjit_wait
+        ISEQ_BODY(iseq)->jit_entry = (rb_jit_func_t)MJIT_FUNC_FAILED; // skip mjit_wait
         return;
     }
 
     // For batching multiple ISEQs, we only enqueue ISEQs when total_calls reaches call_threshold,
     // and compile all enqueued ISEQs when any ISEQ reaches call_threshold * 2.
-    bool recompile_p = !MJIT_FUNC_STATE_P(ISEQ_BODY(iseq)->jit_func);
+    bool recompile_p = !MJIT_FUNC_STATE_P(ISEQ_BODY(iseq)->jit_entry);
     if (!ISEQ_BODY(iseq)->mjit_unit || recompile_p) { // call_threshold, or recompile
         // Discard an old unit with recompile_p
         if (recompile_p) {
             ISEQ_BODY(iseq)->mjit_unit->iseq = NULL; // Ignore this from compaction
-            ISEQ_BODY(iseq)->jit_func = (jit_func_t)MJIT_FUNC_NOT_COMPILED;
+            ISEQ_BODY(iseq)->jit_entry = (rb_jit_func_t)MJIT_FUNC_NOT_COMPILED;
             active_units_length--;
         }
 
@@ -1365,7 +1365,7 @@ mjit_add_iseq_to_process(const rb_iseq_t *iseq, const struct rb_mjit_compile_inf
             unit->compile_info = *compile_info;
         }
         add_to_list(unit, &unit_queue);
-        ISEQ_BODY(iseq)->total_calls = 0; // come here again :)
+        ISEQ_BODY(iseq)->jit_entry_calls = 0; // come here again :)
     }
     else { // call_threshold * 2
         VM_ASSERT(compile_info == NULL);
@@ -1401,7 +1401,7 @@ mjit_wait(struct rb_mjit_unit *unit)
         tries++;
         if (tries / 1000 > MJIT_WAIT_TIMEOUT_SECONDS) {
             if (unit->type == MJIT_UNIT_ISEQ) {
-                unit->iseq->body->jit_func = (jit_func_t)MJIT_FUNC_FAILED; // C compiler was too slow. Give up.
+                unit->iseq->body->jit_entry = (rb_jit_func_t)MJIT_FUNC_FAILED; // C compiler was too slow. Give up.
             }
             mjit_warning("timed out to wait for JIT finish");
             break;
@@ -1421,7 +1421,7 @@ rb_mjit_iseq_compile_info(const struct rb_iseq_constant_body *body)
 static void
 mjit_recompile(const rb_iseq_t *iseq)
 {
-    if (MJIT_FUNC_STATE_P(ISEQ_BODY(iseq)->jit_func))
+    if (MJIT_FUNC_STATE_P(ISEQ_BODY(iseq)->jit_entry))
         return;
 
     verbose(1, "JIT recompile: %s@%s:%d", RSTRING_PTR(ISEQ_BODY(iseq)->location.label),
