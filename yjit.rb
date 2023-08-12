@@ -181,6 +181,16 @@ module RubyVM::YJIT
     stats
   end
 
+  # Format and print out counters as a String. This returns a non-empty
+  # content only when --yjit-stats is enabled.
+  def self.stats_string
+    # Lazily require StringIO to avoid breaking miniruby
+    require 'stringio'
+    strio = StringIO.new
+    _print_stats(out: strio)
+    strio.string
+  end
+
   # Produce disassembly for an iseq
   def self.disasm(iseq)
     # If a method or proc is passed in, get its iseq
@@ -237,65 +247,65 @@ module RubyVM::YJIT
     end
 
     # Format and print out counters
-    def _print_stats # :nodoc:
+    def _print_stats(out: $stderr) # :nodoc:
       stats = runtime_stats
-      return unless stats
+      return unless Primitive.rb_yjit_stats_enabled_p
 
-      $stderr.puts("***YJIT: Printing YJIT statistics on exit***")
+      out.puts("***YJIT: Printing YJIT statistics on exit***")
 
-      print_counters(stats, prefix: 'send_', prompt: 'method call fallback reasons: ')
-      print_counters(stats, prefix: 'guard_send_', prompt: 'method call exit reasons: ')
-      print_counters(stats, prefix: 'invokeblock_', prompt: 'invokeblock exit reasons: ')
-      print_counters(stats, prefix: 'invokesuper_', prompt: 'invokesuper exit reasons: ')
-      print_counters(stats, prefix: 'leave_', prompt: 'leave exit reasons: ')
-      print_counters(stats, prefix: 'gbpp_', prompt: 'getblockparamproxy exit reasons: ')
-      print_counters(stats, prefix: 'getivar_', prompt: 'getinstancevariable exit reasons:')
-      print_counters(stats, prefix: 'setivar_', prompt: 'setinstancevariable exit reasons:')
-      print_counters(stats, prefix: 'oaref_', prompt: 'opt_aref exit reasons: ')
-      print_counters(stats, prefix: 'expandarray_', prompt: 'expandarray exit reasons: ')
-      print_counters(stats, prefix: 'opt_getinlinecache_', prompt: 'opt_getinlinecache exit reasons: ')
-      print_counters(stats, prefix: 'invalidate_', prompt: 'invalidation reasons: ')
+      print_counters(stats, out: out, prefix: 'send_', prompt: 'method call fallback reasons: ')
+      print_counters(stats, out: out, prefix: 'guard_send_', prompt: 'method call exit reasons: ')
+      print_counters(stats, out: out, prefix: 'invokeblock_', prompt: 'invokeblock exit reasons: ')
+      print_counters(stats, out: out, prefix: 'invokesuper_', prompt: 'invokesuper exit reasons: ')
+      print_counters(stats, out: out, prefix: 'leave_', prompt: 'leave exit reasons: ')
+      print_counters(stats, out: out, prefix: 'gbpp_', prompt: 'getblockparamproxy exit reasons: ')
+      print_counters(stats, out: out, prefix: 'getivar_', prompt: 'getinstancevariable exit reasons:')
+      print_counters(stats, out: out, prefix: 'setivar_', prompt: 'setinstancevariable exit reasons:')
+      print_counters(stats, out: out, prefix: 'oaref_', prompt: 'opt_aref exit reasons: ')
+      print_counters(stats, out: out, prefix: 'expandarray_', prompt: 'expandarray exit reasons: ')
+      print_counters(stats, out: out, prefix: 'opt_getinlinecache_', prompt: 'opt_getinlinecache exit reasons: ')
+      print_counters(stats, out: out, prefix: 'invalidate_', prompt: 'invalidation reasons: ')
 
       # Number of failed compiler invocations
       compilation_failure = stats[:compilation_failure]
 
-      $stderr.puts "num_send_megamorphic:  " + ("%10d" % stats[:num_send_megamorphic])
-      $stderr.puts "num_getivar_megamorphic: " + ("%10d" % stats[:num_getivar_megamorphic])
-      $stderr.puts "num_setivar_megamorphic: " + ("%10d" % stats[:num_setivar_megamorphic])
+      out.puts "num_send_megamorphic:  " + ("%10d" % stats[:num_send_megamorphic])
+      out.puts "num_getivar_megamorphic: " + ("%10d" % stats[:num_getivar_megamorphic])
+      out.puts "num_setivar_megamorphic: " + ("%10d" % stats[:num_setivar_megamorphic])
 
-      $stderr.puts "bindings_allocations:  " + ("%10d" % stats[:binding_allocations])
-      $stderr.puts "bindings_set:          " + ("%10d" % stats[:binding_set])
-      $stderr.puts "compilation_failure:   " + ("%10d" % compilation_failure) if compilation_failure != 0
-      $stderr.puts "compiled_iseq_count:   " + ("%10d" % stats[:compiled_iseq_count])
-      $stderr.puts "compiled_block_count:  " + ("%10d" % stats[:compiled_block_count])
-      $stderr.puts "compiled_branch_count: " + ("%10d" % stats[:compiled_branch_count])
-      $stderr.puts "block_next_count:      " + ("%10d" % stats[:block_next_count])
-      $stderr.puts "defer_count:           " + ("%10d" % stats[:defer_count])
-      $stderr.puts "freed_iseq_count:      " + ("%10d" % stats[:freed_iseq_count])
-      $stderr.puts "invalidation_count:    " + ("%10d" % stats[:invalidation_count])
-      $stderr.puts "constant_state_bumps:  " + ("%10d" % stats[:constant_state_bumps])
-      $stderr.puts "inline_code_size:      " + ("%10d" % stats[:inline_code_size])
-      $stderr.puts "outlined_code_size:    " + ("%10d" % stats[:outlined_code_size])
-      $stderr.puts "freed_code_size:       " + ("%10d" % stats[:freed_code_size])
-      $stderr.puts "code_region_size:      " + ("%10d" % stats[:code_region_size])
-      $stderr.puts "yjit_alloc_size:       " + ("%10d" % stats[:yjit_alloc_size]) if stats.key?(:yjit_alloc_size)
-      $stderr.puts "live_page_count:       " + ("%10d" % stats[:live_page_count])
-      $stderr.puts "freed_page_count:      " + ("%10d" % stats[:freed_page_count])
-      $stderr.puts "code_gc_count:         " + ("%10d" % stats[:code_gc_count])
-      $stderr.puts "num_gc_obj_refs:       " + ("%10d" % stats[:num_gc_obj_refs])
-      $stderr.puts "object_shape_count:    " + ("%10d" % stats[:object_shape_count])
-      $stderr.puts "side_exit_count:       " + ("%10d" % stats[:side_exit_count])
-      $stderr.puts "total_exit_count:      " + ("%10d" % stats[:total_exit_count])
-      $stderr.puts "total_insns_count:     " + ("%10d" % stats[:total_insns_count])
-      $stderr.puts "vm_insns_count:        " + ("%10d" % stats[:vm_insns_count])
-      $stderr.puts "yjit_insns_count:      " + ("%10d" % stats[:exec_instruction])
-      $stderr.puts "ratio_in_yjit:         " + ("%9.1f" % stats[:ratio_in_yjit]) + "%"
-      $stderr.puts "avg_len_in_yjit:       " + ("%10.1f" % stats[:avg_len_in_yjit])
+      out.puts "bindings_allocations:  " + ("%10d" % stats[:binding_allocations])
+      out.puts "bindings_set:          " + ("%10d" % stats[:binding_set])
+      out.puts "compilation_failure:   " + ("%10d" % compilation_failure) if compilation_failure != 0
+      out.puts "compiled_iseq_count:   " + ("%10d" % stats[:compiled_iseq_count])
+      out.puts "compiled_block_count:  " + ("%10d" % stats[:compiled_block_count])
+      out.puts "compiled_branch_count: " + ("%10d" % stats[:compiled_branch_count])
+      out.puts "block_next_count:      " + ("%10d" % stats[:block_next_count])
+      out.puts "defer_count:           " + ("%10d" % stats[:defer_count])
+      out.puts "freed_iseq_count:      " + ("%10d" % stats[:freed_iseq_count])
+      out.puts "invalidation_count:    " + ("%10d" % stats[:invalidation_count])
+      out.puts "constant_state_bumps:  " + ("%10d" % stats[:constant_state_bumps])
+      out.puts "inline_code_size:      " + ("%10d" % stats[:inline_code_size])
+      out.puts "outlined_code_size:    " + ("%10d" % stats[:outlined_code_size])
+      out.puts "freed_code_size:       " + ("%10d" % stats[:freed_code_size])
+      out.puts "code_region_size:      " + ("%10d" % stats[:code_region_size])
+      out.puts "yjit_alloc_size:       " + ("%10d" % stats[:yjit_alloc_size]) if stats.key?(:yjit_alloc_size)
+      out.puts "live_page_count:       " + ("%10d" % stats[:live_page_count])
+      out.puts "freed_page_count:      " + ("%10d" % stats[:freed_page_count])
+      out.puts "code_gc_count:         " + ("%10d" % stats[:code_gc_count])
+      out.puts "num_gc_obj_refs:       " + ("%10d" % stats[:num_gc_obj_refs])
+      out.puts "object_shape_count:    " + ("%10d" % stats[:object_shape_count])
+      out.puts "side_exit_count:       " + ("%10d" % stats[:side_exit_count])
+      out.puts "total_exit_count:      " + ("%10d" % stats[:total_exit_count])
+      out.puts "total_insns_count:     " + ("%10d" % stats[:total_insns_count])
+      out.puts "vm_insns_count:        " + ("%10d" % stats[:vm_insns_count])
+      out.puts "yjit_insns_count:      " + ("%10d" % stats[:exec_instruction])
+      out.puts "ratio_in_yjit:         " + ("%9.1f" % stats[:ratio_in_yjit]) + "%"
+      out.puts "avg_len_in_yjit:       " + ("%10.1f" % stats[:avg_len_in_yjit])
 
-      print_sorted_exit_counts(stats, prefix: "exit_")
+      print_sorted_exit_counts(stats, out: out, prefix: "exit_")
     end
 
-    def print_sorted_exit_counts(stats, prefix:, how_many: 20, left_pad: 4) # :nodoc:
+    def print_sorted_exit_counts(stats, out:, prefix:, how_many: 20, left_pad: 4) # :nodoc:
       exits = []
       stats.each do |k, v|
         if k.start_with?(prefix)
@@ -310,7 +320,7 @@ module RubyVM::YJIT
         top_n_total = exits.sum { |name, count| count }
         top_n_exit_pct = 100.0 * top_n_total / total_exits
 
-        $stderr.puts "Top-#{exits.size} most frequent exit ops (#{"%.1f" % top_n_exit_pct}% of exits):"
+        out.puts "Top-#{exits.size} most frequent exit ops (#{"%.1f" % top_n_exit_pct}% of exits):"
 
         longest_insn_name_len = exits.map { |name, count| name.length }.max
         exits.each do |name, count|
@@ -319,10 +329,10 @@ module RubyVM::YJIT
           padded_count = "%10d" % count
           percent = 100.0 * count / total_exits
           formatted_percent = "%.1f" % percent
-          $stderr.puts("#{padded_name}: #{padded_count} (#{formatted_percent}%)" )
+          out.puts("#{padded_name}: #{padded_count} (#{formatted_percent}%)" )
         end
       else
-        $stderr.puts "total_exits:           " + ("%10d" % total_exits)
+        out.puts "total_exits:           " + ("%10d" % total_exits)
       end
     end
 
@@ -334,14 +344,14 @@ module RubyVM::YJIT
       total
     end
 
-    def print_counters(counters, prefix:, prompt:) # :nodoc:
-      $stderr.puts(prompt)
+    def print_counters(counters, out:, prefix:, prompt:) # :nodoc:
+      out.puts(prompt)
       counters = counters.filter { |key, _| key.start_with?(prefix) }
       counters.filter! { |_, value| value != 0 }
       counters.transform_keys! { |key| key.to_s.delete_prefix(prefix) }
 
       if counters.empty?
-        $stderr.puts("    (all relevant counters are zero)")
+        out.puts("    (all relevant counters are zero)")
         return
       end
 
@@ -352,7 +362,7 @@ module RubyVM::YJIT
 
       counters.reverse_each do |(name, value)|
         percentage = value.fdiv(total) * 100
-        $stderr.printf("    %*s %10d (%4.1f%%)\n", longest_name_length, name, value, percentage);
+        out.printf("    %*s %10d (%4.1f%%)\n", longest_name_length, name, value, percentage);
       end
     end
   end
