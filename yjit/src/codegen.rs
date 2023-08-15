@@ -2029,11 +2029,6 @@ fn gen_get_ivar(
     recv_opnd: YARVOpnd,
     side_exit: CodePtr,
 ) -> CodegenStatus {
-    // If the object has a too complex shape, we exit
-    if comptime_receiver.shape_too_complex() {
-        return CantCompile;
-    }
-
     let comptime_val_klass = comptime_receiver.class_of();
     let starting_context = ctx.clone(); // make a copy for use with jit_chain_guard
 
@@ -2270,7 +2265,7 @@ fn gen_setinstancevariable(
     // If the comptime receiver is frozen, writing an IV will raise an exception
     // and we don't want to JIT code to deal with that situation.
     // If the object has a too complex shape, we will also exit
-    if comptime_receiver.is_frozen() || comptime_receiver.shape_too_complex() {
+    if comptime_receiver.is_frozen() {
         return CantCompile;
     }
 
@@ -2296,7 +2291,7 @@ fn gen_setinstancevariable(
 
     // If the receiver isn't a T_OBJECT, or uses a custom allocator,
     // then just write out the IV write as a function call
-    if !receiver_t_object || uses_custom_allocator || megamorphic {
+    if !receiver_t_object || uses_custom_allocator || comptime_receiver.shape_too_complex() || megamorphic {
         asm.comment("call rb_vm_setinstancevariable()");
 
         let ic = jit_get_arg(jit, 1).as_u64(); // type IVC
