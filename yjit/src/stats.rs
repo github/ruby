@@ -226,15 +226,16 @@ make_counters! {
     invokesuper_defined_class_mismatch,
     invokesuper_kw_splat,
     invokesuper_kwarg,
-    invokesuper_me_changed,
+    invokesuper_megamorphic,
     invokesuper_no_cme,
     invokesuper_no_me,
     invokesuper_not_iseq_or_cfunc,
     invokesuper_refinement,
 
-    invokeblock_none,
-    invokeblock_iseq_arg0_splat,
     invokeblock_ifunc,
+    invokeblock_iseq_arg0_splat,
+    invokeblock_megamorphic,
+    invokeblock_none,
     invokeblock_proc,
     invokeblock_symbol,
 
@@ -248,7 +249,8 @@ make_counters! {
     guard_send_send_chain_not_string,
     guard_send_send_chain_not_sym,
 
-    guard_invokesuper_block_given,
+    guard_invokesuper_block_handler,
+    guard_invokesuper_me_changed,
 
     guard_invokeblock_iseq_block_changed,
     guard_invokeblock_iseq_tag_changed,

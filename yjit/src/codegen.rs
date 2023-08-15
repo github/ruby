@@ -6300,6 +6300,12 @@ fn gen_invokeblock_specialized(
         return EndBlock;
     }
 
+    // Fallback to dynamic dispatch if this callsite is megamorphic
+    if ctx.get_chain_depth() as i32 >= SEND_MAX_CHAIN_DEPTH {
+        gen_counter_incr!(asm, invokeblock_megamorphic);
+        return CantCompile;
+    }
+
     // Get call info
     let ci = unsafe { get_call_data_ci(cd) };
     let argc: i32 = unsafe { vm_ci_argc(ci) }.try_into().unwrap();
@@ -6412,12 +6418,19 @@ fn gen_invokesuper_specialized(
     ocb: &mut OutlinedCb,
     cd: *const rb_call_data,
 ) -> CodegenStatus {
+    let starting_context = ctx.clone();
     let block: Option<IseqPtr> = jit_get_arg(jit, 1).as_optional_ptr();
 
     // Defer compilation so we can specialize on class of receiver
     if !jit_at_current_insn(jit) {
         defer_compilation(jit, ctx, asm, ocb);
         return EndBlock;
+    }
+
+    // Fallback to dynamic dispatch if this callsite is megamorphic
+    if ctx.get_chain_depth() as i32 >= SEND_MAX_CHAIN_DEPTH {
+        gen_counter_incr!(asm, invokesuper_megamorphic);
+        return CantCompile;
     }
 
     let me = unsafe { rb_vm_frame_method_entry(get_ec_cfp(jit.ec.unwrap())) };
@@ -6508,7 +6521,16 @@ fn gen_invokesuper_specialized(
         (SIZEOF_VALUE as i32) * (VM_ENV_DATA_INDEX_ME_CREF as i32),
     );
     asm.cmp(ep_me_opnd, me_as_value.into());
-    asm.jne(counted_exit!(ocb, side_exit, invokesuper_me_changed).into());
+    let me_changed_exit = counted_exit!(ocb, side_exit, guard_invokesuper_me_changed);
+    jit_chain_guard(
+        JCC_JNE,
+        jit,
+        &starting_context,
+        asm,
+        ocb,
+        SEND_MAX_DEPTH,
+        me_changed_exit,
+    );
 
     if block.is_none() {
         // Guard no block passed
@@ -6526,7 +6548,7 @@ fn gen_invokesuper_specialized(
             (SIZEOF_VALUE as i32) * (VM_ENV_DATA_INDEX_SPECVAL as i32),
         );
         asm.cmp(ep_specval_opnd, VM_BLOCK_HANDLER_NONE.into());
-        asm.jne(counted_exit!(ocb, side_exit, guard_invokesuper_block_given).into());
+        asm.jne(counted_exit!(ocb, side_exit, guard_invokesuper_block_handler).into());
     }
 
     // We need to assume that both our current method entry and the super
