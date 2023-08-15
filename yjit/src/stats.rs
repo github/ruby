@@ -222,6 +222,22 @@ make_counters! {
     send_bmethod_ractor,
     send_bmethod_block_arg,
 
+    invokesuper_blockarg,
+    invokesuper_defined_class_mismatch,
+    invokesuper_kw_splat,
+    invokesuper_kwarg,
+    invokesuper_me_changed,
+    invokesuper_no_cme,
+    invokesuper_no_me,
+    invokesuper_not_iseq_or_cfunc,
+    invokesuper_refinement,
+
+    invokeblock_none,
+    invokeblock_iseq_arg0_splat,
+    invokeblock_ifunc,
+    invokeblock_proc,
+    invokeblock_symbol,
+
     // Method calls that exit to the interpreter
     guard_send_klass_megamorphic,
     guard_send_se_cf_overflow,
@@ -232,18 +248,12 @@ make_counters! {
     guard_send_send_chain_not_string,
     guard_send_send_chain_not_sym,
 
+    guard_invokesuper_block_given,
+
+    guard_invokeblock_iseq_block_changed,
+    guard_invokeblock_iseq_tag_changed,
+
     traced_cfunc_return,
-
-    invokesuper_me_changed,
-    invokesuper_block,
-
-    invokeblock_none,
-    invokeblock_iseq_arg0_splat,
-    invokeblock_iseq_block_changed,
-    invokeblock_iseq_tag_changed,
-    invokeblock_ifunc,
-    invokeblock_proc,
-    invokeblock_symbol,
 
     leave_se_interrupt,
     leave_interp_return,

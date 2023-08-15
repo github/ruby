@@ -6325,7 +6325,7 @@ fn gen_invokeblock_specialized(
         let side_exit = get_side_exit(jit, ocb, ctx);
         let tag_opnd = asm.and(block_handler_opnd, 0x3.into()); // block_handler is a tagged pointer
         asm.cmp(tag_opnd, 0x1.into()); // VM_BH_ISEQ_BLOCK_P
-        asm.jne(counted_exit!(ocb, side_exit, invokeblock_iseq_tag_changed).into());
+        asm.jne(counted_exit!(ocb, side_exit, guard_invokeblock_iseq_tag_changed).into());
 
         // Not supporting vm_callee_setup_block_arg_arg0_splat for now
         let comptime_captured = unsafe { ((comptime_handler.0 & !0x3) as *const rb_captured_block).as_ref().unwrap() };
@@ -6341,7 +6341,7 @@ fn gen_invokeblock_specialized(
         let captured_opnd = asm.and(block_handler_opnd, Opnd::Imm(!0x3));
         let iseq_opnd = asm.load(Opnd::mem(64, captured_opnd, SIZEOF_VALUE_I32 * 2));
         asm.cmp(iseq_opnd, (comptime_iseq as usize).into());
-        let block_changed_exit = counted_exit!(ocb, side_exit, invokeblock_iseq_block_changed);
+        let block_changed_exit = counted_exit!(ocb, side_exit, guard_invokeblock_iseq_block_changed);
         jit_chain_guard(
             JCC_JNE,
             jit,
@@ -6422,6 +6422,7 @@ fn gen_invokesuper_specialized(
 
     let me = unsafe { rb_vm_frame_method_entry(get_ec_cfp(jit.ec.unwrap())) };
     if me.is_null() {
+        gen_counter_incr!(asm, invokesuper_no_me);
         return CantCompile;
     }
 
@@ -6441,6 +6442,7 @@ fn gen_invokesuper_specialized(
     if current_defined_class.builtin_type() == RUBY_T_ICLASS
         && unsafe { RB_TYPE_P((*rbasic_ptr).klass, RUBY_T_MODULE) && FL_TEST_RAW((*rbasic_ptr).klass, VALUE(RMODULE_IS_REFINEMENT.as_usize())) != VALUE(0) }
     {
+        gen_counter_incr!(asm, invokesuper_refinement);
         return CantCompile;
     }
     let comptime_superclass =
@@ -6455,15 +6457,15 @@ fn gen_invokesuper_specialized(
     // Note, not using VM_CALL_ARGS_SIMPLE because sometimes we pass a block.
 
     if ci_flags & VM_CALL_KWARG != 0 {
-        gen_counter_incr!(asm, send_keywords);
+        gen_counter_incr!(asm, invokesuper_kwarg);
         return CantCompile;
     }
     if ci_flags & VM_CALL_KW_SPLAT != 0 {
-        gen_counter_incr!(asm, send_kw_splat);
+        gen_counter_incr!(asm, invokesuper_kw_splat);
         return CantCompile;
     }
     if ci_flags & VM_CALL_ARGS_BLOCKARG != 0 {
-        gen_counter_incr!(asm, send_block_arg);
+        gen_counter_incr!(asm, invokesuper_blockarg);
         return CantCompile;
     }
 
@@ -6474,13 +6476,14 @@ fn gen_invokesuper_specialized(
     // check and side exit.
     let comptime_recv = jit_peek_at_stack(jit, ctx, argc as isize);
     if unsafe { rb_obj_is_kind_of(comptime_recv, current_defined_class) } == VALUE(0) {
+        gen_counter_incr!(asm, invokesuper_defined_class_mismatch);
         return CantCompile;
     }
 
     // Do method lookup
     let cme = unsafe { rb_callable_method_entry(comptime_superclass, mid) };
-
     if cme.is_null() {
+        gen_counter_incr!(asm, invokesuper_no_cme);
         return CantCompile;
     }
 
@@ -6488,6 +6491,7 @@ fn gen_invokesuper_specialized(
     let cme_def_type = unsafe { get_cme_def_type(cme) };
     if cme_def_type != VM_METHOD_TYPE_ISEQ && cme_def_type != VM_METHOD_TYPE_CFUNC {
         // others unimplemented
+        gen_counter_incr!(asm, invokesuper_not_iseq_or_cfunc);
         return CantCompile;
     }
 
@@ -6529,7 +6533,7 @@ fn gen_invokesuper_specialized(
             (SIZEOF_VALUE as i32) * (VM_ENV_DATA_INDEX_SPECVAL as i32),
         );
         asm.cmp(ep_specval_opnd, VM_BLOCK_HANDLER_NONE.into());
-        asm.jne(counted_exit!(ocb, side_exit, invokesuper_block).into());
+        asm.jne(counted_exit!(ocb, side_exit, guard_invokesuper_block_given).into());
     }
 
     // We need to assume that both our current method entry and the super
