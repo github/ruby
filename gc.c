@@ -2422,7 +2422,7 @@ static void
 gc_continue(rb_objspace_t *objspace, rb_size_pool_t *size_pool, rb_heap_t *heap)
 {
     /* Continue marking if in incremental marking. */
-    if (heap->free_pages == NULL && is_incremental_marking(objspace)) {
+    if (is_incremental_marking(objspace)) {
         gc_marks_continue(objspace, size_pool, heap);
     }
 
