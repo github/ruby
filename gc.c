@@ -1176,6 +1176,7 @@ total_freed_pages(rb_objspace_t *objspace)
 #endif
 #if GC_ENABLE_INCREMENTAL_MARK
 #define GC_INCREMENTAL_SWEEP_SLOT_COUNT 2048
+#define GC_INCREMENTAL_SWEEP_POOL_SLOT_COUT 1024
 #endif
 #define is_lazy_sweeping(objspace)           (GC_ENABLE_LAZY_SWEEP && has_sweeping_pages(objspace))
 
@@ -5970,13 +5971,7 @@ gc_sweep_step(rb_objspace_t *objspace, rb_size_pool_t *size_pool, rb_heap_t *hea
 
 #if GC_ENABLE_INCREMENTAL_MARK
     int swept_slots = 0;
-#if USE_RVARGC
-    bool need_pool = TRUE;
-#else
-    int need_pool = will_be_incremental_marking(objspace) ? TRUE : FALSE;
-#endif
-
-    gc_report(2, objspace, "gc_sweep_step (need_pool: %d)\n", need_pool);
+    int pooled_slots = 0;
 #else
     gc_report(2, objspace, "gc_sweep_step\n");
 #endif
@@ -6017,9 +6012,9 @@ gc_sweep_step(rb_objspace_t *objspace, rb_size_pool_t *size_pool, rb_heap_t *hea
 #endif
 
 #if GC_ENABLE_INCREMENTAL_MARK
-            if (need_pool) {
+            if (pooled_slots < GC_INCREMENTAL_SWEEP_POOL_SLOT_COUT) {
                 heap_add_poolpage(objspace, heap, sweep_page);
-                need_pool = FALSE;
+                pooled_slots += free_slots;
             }
             else {
                 heap_add_freepage(heap, sweep_page);
