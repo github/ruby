@@ -418,19 +418,16 @@ mjit_check_iseq(rb_execution_context_t *ec, const rb_iseq_t *iseq, struct rb_ise
 static inline rb_jit_func_t
 jit_compile(rb_execution_context_t *ec)
 {
-    // Increment the ISEQ's call counter
     const rb_iseq_t *iseq = ec->cfp->iseq;
     struct rb_iseq_constant_body *body = ISEQ_BODY(iseq);
     bool yjit_enabled = rb_yjit_compile_new_iseqs();
-    if (yjit_enabled || mjit_call_p) {
-        body->jit_entry_calls++;
-    }
-    else {
+    if (!(yjit_enabled || mjit_call_p)) {
         return NULL;
     }
 
-    // Trigger JIT compilation if not compiled
+    // Increment the ISEQ's call counter and trigger JIT compilation if not compiled
     if (body->jit_entry == NULL) {
+        body->jit_entry_calls++;
         if (yjit_enabled) {
             if (body->jit_entry_calls == rb_yjit_call_threshold())  {
                 rb_yjit_compile_iseq(iseq, ec, false);
@@ -471,19 +468,18 @@ jit_exec(rb_execution_context_t *ec)
 static inline rb_jit_func_t
 jit_compile_exception(rb_execution_context_t *ec)
 {
-    // Increment the ISEQ's call counter
     const rb_iseq_t *iseq = ec->cfp->iseq;
     struct rb_iseq_constant_body *body = ISEQ_BODY(iseq);
-    if (rb_yjit_compile_new_iseqs()) {
-        body->jit_exception_calls++;
-    }
-    else {
+    if (!rb_yjit_compile_new_iseqs()) {
         return NULL;
     }
 
-    // Trigger JIT compilation if not compiled
-    if (body->jit_exception == NULL && body->jit_exception_calls == rb_yjit_call_threshold()) {
-        rb_yjit_compile_iseq(iseq, ec, true);
+    // Increment the ISEQ's call counter and trigger JIT compilation if not compiled
+    if (body->jit_exception == NULL) {
+        body->jit_exception_calls++;
+        if (body->jit_exception_calls == rb_yjit_call_threshold()) {
+            rb_yjit_compile_iseq(iseq, ec, true);
+        }
     }
     return body->jit_exception;
 }
