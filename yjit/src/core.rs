@@ -932,6 +932,11 @@ fn add_block_version(blockref: &BlockRef, cb: &CodeBlock) {
 
     let version_list = get_or_create_version_list(block.blockid);
 
+    // If this the first block being compiled with this block id
+    if version_list.len() == 0 {
+        incr_counter!(compiled_blockid_count);
+    }
+
     version_list.push(blockref.clone());
     version_list.shrink_to_fit();
 

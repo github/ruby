@@ -288,6 +288,7 @@ make_counters! {
     binding_set,
 
     compiled_iseq_count,
+    compiled_blockid_count,
     compiled_block_count,
     compiled_branch_count,
     compilation_failure,
