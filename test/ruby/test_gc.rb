@@ -316,8 +316,8 @@ class TestGc < Test::Unit::TestCase
     assert_normal_exit("exit", "[ruby-core:39777]", :child_env => env)
 
     env = {}
-    GC.stat_heap.each do |_, s|
-      env["RUBY_GC_HEAP_INIT_SIZE_#{s[:slot_size]}_SLOTS"] = "200000"
+    GC.stat_heap.keys.each do |heap|
+      env["RUBY_GC_HEAP_#{heap}_INIT_SLOTS"] = "200000"
     end
     assert_normal_exit("exit", "", :child_env => env)
 
@@ -325,8 +325,8 @@ class TestGc < Test::Unit::TestCase
     assert_normal_exit("exit", "", :child_env => env)
 
     env = {}
-    GC.stat_heap.each do |_, s|
-      env["RUBY_GC_HEAP_INIT_SIZE_#{s[:slot_size]}_SLOTS"] = "0"
+    GC.stat_heap.keys.each do |heap|
+      env["RUBY_GC_HEAP_#{heap}_INIT_SLOTS"] = "0"
     end
     assert_normal_exit("exit", "", :child_env => env)
 
@@ -398,8 +398,8 @@ class TestGc < Test::Unit::TestCase
     env = {}
     # Make the heap big enough to ensure the heap never needs to grow.
     sizes = GC.stat_heap.keys.reverse.map { |i| (i + 1) * 100_000 }
-    GC.stat_heap.each do |i, s|
-      env["RUBY_GC_HEAP_INIT_SIZE_#{s[:slot_size]}_SLOTS"] = sizes[i].to_s
+    GC.stat_heap.keys.each do |heap|
+      env["RUBY_GC_HEAP_#{heap}_INIT_SLOTS"] = sizes[heap].to_s
     end
     assert_separately([env, "-W0", "--disable-gems"], __FILE__, __LINE__, <<~RUBY)
       SIZES = #{sizes}
