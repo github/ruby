@@ -1445,8 +1445,7 @@ fn gen_expandarray(
 
     let array_opnd = ctx.stack_opnd(0);
 
-    // num is the number of requested values. If there aren't enough in the
-    // array then we're going to push on nils.
+    // If the array operand is nil, just push on nils
     if ctx.get_opnd_type(StackOpnd(0)) == Type::Nil {
         ctx.stack_pop(1); // pop after using the type info
         // special case for a, b = nil pattern
@@ -1680,9 +1679,33 @@ fn gen_setlocal_generic(
     level: u32,
 ) -> CodegenStatus {
     let value_type = ctx.get_opnd_type(StackOpnd(0));
+    let starting_context = ctx.clone(); // make a copy for use with jit_chain_guard
 
     // Load environment pointer EP at level
     let ep_opnd = gen_get_ep(asm, level);
+
+    // Fallback because of write barrier
+    if ctx.get_chain_depth() > 0
+    {
+        // Save the PC and SP because it runs GC
+        jit_prepare_routine_call(jit, ctx, asm);
+
+        // Pop the value to write from the stack
+        let value_opnd = ctx.stack_pop(1);
+
+        // void rb_vm_env_write(const VALUE *ep, int index, VALUE v)
+        let index = -(ep_offset as i64);
+        asm.ccall(
+            rb_vm_env_write as *const u8,
+            vec![
+                ep_opnd,
+                index.into(),
+                value_opnd,
+            ]
+        );
+
+        return KeepCompiling;
+    }
 
     // Write barriers may be required when VM_ENV_FLAG_WB_REQUIRED is set, however write barriers
     // only affect heap objects being written. If we know an immediate value is being written we
@@ -1700,7 +1723,17 @@ fn gen_setlocal_generic(
         let side_exit = get_side_exit(jit, ocb, ctx);
 
         // if (flags & VM_ENV_FLAG_WB_REQUIRED) != 0
-        asm.jnz(side_exit.as_side_exit());
+        assert!(ctx.get_chain_depth() == 0);
+        let wb_required_exit = counted_exit!(ocb, side_exit, setlocal_wb_required).into();
+        jit_chain_guard(
+            JCC_JNZ,
+            jit,
+            &starting_context,
+            asm,
+            ocb,
+            1,
+            wb_required_exit,
+        );
     }
 
     if level == 0 {

@@ -271,6 +271,8 @@ make_counters! {
     setivar_not_object,
     setivar_frozen,
 
+    setlocal_wb_required,
+
     oaref_argc_not_one,
     oaref_arg_not_fixnum,
 
