@@ -272,6 +272,7 @@ fn main() {
         .allowlist_var("VM_ENV_DATA_INDEX_FLAGS")
         .allowlist_var("VM_ENV_DATA_SIZE")
         .allowlist_function("rb_iseq_path")
+        .allowlist_type("vm_check_match_type")
 
         // From yjit.c
         .allowlist_function("rb_iseq_(get|set)_yjit_payload")

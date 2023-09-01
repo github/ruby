@@ -1873,6 +1873,34 @@ fn gen_putstring(
     KeepCompiling
 }
 
+fn gen_checkmatch(
+    jit: &mut JITState,
+    ctx: &mut Context,
+    asm: &mut Assembler,
+    _ocb: &mut OutlinedCb,
+) -> CodegenStatus {
+    let flag = jit_get_arg(jit, 0).as_u32();
+
+    // rb_vm_check_match is not leaf unless flag is VM_CHECKMATCH_TYPE_WHEN.
+    // See also: leafness_of_checkmatch() and check_match()
+    if flag != VM_CHECKMATCH_TYPE_WHEN {
+        jit_prepare_routine_call(jit, ctx, asm);
+    }
+
+    let pattern = ctx.stack_pop(1);
+    let target = ctx.stack_pop(1);
+
+    extern "C" {
+        fn rb_vm_check_match(ec: EcPtr, target: VALUE, pattern: VALUE, num: u32) -> VALUE;
+    }
+    let result = asm.ccall(rb_vm_check_match as *const u8, vec![EC, target, pattern, flag.into()]);
+
+    let stack_ret = ctx.stack_push(Type::Unknown);
+    asm.mov(stack_ret, result);
+
+    KeepCompiling
+}
+
 // Push Qtrue or Qfalse depending on whether the given keyword was supplied by
 // the caller
 fn gen_checkkeyword(
@@ -7442,6 +7470,7 @@ fn get_gen_fn(opcode: VALUE) -> Option<InsnGenFn> {
         YARVINSN_putstring => Some(gen_putstring),
         YARVINSN_expandarray => Some(gen_expandarray),
         YARVINSN_defined => Some(gen_defined),
+        YARVINSN_checkmatch => Some(gen_checkmatch),
         YARVINSN_checkkeyword => Some(gen_checkkeyword),
         YARVINSN_concatstrings => Some(gen_concatstrings),
         YARVINSN_getinstancevariable => Some(gen_getinstancevariable),
