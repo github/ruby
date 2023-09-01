@@ -250,7 +250,6 @@ make_counters! {
     guard_send_send_chain_not_string,
     guard_send_send_chain_not_sym,
 
-    guard_invokesuper_block_handler,
     guard_invokesuper_me_changed,
 
     guard_invokeblock_iseq_block_changed,
