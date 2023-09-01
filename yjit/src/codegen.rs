@@ -6671,10 +6671,6 @@ fn gen_invokesuper_specialized(
         gen_counter_incr!(asm, invokesuper_kw_splat);
         return CantCompile;
     }
-    if ci_flags & VM_CALL_ARGS_BLOCKARG != 0 {
-        gen_counter_incr!(asm, invokesuper_blockarg);
-        return CantCompile;
-    }
 
     // Ensure we haven't rebound this method onto an incompatible class.
     // In the interpreter we try to avoid making this check by performing some
@@ -6733,13 +6729,15 @@ fn gen_invokesuper_specialized(
         me_changed_exit,
     );
 
-    if block.is_none() {
-        // Guard no block passed
+    // gen_send_* currently support the first two branches in vm_caller_setup_arg_block:
+    //   * VM_CALL_ARGS_BLOCKARG
+    //   * blockiseq
+    if ci_flags & VM_CALL_ARGS_BLOCKARG == 0 && block.is_none() {
+        // TODO: gen_send_* does not support the last branch, GET_BLOCK_HANDLER().
+        // For now, we guard no block passed.
+        //
         // rb_vm_frame_block_handler(GET_EC()->cfp) == VM_BLOCK_HANDLER_NONE
         // note, we assume VM_ASSERT(VM_ENV_LOCAL_P(ep))
-        //
-        // TODO: this could properly forward the current block handler, but
-        // would require changes to gen_send_*
         asm.comment("guard no block given");
         // EP is in REG0 from above
         let ep_opnd = asm.load(Opnd::mem(64, CFP, RUBY_OFFSET_CFP_EP));

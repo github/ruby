@@ -222,7 +222,6 @@ make_counters! {
     send_bmethod_ractor,
     send_bmethod_block_arg,
 
-    invokesuper_blockarg,
     invokesuper_defined_class_mismatch,
     invokesuper_kw_splat,
     invokesuper_kwarg,
