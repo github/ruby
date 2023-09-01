@@ -414,6 +414,7 @@ fn main() {
         .allowlist_function("rb_METHOD_ENTRY_VISI")
         .allowlist_function("rb_RCLASS_ORIGIN")
         .allowlist_function("rb_method_basic_definition_p")
+        .allowlist_function("rb_yjit_array_len")
         .allowlist_function("rb_vm_base_ptr")
 
         // We define VALUE manually, don't import it

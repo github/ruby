@@ -279,7 +279,8 @@ make_counters! {
     expandarray_splat,
     expandarray_postarg,
     expandarray_not_array,
-    expandarray_rhs_too_small,
+    expandarray_comptime_not_array,
+    expandarray_chain_max_depth,
 
     gbpp_block_param_modified,
     gbpp_block_handler_not_iseq,
