@@ -999,6 +999,9 @@ impl Assembler
                 Insn::Jbe(target) => {
                     emit_conditional_jump::<{Condition::LS}>(cb, *target);
                 },
+                Insn::Jb(target) => {
+                    emit_conditional_jump::<{Condition::CC}>(cb, *target);
+                },
                 Insn::Jo(target) => {
                     emit_conditional_jump::<{Condition::VS}>(cb, *target);
                 },

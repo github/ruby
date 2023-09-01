@@ -633,6 +633,13 @@ impl Assembler
                     }
                 },
 
+                Insn::Jb(target) => {
+                    match *target {
+                        Target::CodePtr(code_ptr) | Target::SideExitPtr(code_ptr) => jb_ptr(cb, code_ptr),
+                        Target::Label(label_idx) => jb_label(cb, label_idx),
+                    }
+                },
+
                 Insn::Jz(target) => {
                     match *target {
                         Target::CodePtr(code_ptr) | Target::SideExitPtr(code_ptr) => jz_ptr(cb, code_ptr),
