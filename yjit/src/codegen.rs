@@ -112,8 +112,10 @@ pub enum JCCKinds {
     JCC_JNZ,
     JCC_JZ,
     JCC_JE,
+    JCC_JB,
     JCC_JBE,
     JCC_JNA,
+    JCC_JNAE,
 }
 
 pub fn jit_get_arg(jit: &JITState, arg_idx: isize) -> VALUE {
@@ -1495,46 +1497,35 @@ fn gen_expandarray(
     let array_reg = asm.load(array_opnd);
     let array_len_opnd = get_array_len(asm, array_reg);
 
-    /*
-    // FIXME: JCC_JB not implemented
     // Guard on the comptime/expected array length
     if comptime_len >= num {
         asm.comment(&format!("guard array length >= {}", num));
         asm.cmp(array_len_opnd, num.into());
+        let chain_max_depth_exit = counted_exit!(ocb, side_exit, expandarray_chain_max_depth).into();
         jit_chain_guard(
             JCC_JB,
             jit,
+            &starting_context,
             asm,
             ocb,
             OPT_AREF_MAX_CHAIN_DEPTH,
-            Counter::expandarray_chain_max_depth,
+            chain_max_depth_exit,
         );
+
     } else {
         asm.comment(&format!("guard array length == {}", comptime_len));
         asm.cmp(array_len_opnd, comptime_len.into());
+        let chain_max_depth_exit = counted_exit!(ocb, side_exit, expandarray_chain_max_depth).into();
         jit_chain_guard(
             JCC_JNE,
             jit,
+            &starting_context,
             asm,
             ocb,
             OPT_AREF_MAX_CHAIN_DEPTH,
-            Counter::expandarray_chain_max_depth,
+            chain_max_depth_exit,
         );
     }
-    */
-
-    asm.comment(&format!("guard array length == {}", comptime_len));
-    asm.cmp(array_len_opnd, comptime_len.into());
-    let chain_max_depth_exit = counted_exit!(ocb, side_exit, expandarray_chain_max_depth).into();
-    jit_chain_guard(
-        JCC_JNE,
-        jit,
-        &starting_context,
-        asm,
-        ocb,
-        OPT_AREF_MAX_CHAIN_DEPTH,
-        chain_max_depth_exit,
-    );
 
     let array_opnd = ctx.stack_pop(1); // pop after using the type info
 
@@ -1958,6 +1949,18 @@ fn gen_jbe_to_target0(
     }
 }
 
+fn gen_jb_to_target0(
+    asm: &mut Assembler,
+    target0: CodePtr,
+    _target1: Option<CodePtr>,
+    shape: BranchShape,
+) {
+    match shape {
+        BranchShape::Next0 | BranchShape::Next1 => unreachable!(),
+        BranchShape::Default => asm.jb(Target::CodePtr(target0)),
+    }
+}
+
 // Generate a jump to a stub that recompiles the current YARV instruction on failure.
 // When depth_limit is exceeded, generate a jump to a side exit.
 fn jit_chain_guard(
@@ -1973,6 +1976,7 @@ fn jit_chain_guard(
         JCC_JNE | JCC_JNZ => gen_jnz_to_target0,
         JCC_JZ | JCC_JE => gen_jz_to_target0,
         JCC_JBE | JCC_JNA => gen_jbe_to_target0,
+        JCC_JB | JCC_JNAE => gen_jb_to_target0,
     };
 
     if (ctx.get_chain_depth() as i32) < depth_limit {
