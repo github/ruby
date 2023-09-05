@@ -290,6 +290,7 @@ make_counters! {
     binding_allocations,
     binding_set,
 
+    compiled_iseq_entry,
     compiled_iseq_count,
     compiled_blockid_count,
     compiled_block_count,

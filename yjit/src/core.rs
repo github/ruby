@@ -1652,6 +1652,9 @@ pub fn gen_entry_point(iseq: IseqPtr, ec: EcPtr, jit_exception: bool) -> Option<
         }
     }
 
+    // Count the number of entry points we compile
+    incr_counter!(compiled_iseq_entry);
+
     // Compilation successful and block not empty
     return code_ptr;
 }

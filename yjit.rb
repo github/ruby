@@ -278,6 +278,7 @@ module RubyVM::YJIT
       out.puts "bindings_allocations:  " + ("%10d" % stats[:binding_allocations])
       out.puts "bindings_set:          " + ("%10d" % stats[:binding_set])
       out.puts "compilation_failure:   " + ("%10d" % compilation_failure) if compilation_failure != 0
+      out.puts "compiled_iseq_entry:   " + ("%10d" % stats[:compiled_iseq_entry])
       out.puts "compiled_iseq_count:   " + ("%10d" % stats[:compiled_iseq_count])
       out.puts "compiled_blockid_count:" + ("%10d" % stats[:compiled_blockid_count])
       out.puts "compiled_block_count:  " + ("%10d" % stats[:compiled_block_count])
