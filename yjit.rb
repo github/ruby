@@ -286,6 +286,7 @@ module RubyVM::YJIT
         out.puts "versions_per_block:    " + ("%10.3f" % stats[:compiled_block_count].fdiv(stats[:compiled_blockid_count]))
       end
       out.puts "compiled_branch_count: " + ("%10d" % stats[:compiled_branch_count])
+      out.puts "compile_time_ms:       " + ("%10d" % stats[:compile_time_ns].div(1000 * 1000))
       out.puts "block_next_count:      " + ("%10d" % stats[:block_next_count])
       out.puts "defer_count:           " + ("%10d" % stats[:defer_count])
       out.puts "freed_iseq_count:      " + ("%10d" % stats[:freed_iseq_count])
