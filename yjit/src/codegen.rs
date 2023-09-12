@@ -7629,9 +7629,6 @@ pub struct CodegenGlobals {
 
     /// Page indexes for outlined code that are not associated to any ISEQ.
     ocb_pages: Vec<usize>,
-
-    /// How many times code GC has been executed.
-    code_gc_count: usize,
 }
 
 /// For implementing global code invalidation. A position in the inline
@@ -7728,7 +7725,6 @@ impl CodegenGlobals {
             inline_frozen_bytes: 0,
             method_codegen_table: HashMap::new(),
             ocb_pages,
-            code_gc_count: 0,
         };
 
         // Register the method codegen functions
@@ -7881,14 +7877,6 @@ impl CodegenGlobals {
 
     pub fn get_ocb_pages() -> &'static Vec<usize> {
         &CodegenGlobals::get_instance().ocb_pages
-    }
-
-    pub fn incr_code_gc_count() {
-        CodegenGlobals::get_instance().code_gc_count += 1;
-    }
-
-    pub fn get_code_gc_count() -> usize {
-        CodegenGlobals::get_instance().code_gc_count
     }
 }
 
