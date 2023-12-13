@@ -546,6 +546,11 @@ int ruby_rgengc_debug;
 #ifndef GC_ENABLE_LAZY_SWEEP
 #define GC_ENABLE_LAZY_SWEEP   1
 #endif
+
+#define CALC_EXACT_MALLOC_SIZE 1
+#define GC_CHECK_XFREE 1
+#define GC_CHECK_XFREE_MAGIC 0xBADA110C
+
 #ifndef CALC_EXACT_MALLOC_SIZE
 #define CALC_EXACT_MALLOC_SIZE USE_GC_MALLOC_OBJ_INFO_DETAILS
 #endif
@@ -12456,6 +12461,9 @@ objspace_malloc_increase_body(rb_objspace_t *objspace, void *mem, size_t new_siz
 
 struct malloc_obj_info { /* 4 words */
     size_t size;
+#if GC_CHECK_XFREE
+    size_t magic; // always 0xBADA110C
+#endif
 #if USE_GC_MALLOC_OBJ_INFO_DETAILS
     size_t gen;
     const char *file;
@@ -12500,6 +12508,9 @@ objspace_malloc_fixup(rb_objspace_t *objspace, void *mem, size_t size)
     {
         struct malloc_obj_info *info = mem;
         info->size = size;
+#if GC_CHECK_XFREE
+        info->magic = GC_CHECK_XFREE_MAGIC;
+#endif
 #if USE_GC_MALLOC_OBJ_INFO_DETAILS
         info->gen = objspace->profile.count;
         info->file = ruby_malloc_info_file;
@@ -12638,6 +12649,9 @@ objspace_xrealloc(rb_objspace_t *objspace, void *ptr, size_t new_size, size_t ol
         new_size += sizeof(struct malloc_obj_info);
         ptr = info;
         old_size = info->size;
+#if GC_CHECK_XFREE
+        RUBY_ASSERT_ALWAYS(info->magic == GC_CHECK_XFREE_MAGIC);
+#endif
     }
 #endif
 
@@ -12728,6 +12742,9 @@ objspace_xfree(rb_objspace_t *objspace, void *ptr, size_t old_size)
     struct malloc_obj_info *info = (struct malloc_obj_info *)ptr - 1;
     ptr = info;
     old_size = info->size;
+#if GC_CHECK_XFREE
+    RUBY_ASSERT_ALWAYS(info->magic == GC_CHECK_XFREE_MAGIC);
+#endif
 
 #if USE_GC_MALLOC_OBJ_INFO_DETAILS
     {
@@ -12957,6 +12974,9 @@ ruby_mimmalloc(size_t size)
     {
         struct malloc_obj_info *info = mem;
         info->size = 0;
+#if GC_CHECK_XFREE
+        info->magic = GC_CHECK_XFREE_MAGIC;
+#endif
 #if USE_GC_MALLOC_OBJ_INFO_DETAILS
         info->gen = 0;
         info->file = NULL;
@@ -12974,6 +12994,9 @@ ruby_mimfree(void *ptr)
 #if CALC_EXACT_MALLOC_SIZE
     struct malloc_obj_info *info = (struct malloc_obj_info *)ptr - 1;
     ptr = info;
+#if GC_CHECK_XFREE
+    RUBY_ASSERT_ALWAYS(info->magic == GC_CHECK_XFREE_MAGIC);
+#endif
 #endif
     free(ptr);
 }
