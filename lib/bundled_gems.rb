@@ -97,16 +97,19 @@ module Gem::BUNDLED_GEMS
   def self.warning?(name, specs: nil)
     # name can be a feature name or a file path with String or Pathname
     feature = File.path(name)
-    # bootsnap expand `require "csv"` to `require "#{LIBDIR}/csv.rb"`
-    name = feature.delete_prefix(LIBDIR).chomp(".rb").tr("/", "-")
+    # bootsnap expands `require "csv"` to `require "#{LIBDIR}/csv.rb"`,
+    # and `require "syslog"` to `require "#{ARCHDIR}/syslog.so"`.
+    name = feature.delete_prefix(ARCHDIR)
+    name.delete_prefix!(LIBDIR)
+    name.tr!("/", "-")
     name.sub!(LIBEXT, "")
     return if specs.include?(name)
     _t, path = $:.resolve_feature_path(feature)
     if gem = find_gem(path)
       return if specs.include?(gem)
-      caller = caller_locations(3, 3).find {|c| c&.absolute_path}
+      caller = caller_locations(3, 3)&.find {|c| c&.absolute_path}
       return if find_gem(caller&.absolute_path)
-    elsif SINCE[name]
+    elsif SINCE[name] && !path
       gem = true
     else
       return
@@ -147,7 +150,7 @@ module Gem::BUNDLED_GEMS
           next
         end
 
-        unless cl.path.match?(/bootsnap|zeitwerk/)
+        if cl.base_label != "require"
           location = cl.path
           break
         end
