@@ -3,7 +3,7 @@
 [![Actions Status: Windows](https://github.com/ruby/ruby/workflows/Windows/badge.svg)](https://github.com/ruby/ruby/actions?query=workflow%3A"Windows")
 [![Travis Status](https://app.travis-ci.com/ruby/ruby.svg?branch=master)](https://app.travis-ci.com/ruby/ruby)
 
-# What is Ruby?
+# What is Ruby??
 
 Ruby is an interpreted object-oriented programming language often
 used for web development. It also offers many scripting features
