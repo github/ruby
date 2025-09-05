@@ -302,11 +302,12 @@ ruby_fl_type {
     RUBY_FL_UNUSED9  = (1<<9),
 
    /**
-    * This flag is no longer in use
+    * This flag is used to differentiate between RTypedData and RData. The flag
+    * is only set for RTypedData.
     *
     * @internal
     */
-    RUBY_FL_UNUSED10 = (1<<10),
+    RUBY_FL_TYPED_DATA = (1<<10),
 
     /**
      * This flag has something to do with data immutability.  When this flag is

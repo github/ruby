@@ -115,7 +115,6 @@
 #define RUBY_TYPED_PROMOTED1         RUBY_TYPED_PROMOTED1
 /** @endcond */
 
-#define IS_TYPED_DATA ((VALUE)1)
 #define TYPED_DATA_EMBEDDED ((VALUE)2)
 #define TYPED_DATA_PTR_FLAGS ((VALUE)3)
 #define TYPED_DATA_PTR_MASK (~TYPED_DATA_PTR_FLAGS)
@@ -569,7 +568,7 @@ RBIMPL_ATTR_ARTIFICIAL()
 static inline bool
 rbimpl_rtypeddata_p(VALUE obj)
 {
-    return RTYPEDDATA(obj)->type & IS_TYPED_DATA;
+    return RBASIC(obj)->flags & RUBY_FL_TYPED_DATA;
 }
 
 RBIMPL_ATTR_PURE_UNLESS_DEBUG()
