@@ -3922,6 +3922,11 @@ impl ProfileOracle {
         // operand_types is always going to be <= stack size (otherwise it would have an underflow
         // at run-time) so use that to drive iteration.
         for (idx, insn_type_distribution) in operand_types.iter().rev().enumerate() {
+            if idx >= state.stack_size() {
+                let pc = unsafe { rb_iseq_pc_at_idx(state.iseq, iseq_insn_idx.try_into().unwrap()) };
+                let opcode: usize = unsafe { rb_iseq_opcode_at_pc(state.iseq, pc) }.try_into().unwrap();
+                eprintln!("******************************** OH NO {} - {} - {} - {}", idx, state.stack_size(), iseq_insn_idx, insn_name(opcode));
+            }
             let insn = state.stack_topn(idx).expect("Unexpected stack underflow in profiling");
             entry.push((insn, TypeDistributionSummary::new(insn_type_distribution)))
         }
