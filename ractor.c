@@ -31,6 +31,9 @@ static VALUE rb_eRactorMovedError;
 static VALUE rb_eRactorClosedError;
 static VALUE rb_cRactorMovedObject;
 
+extern void rb_thread_sched_init(struct rb_thread_sched *, bool atfork);
+extern void rb_thread_sched_destroy(struct rb_thread_sched *);
+
 static void vm_ractor_blocking_cnt_inc(rb_vm_t *vm, rb_ractor_t *r, const char *file, int line);
 
 // Ractor locking
@@ -256,6 +259,8 @@ ractor_free(void *ptr)
         rb_gc_ractor_cache_free(r->newobj_cache);
         r->newobj_cache = NULL;
     }
+
+    rb_thread_sched_destroy(&r->threads.sched);
 
     ruby_xfree(r);
 }
@@ -2096,8 +2101,6 @@ rb_ractor_atfork(rb_vm_t *vm, rb_thread_t *th)
     VM_ASSERT(vm->ractor.cnt == 1);
 }
 #endif
-
-void rb_thread_sched_init(struct rb_thread_sched *, bool atfork);
 
 void
 rb_ractor_living_threads_init(rb_ractor_t *r)
