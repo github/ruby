@@ -1129,9 +1129,82 @@ thread_sched_yield(struct rb_thread_sched *sched, rb_thread_t *th)
     thread_sched_unlock(sched, th);
 }
 
+static void
+transfer_sched_lock(struct rb_thread_sched *sched, struct rb_thread_struct *current, struct rb_thread_struct *th)
+{
+    RUBY_DEBUG_LOG("Transferring sched ownership from:%u to th:%u", rb_th_serial(current), rb_th_serial(th));
+#if VM_CHECK_MODE
+    VM_ASSERT(sched->lock_owner == current);
+    sched->lock_owner = th;
+#endif
+}
+
+static void *
+deferred_wait_thread_worker(void *arg) {
+    struct rb_thread_sched *sched = (struct rb_thread_sched *) arg;
+    struct rb_thread_struct *lock_owner = sched->deferred_wait_th_dummy;
+
+    thread_sched_lock(sched, lock_owner);
+    for (;;) {
+        if (sched->stop) {
+            break;
+        }
+        // The cond-wait will drop the lock. We'll need to update lock_owner manually.
+        transfer_sched_lock(sched, lock_owner, NULL);
+        rb_native_cond_wait(&sched->deferred_wait_cond, &sched->lock_);
+        transfer_sched_lock(sched, NULL, lock_owner);
+        for (;;) {
+            if (!sched->deferred_wait_th) {
+                break;
+            }
+            struct rb_thread_struct *th = sched->deferred_wait_th;
+            int count = sched->deferred_wait_th_count;
+            thread_sched_unlock(sched, lock_owner);
+            usleep(50);
+
+            // th is not a stable reference here. Go back to our dummy thread.
+            lock_owner = sched->deferred_wait_th_dummy;
+            thread_sched_lock(sched, lock_owner);
+
+            if (count != sched->deferred_wait_th_count) {
+                continue;
+            }
+            VM_ASSERT(th == sched->deferred_wait_th);
+            sched->deferred_wait_th = NULL;
+            sched->deferred_wait_th_count += 1;
+
+            // Before calling into the scheduler we need to transfer lock ownership (logically) from the worker
+            // thread to the target thread.
+            transfer_sched_lock(sched, lock_owner, th);
+            // We're now acting on behalf of the target thread.
+            lock_owner = th;
+            thread_sched_to_waiting_common(sched, th);
+            break;
+        }
+    }
+    thread_sched_unlock(sched, lock_owner);
+    return NULL;
+}
+
+static void start_deferred_wait_thread(struct rb_thread_sched *sched) {
+    pthread_attr_t attr;
+    int r;
+    r = pthread_attr_init(&attr);
+    if (r) {
+        rb_bug_errno("start_deferred_wait_thread - pthread_attr_init", r);
+    }
+    r = pthread_create(&sched->deferred_wait_pthread, &attr, deferred_wait_thread_worker, sched);
+    if (r) {
+        rb_bug_errno("start_deferred_wait_thread - pthread_create", r);
+    }
+    pthread_attr_destroy(&attr);
+    pthread_setname_np(sched->deferred_wait_pthread, "rb_def_wait");
+}
+
 void
 rb_thread_sched_init(struct rb_thread_sched *sched, bool atfork)
 {
+    sched->stop = false;
     rb_native_mutex_initialize(&sched->lock_);
 
 #if VM_CHECK_MODE
@@ -1144,6 +1217,13 @@ rb_thread_sched_init(struct rb_thread_sched *sched, bool atfork)
 #if USE_MN_THREADS
     if (!atfork) sched->enable_mn_threads = true; // MN is enabled on Ractors
 #endif
+
+    rb_native_cond_initialize(&sched->deferred_wait_cond);
+    sched->deferred_wait_th = NULL;
+    sched->deferred_wait_th_count = 0;
+    sched->deferred_wait_th_dummy = (struct rb_thread_struct *) malloc(sizeof(struct rb_thread_struct));
+    sched->deferred_wait_th_dummy->serial = 100000;
+    start_deferred_wait_thread(sched);
 }
 
 static void

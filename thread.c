@@ -170,6 +170,7 @@ struct rb_blocking_region_buffer {
 
 static int unblock_function_set(rb_thread_t *th, rb_unblock_function_t *func, void *arg, int fail_if_interrupted);
 static void unblock_function_clear(rb_thread_t *th);
+static void queue_thread_sched_to_waiting(struct rb_thread_sched *sched, rb_thread_t *th);
 
 static inline int blocking_region_begin(rb_thread_t *th, struct rb_blocking_region_buffer *region,
                                         rb_unblock_function_t *ubf, void *arg, int fail_if_interrupted);
@@ -202,7 +203,7 @@ static inline void blocking_region_end(rb_thread_t *th, struct rb_blocking_regio
         /* Important that this is inlined into the macro, and not part of \
          * blocking_region_begin - see bug #20493 */ \
         RB_VM_SAVE_MACHINE_CONTEXT(th); \
-        thread_sched_to_waiting(TH_SCHED(th), th); \
+        queue_thread_sched_to_waiting(TH_SCHED(th), th); \
         exec; \
         blocking_region_end(th, &__region); \
     }; \
@@ -1486,6 +1487,17 @@ rb_thread_schedule(void)
     RUBY_VM_CHECK_INTS(GET_EC());
 }
 
+static void
+queue_thread_sched_to_waiting(struct rb_thread_sched *sched, rb_thread_t *th) {
+    thread_sched_lock(sched, th);
+    {
+        sched->deferred_wait_th = th;
+        sched->deferred_wait_th_count += 1;
+        rb_native_cond_signal(&sched->deferred_wait_cond);
+    }
+    thread_sched_unlock(sched, th);
+}
+
 /* blocking region */
 
 static inline int
@@ -1519,9 +1531,16 @@ blocking_region_end(rb_thread_t *th, struct rb_blocking_region_buffer *region)
     /* entry to ubf_list impossible at this point, so unregister is safe: */
     unregister_ubf_list(th);
 
-    thread_sched_to_running(TH_SCHED(th), th);
-    rb_ractor_thread_switch(th->ractor, th);
+    struct rb_thread_sched *sched = TH_SCHED(th);
+    if (sched->running == th && th == sched->deferred_wait_th) {
+        // We never descheduled the thread. Cancel that request now.
+        sched->deferred_wait_th_count += 1;
+        sched->deferred_wait_th = NULL;
+    } else {
+        thread_sched_to_running(sched, th);
+    }
 
+    rb_ractor_thread_switch(th->ractor, th);
     th->blocking_region_buffer = 0;
     rb_ractor_blocking_threads_dec(th->ractor, __FILE__, __LINE__);
     if (th->status == THREAD_STOPPED) {
