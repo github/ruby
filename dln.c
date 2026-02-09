@@ -403,8 +403,10 @@ dln_open(const char *file)
             if (dln_disable_dlclose()) {
                 /* dlclose() segfaults */
                 if (libruby_name) {
+                    fprintf(stderr, "DLOPEN ERROR: (fatal) linked to incompatible %s - %s\n", libruby_name, file);
                     dln_fatalerror("linked to incompatible %s - %s", libruby_name, file);
                 }
+                fprintf(stderr, "DLOPEN ERROR: (fatal) %s - %s\n", incompatible, file);
                 dln_fatalerror("%s - %s", incompatible, file);
             }
             else {
@@ -416,6 +418,7 @@ dln_open(const char *file)
                 }
                 dlclose(handle);
                 if (libruby_name) {
+                    fprintf(stderr, "DLOPEN ERROR: linked to incompatible %s - %s\n", libruby_name, file);
                     dln_loaderror("linked to incompatible %s - %s", libruby_name, file);
                 }
                 error = incompatible;
@@ -429,6 +432,7 @@ dln_open(const char *file)
     return handle;
 
   failed:
+    fprintf(stderr, "DLOPEN ERROR: %s - %s\n", error, file);
     dln_loaderror("%s - %s", error, file);
 }
 
@@ -456,6 +460,7 @@ dln_sym_func(void *handle, const char *symbol)
         const size_t errlen = strlen(error = dln_strerror()) + 1;
         error = memcpy(ALLOCA_N(char, errlen), error, errlen);
 #endif
+        fprintf(stderr, "DLOPEN ERROR: (dln_sym_func) %s - %s\n", error, symbol);
         dln_loaderror("%s - %s", error, symbol);
     }
     return (uintptr_t)func;
@@ -513,6 +518,7 @@ dln_load_and_init(const char *file, const char *init_fct_name)
     abi_version_number binary_abi_version =
         dln_sym_callable(abi_version_number, (void), handle, EXTERNAL_PREFIX "ruby_abi_version")();
     if (binary_abi_version != RUBY_ABI_VERSION && abi_check_enabled_p()) {
+        fprintf(stderr, "DLOPEN ERROR: incompatible ABI version of binary - %s\n", file);
         dln_loaderror("incompatible ABI version of binary - %s", file);
     }
 #endif
