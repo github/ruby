@@ -429,6 +429,7 @@ dln_open(const char *file)
     return handle;
 
   failed:
+    fprintf(stderr, "DLOPEN ERROR: %s - %s\n", error, file);
     dln_loaderror("%s - %s", error, file);
 }
 
