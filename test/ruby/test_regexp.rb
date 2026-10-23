@@ -2303,4 +2303,24 @@ class TestRegexp < Test::Unit::TestCase
       end
     end;
   end
+
+  def test_too_many_range_repeat
+    source = '(?:foobar){0,100}'
+    assert_nothing_raised { Regexp.new(source * 32767) }
+    [32768, 100000].each do |count|
+      assert_raise_with_message(RegexpError, /\Atoo many range repeat:/) do
+        Regexp.new(source * count)
+      end
+    end
+  end
+
+  def test_too_many_null_check
+    source = '(?:(?:foo)?|(?:bar)?)*'
+    assert_nothing_raised { Regexp.new(source * 32767) }
+    [32768, 100000].each do |count|
+      assert_raise_with_message(RegexpError, /\Atoo many null check:/) do
+        Regexp.new(source * count)
+      end
+    end
+  end
 end
